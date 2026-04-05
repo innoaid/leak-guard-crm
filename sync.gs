@@ -1,0 +1,480 @@
+// ================================================================
+// LEAK GUARD CRM — CHATSHERO → GOOGLE SHEETS SYNC
+// ================================================================
+//
+// HOW TO FIND A GOOGLE SHEET ID:
+//   Open the sheet in your browser. The URL looks like:
+//   https://docs.google.com/spreadsheets/d/XXXXXXXXXX/edit
+//   The XXXXXXXXXX part between /d/ and /edit is the Sheet ID.
+//
+// SETUP INSTRUCTIONS:
+//   1. Open your destination Google Sheet
+//   2. Go to Extensions → Apps Script
+//   3. Paste this entire file into Code.gs
+//   4. Run setupLeakGuardSheet() — creates all tabs
+//   5. Run setupTrigger() — creates 5-minute auto-sync
+//   6. Run testSyncOnce() — test with sample data
+//   7. Set CONFIG.ACTIVE = true when ready for live sync
+//
+// ================================================================
+
+// ── CONFIGURATION ────────────────────────────────────────────────
+// Change these values to match your setup.
+
+const CONFIG = {
+  ACTIVE:           false,                                          // Set to true to enable auto-sync
+  START_DATE:       '2026-04-05',                                   // Only sync leads created on or after this date
+  LOOKBACK_DAYS:    30,                                             // Re-check existing leads within this window
+  SOURCE_SHEET_ID:  '1XXHMfXfj2UMgB39RSufqDtGHNPzuse18NadCLz-FNbA', // ChatHero Google Sheet ID
+  SOURCE_TAB:       'Sheet1',                                       // Tab name in ChatHero sheet
+  DEST_TAB:         'Leak Guard Leads',                             // Destination tab for qualified leads
+  STAFF_TAB:        'Staff List',                                   // Staff directory tab
+  SCHEDULE_TAB:     'Schedule',                                     // Job scheduling tab
+  LOG_TAB:          'Sync Log',                                     // Sync history log tab
+};
+
+// ── CHATHERO SOURCE COLUMNS (0-based index) ──────────────────────
+// These map to the columns in the ChatHero Google Sheet.
+// A=0, B=1, C=2, etc.
+
+const CH = {
+  CONV_ID:     0,   // A — Conversation ID (unique key)
+  CREATE_DATE: 1,   // B — When the conversation was created
+  RECENT_TIME: 2,   // C — Most recent message time
+  APPT_DATE:   3,   // D — Appointment date (primary)
+  APPT_TIME:   4,   // E — Appointment time
+  NAME:        5,   // F — Customer name
+  PHONE:       6,   // G — Phone number
+  STATE:       7,   // H — State/location
+  PROBLEMS:    8,   // I — Problem description
+  SLAB_SIZE:   9,   // J — Slab size in sqft
+  ADDRESS:     10,  // K — Full address
+  QUOT_SV:     11,  // L — Quotation or site visit info
+  CHAT_URL:    12,  // M — Link to ChatHero conversation
+  QUOT_NO:     13,  // N — Quotation number
+  DATE_SENT:   14,  // O — Date quotation was sent
+  FOLLOWUP:    15,  // P — Follow-up date
+  CH_STATUS:   16,  // Q — ChatHero status
+  APPT_DATE2:  17,  // R — Appointment date (secondary/reschedule)
+  COMPLETION:  18,  // S — Completion status
+};
+
+// ── DESTINATION SHEET HEADERS ────────────────────────────────────
+// These are the column headers for the Leak Guard Leads tab.
+// Order matters — each index maps to a column.
+
+const HEADERS = [
+  'Timestamp',        // A  — When the lead was first synced
+  'Phone',            // B  — Customer phone number
+  'Name',             // C  — Customer name
+  'Problem Type',     // D  — Waterproofing problem description
+  'Location',         // E  — State
+  'Full Address',     // F  — Complete address
+  'Slab Size (sqft)', // G  — Area in square feet
+  'Slot Chosen',      // H  — Appointment date + time
+  'Status',           // I  — CRM status (dropdown)
+  'Assigned To',      // J  — Staff assignment (dropdown)
+  'Quotation (RM)',   // K  — Quotation amount
+  'Job Outcome',      // L  — Win/loss tracking (dropdown)
+  'Notes',            // M  — Free-text notes
+  'CH Conv ID',       // N  — ChatHero conversation ID (unique key)
+  'CH Status',        // O  — Status from ChatHero
+  'CH Chat URL',      // P  — Link to ChatHero conversation
+  'Source',           // Q  — Lead source (ChatHero, Manual, etc.)
+  'Last Synced',      // R  — When this row was last updated by sync
+];
+
+
+// ================================================================
+// FUNCTION 1 — SETUP: Create all tabs, headers, dropdowns
+// ================================================================
+
+function setupLeakGuardSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Rename the spreadsheet
+  ss.rename('Leak Guard CRM');
+
+  // ── Leak Guard Leads tab ──────────────────────────────────────
+  let dest = ss.getSheetByName(CONFIG.DEST_TAB);
+  if (!dest) dest = ss.insertSheet(CONFIG.DEST_TAB);
+  dest.clear();
+  dest.clearFormats();
+
+  // Headers — dark purple row
+  dest.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS])
+    .setBackground('#2D2A6E')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold');
+  dest.setFrozenRows(1);
+  dest.setFrozenColumns(2);
+  dest.setTabColor('#2D2A6E');
+
+  // Status dropdown — col I (column 9)
+  const statusList = [
+    'New Lead', 'Pending Site Visit', 'Confirmed',
+    'Site Visit Done', 'Quotation Sent', 'Follow Up',
+    'Job Confirmed', 'Downpayment Received', 'Job In Progress',
+    'Job Complete', 'Receipt Sent', 'Cold Lead', 'Lost',
+    'Out of Area', 'Human Handoff'
+  ];
+  dest.getRange(2, 9, 500, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(statusList, true).build()
+  );
+
+  // Assigned To dropdown — col J (column 10)
+  dest.getRange(2, 10, 500, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(['Ken', 'Admin', 'Team KL', 'Team JB', 'Unassigned'], true).build()
+  );
+
+  // Job Outcome dropdown — col L (column 12)
+  dest.getRange(2, 12, 500, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList([
+        'Pending', 'Won', 'Lost - Price',
+        'Lost - No Response', 'Lost - Not Ready',
+        'Lost - Out of Area', 'Referred Out'
+      ], true).build()
+  );
+
+  // Column widths
+  var widths = [160, 140, 130, 160, 120, 240, 120, 160, 150, 130, 120, 130, 200, 180, 130, 200, 100, 160];
+  widths.forEach(function(w, i) { dest.setColumnWidth(i + 1, w); });
+
+  // ── Staff List tab ────────────────────────────────────────────
+  let staff = ss.getSheetByName(CONFIG.STAFF_TAB);
+  if (!staff) staff = ss.insertSheet(CONFIG.STAFF_TAB);
+  staff.clear();
+  staff.getRange(1, 1, 1, 3).setValues([['Phone', 'Name', 'Role']])
+    .setBackground('#1D9E75')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold');
+  staff.setTabColor('#1D9E75');
+
+  // ── Schedule tab ──────────────────────────────────────────────
+  let sched = ss.getSheetByName(CONFIG.SCHEDULE_TAB);
+  if (!sched) sched = ss.insertSheet(CONFIG.SCHEDULE_TAB);
+  sched.clear();
+  sched.getRange(1, 1, 1, 4).setValues([['Date', 'Time Slot', 'Status', 'Assigned Job']])
+    .setBackground('#185FA5')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold');
+  sched.setTabColor('#185FA5');
+
+  // ── Summary tab ───────────────────────────────────────────────
+  let sum = ss.getSheetByName('Summary');
+  if (!sum) sum = ss.insertSheet('Summary');
+  sum.clear();
+  sum.getRange('A1:B1').setValues([['Metric', 'Count']])
+    .setBackground('#1D9E75')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold');
+
+  var sumData = [
+    ['Total Leads',        "=COUNTA('Leak Guard Leads'!B2:B)"],
+    ['New Lead',           "=COUNTIF('Leak Guard Leads'!I:I,\"New Lead\")"],
+    ['Pending Site Visit', "=COUNTIF('Leak Guard Leads'!I:I,\"Pending Site Visit\")"],
+    ['Confirmed',          "=COUNTIF('Leak Guard Leads'!I:I,\"Confirmed\")"],
+    ['Quotation Sent',     "=COUNTIF('Leak Guard Leads'!I:I,\"Quotation Sent\")"],
+    ['Job Complete',       "=COUNTIF('Leak Guard Leads'!I:I,\"Job Complete\")"],
+    ['Lost',               "=COUNTIF('Leak Guard Leads'!I:I,\"Lost\")"],
+    ['', ''],
+    ['Total Revenue',      "=SUMIF('Leak Guard Leads'!I:I,\"Job Complete\",'Leak Guard Leads'!K:K)"],
+    ['Conversion Rate',    "=IFERROR(COUNTIF('Leak Guard Leads'!I:I,\"Job Complete\")/COUNTA('Leak Guard Leads'!B2:B),0)"],
+  ];
+  sum.getRange(2, 1, sumData.length, 2).setValues(sumData);
+  sum.getRange('B11').setNumberFormat('0.0%');
+  sum.setTabColor('#1D9E75');
+
+  // ── Sync Log tab ──────────────────────────────────────────────
+  ensureLogTab(ss);
+
+  // ── Delete default Sheet1 if it exists and is empty ───────────
+  var sheet1 = ss.getSheetByName('Sheet1');
+  if (sheet1 && ss.getSheets().length > 1) {
+    var data1 = sheet1.getDataRange().getValues();
+    if (data1.length <= 1 && (!data1[0] || !data1[0][0])) {
+      ss.deleteSheet(sheet1);
+    }
+  }
+
+  SpreadsheetApp.getUi().alert(
+    'Setup complete!\n\n' +
+    'Tabs created:\n' +
+    '✓ Leak Guard Leads (with dropdowns)\n' +
+    '✓ Staff List\n' +
+    '✓ Schedule\n' +
+    '✓ Summary (with live formulas)\n' +
+    '✓ Sync Log\n\n' +
+    'Next steps:\n' +
+    '1. Run setupTrigger() to create auto-sync\n' +
+    '2. Run testSyncOnce() to test\n' +
+    '3. Set CONFIG.ACTIVE = true for live sync'
+  );
+}
+
+
+// ================================================================
+// FUNCTION 2 — SYNC: Pull qualified leads from ChatHero
+// ================================================================
+// Qualification criteria: Phone + Full Address + Problems must ALL be non-empty.
+// New leads get Status=New Lead, Assigned To=Unassigned, Job Outcome=Pending.
+// Existing leads: only ChatHero fields are updated. User columns (Status,
+// Assigned To, Quotation RM, Job Outcome, Notes) are NEVER overwritten.
+
+function syncQualifiedLeads() {
+  // Guard: don't run if sync is paused
+  if (!CONFIG.ACTIVE) {
+    Logger.log('Sync paused. Set CONFIG.ACTIVE = true to start.');
+    return;
+  }
+
+  // Calculate effective date window
+  var startDate = new Date(CONFIG.START_DATE);
+  var lookbackDate = new Date();
+  lookbackDate.setDate(lookbackDate.getDate() - CONFIG.LOOKBACK_DAYS);
+  var effectiveStart = startDate > lookbackDate ? startDate : lookbackDate;
+
+  // Open ChatHero source sheet
+  var srcSS;
+  try {
+    srcSS = SpreadsheetApp.openById(CONFIG.SOURCE_SHEET_ID);
+  } catch (e) {
+    Logger.log('ERROR: Cannot open ChatHero sheet. Check SOURCE_SHEET_ID. ' + e);
+    return;
+  }
+
+  var srcSheet = srcSS.getSheetByName(CONFIG.SOURCE_TAB);
+  if (!srcSheet) {
+    Logger.log('ERROR: Tab "' + CONFIG.SOURCE_TAB + '" not found in ChatHero sheet.');
+    return;
+  }
+
+  // Open destination sheet
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var dest = ss.getSheetByName(CONFIG.DEST_TAB);
+  if (!dest) {
+    Logger.log('ERROR: "' + CONFIG.DEST_TAB + '" tab not found. Run setupLeakGuardSheet() first.');
+    return;
+  }
+
+  ensureLogTab(ss);
+
+  // Read all data
+  var srcData = srcSheet.getDataRange().getValues();
+  var destData = dest.getDataRange().getValues();
+  var convIdCol = HEADERS.indexOf('CH Conv ID'); // column N = index 13
+
+  // Build lookup: Conv ID → destination row number (1-based)
+  var existingMap = {};
+  for (var d = 1; d < destData.length; d++) {
+    var id = destData[d][convIdCol];
+    if (id) existingMap[String(id)] = d + 1;
+  }
+
+  var newCount = 0, updateCount = 0, skipCount = 0;
+
+  // Process each ChatHero row
+  for (var i = 1; i < srcData.length; i++) {
+    var row = srcData[i];
+    var convId     = String(row[CH.CONV_ID] || '').trim();
+    var phone      = String(row[CH.PHONE] || '').trim();
+    var address    = String(row[CH.ADDRESS] || '').trim();
+    var problem    = String(row[CH.PROBLEMS] || '').trim();
+    var createDate = row[CH.CREATE_DATE];
+
+    // Skip rows with no conversation ID
+    if (!convId) { skipCount++; continue; }
+
+    // Skip rows older than the effective start date
+    if (createDate && new Date(createDate) < effectiveStart) { skipCount++; continue; }
+
+    // Qualification check: all 3 fields must be filled
+    var qualified = phone && address && problem;
+
+    // Skip unqualified rows that aren't already in the destination
+    if (!qualified && !existingMap[convId]) { skipCount++; continue; }
+
+    // Extract remaining fields from ChatHero
+    var name     = row[CH.NAME] || '';
+    var state    = row[CH.STATE] || '';
+    var slabSize = row[CH.SLAB_SIZE] || '';
+    var apptDate = row[CH.APPT_DATE] || row[CH.APPT_DATE2] || '';
+    var apptTime = row[CH.APPT_TIME] || '';
+    var slot     = apptDate ? (apptDate + ' ' + apptTime).trim() : '';
+    var chatUrl  = row[CH.CHAT_URL] || '';
+    var chStatus = row[CH.CH_STATUS] || '';
+    var quotNo   = row[CH.QUOT_NO] || '';
+    var now      = new Date();
+
+    if (!existingMap[convId]) {
+      // ── NEW LEAD ──────────────────────────────────────────────
+      if (!qualified) { skipCount++; continue; }
+
+      var newRow = new Array(HEADERS.length).fill('');
+      newRow[0]  = now;                                  // Timestamp
+      newRow[1]  = phone;                                // Phone
+      newRow[2]  = name;                                 // Name
+      newRow[3]  = problem;                              // Problem Type
+      newRow[4]  = state;                                // Location
+      newRow[5]  = address;                              // Full Address
+      newRow[6]  = slabSize;                             // Slab Size
+      newRow[7]  = slot;                                 // Slot Chosen
+      newRow[8]  = 'New Lead';                           // Status
+      newRow[9]  = 'Unassigned';                         // Assigned To
+      newRow[10] = '';                                   // Quotation (RM)
+      newRow[11] = 'Pending';                            // Job Outcome
+      newRow[12] = quotNo ? 'QT: ' + quotNo : '';       // Notes
+      newRow[13] = convId;                               // CH Conv ID
+      newRow[14] = chStatus;                             // CH Status
+      newRow[15] = chatUrl;                              // CH Chat URL
+      newRow[16] = 'ChatHero';                           // Source
+      newRow[17] = now;                                  // Last Synced
+
+      dest.appendRow(newRow);
+      newCount++;
+
+    } else {
+      // ── UPDATE EXISTING LEAD ──────────────────────────────────
+      var rowNum = existingMap[convId];
+
+      // Skip if outside lookback window
+      if (createDate && new Date(createDate) < lookbackDate) { skipCount++; continue; }
+
+      // Only update ChatHero-sourced columns — NEVER touch user columns
+      // (Status, Assigned To, Quotation RM, Job Outcome, Notes are user-managed)
+      var updates = [
+        [4, problem],    // Problem Type (col D, 1-based = 5)
+        [5, state],      // Location (col E, 1-based = 6)
+        [6, address],    // Full Address (col F, 1-based = 7)
+        [7, slabSize],   // Slab Size (col G, 1-based = 8)
+        [8, slot],       // Slot Chosen (col H, 1-based = 9) — NOTE: only if from ChatHero
+        [14, chStatus],  // CH Status (col O, 1-based = 15)
+        [15, chatUrl],   // CH Chat URL (col P, 1-based = 16)
+        [17, now],       // Last Synced (col R, 1-based = 18)
+      ];
+      updates.forEach(function(pair) {
+        var col = pair[0], val = pair[1];
+        if (val !== '' && val !== null && val !== undefined) {
+          dest.getRange(rowNum, col + 1).setValue(val);
+        }
+      });
+
+      // Fill name/phone only if currently blank in destination
+      if (!dest.getRange(rowNum, 2).getValue() && phone) {
+        dest.getRange(rowNum, 2).setValue(phone);
+      }
+      if (!dest.getRange(rowNum, 3).getValue() && name) {
+        dest.getRange(rowNum, 3).setValue(name);
+      }
+
+      updateCount++;
+    }
+
+    // Rate limiting: pause every 50 rows to avoid quota issues
+    if (i % 50 === 0) Utilities.sleep(100);
+  }
+
+  // Log this sync run
+  logRun(ss, newCount, updateCount, skipCount);
+  Logger.log('Sync complete — New: ' + newCount + ' | Updated: ' + updateCount + ' | Skipped: ' + skipCount);
+}
+
+
+// ================================================================
+// FUNCTION 3 — TRIGGER: Set up automatic 5-minute sync
+// ================================================================
+
+function setupTrigger() {
+  // Remove any existing syncQualifiedLeads triggers
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncQualifiedLeads') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  // Create new 5-minute trigger
+  ScriptApp.newTrigger('syncQualifiedLeads')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+
+  SpreadsheetApp.getUi().alert(
+    'Trigger created!\n\n' +
+    'syncQualifiedLeads will run every 5 minutes.\n\n' +
+    'Remember: set CONFIG.ACTIVE = true when ready for live sync.'
+  );
+}
+
+
+// ================================================================
+// FUNCTION 4 — TEST: Run one sync cycle and show results
+// ================================================================
+
+function testSyncOnce() {
+  // Temporarily force ACTIVE=true for this test run
+  var orig = CONFIG.ACTIVE;
+  CONFIG.ACTIVE = true;
+
+  syncQualifiedLeads();
+
+  CONFIG.ACTIVE = orig;
+
+  // Read the last log entry and display results
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var log = ss.getSheetByName(CONFIG.LOG_TAB);
+  var last = log ? log.getRange(log.getLastRow(), 1, 1, 5).getValues()[0] : [];
+
+  SpreadsheetApp.getUi().alert(
+    'Test sync complete!\n\n' +
+    'New rows:  ' + (last[1] || 0) + '\n' +
+    'Updated:   ' + (last[2] || 0) + '\n' +
+    'Skipped:   ' + (last[3] || 0) + '\n' +
+    'Total in sheet: ' + (last[4] || 0)
+  );
+}
+
+
+// ================================================================
+// FUNCTION 5 — HELPER: Ensure Sync Log tab exists
+// ================================================================
+
+function ensureLogTab(ss) {
+  var log = ss.getSheetByName(CONFIG.LOG_TAB);
+  if (!log) {
+    log = ss.insertSheet(CONFIG.LOG_TAB);
+    log.setTabColor('#888780');
+    log.getRange(1, 1, 1, 5)
+      .setValues([['Timestamp', 'New', 'Updated', 'Skipped', 'Total']])
+      .setBackground('#444441')
+      .setFontColor('#FFFFFF')
+      .setFontWeight('bold');
+  }
+  return log;
+}
+
+
+// ================================================================
+// FUNCTION 6 — HELPER: Log each sync run
+// ================================================================
+// Keeps a rolling log of sync results. Trims to 500 rows max.
+
+function logRun(ss, newCount, updateCount, skipCount) {
+  var log = ss.getSheetByName(CONFIG.LOG_TAB);
+  if (!log) return;
+
+  // Count total leads in destination
+  var dest = ss.getSheetByName(CONFIG.DEST_TAB);
+  var total = dest ? Math.max(0, dest.getLastRow() - 1) : 0;
+
+  // Append log entry
+  log.appendRow([new Date(), newCount, updateCount, skipCount, total]);
+
+  // Trim old entries if log exceeds 500 data rows
+  var rows = log.getLastRow();
+  if (rows > 501) {
+    log.deleteRows(2, rows - 501);
+  }
+}
