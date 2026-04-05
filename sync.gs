@@ -23,8 +23,8 @@
 
 const CONFIG = {
   ACTIVE:           false,                                          // Set to true to enable auto-sync
-  START_DATE:       '2026-04-05',                                   // Only sync leads created on or after this date
-  LOOKBACK_DAYS:    30,                                             // Re-check existing leads within this window
+  START_DATE:       '2026-01-01',                                   // Only sync leads created on or after this date
+  LOOKBACK_DAYS:    365,                                            // Re-check existing leads within this window
   SOURCE_SHEET_ID:  '1XXHMfXfj2UMgB39RSufqDtGHNPzuse18NadCLz-FNbA', // ChatHero Google Sheet ID
   SOURCE_TAB:       'Sheet1',                                       // Tab name in ChatHero sheet
   DEST_TAB:         'Leak Guard Leads',                             // Destination tab for qualified leads
