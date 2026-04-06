@@ -281,11 +281,11 @@ function syncQualifiedLeads() {
     if (id) existingMap[String(id)] = d + 1;
   }
 
-  // Build set of existing phone numbers to prevent duplicates
+  // Build map of existing phone numbers → row number (1-based) for upsert
   var existingPhones = {};
   for (var p = 1; p < destData.length; p++) {
     var ph = String(destData[p][1] || '').trim();
-    if (ph) existingPhones[ph] = true;
+    if (ph) existingPhones[ph] = p + 1;
   }
 
   var newCount = 0, updateCount = 0, skipCount = 0;
@@ -327,13 +327,17 @@ function syncQualifiedLeads() {
       // ── NEW LEAD ──────────────────────────────────────────────
       if (!qualified) { skipCount++; continue; }
 
-      // Skip if phone already exists in sheet (cross-session + same-batch)
+      // Upsert: if phone already exists, update ChatHero fields on existing row
       if (phone && existingPhones[phone]) {
-        Logger.log('Skipping duplicate phone: ' + phone);
-        skipCount++;
+        var phoneRow = existingPhones[phone];
+        // Update ChatHero-sourced cols only — never touch Status, Assigned To, Quotation, Job Outcome, Notes
+        dest.getRange(phoneRow, 2, 1, 7).setValues([[phone, name, problem, state, address, slabSize, slot]]);
+        dest.getRange(phoneRow, 14, 1, 5).setValues([[convId, chStatus, chatUrl, 'ChatHero', now]]);
+        // Fill name only if blank
+        if (!dest.getRange(phoneRow, 3).getValue() && name) dest.getRange(phoneRow, 3).setValue(name);
+        updateCount++;
         continue;
       }
-      if (phone) existingPhones[phone] = true;
 
       var newRow = new Array(HEADERS.length).fill('');
       newRow[0]  = now;                                  // Timestamp
@@ -355,14 +359,16 @@ function syncQualifiedLeads() {
       newRow[16] = 'ChatHero';                           // Source
       newRow[17] = now;                                  // Last Synced
       newRow[18] = now;                                  // Date Lead In
-      newRow[19] = '';                                   // Date Site Visit
-      newRow[20] = '';                                   // Date Quote Sent
+      newRow[19] = '';                                   // Date Appt Confirmed
+      newRow[20] = '';                                   // Date QT Issued
       newRow[21] = '';                                   // Date Confirmed
       newRow[22] = '';                                   // Date Installed
       newRow[23] = now;                                  // Status Changed At
       newRow[24] = '';                                   // Changed By
 
       dest.appendRow(newRow);
+      // Track new row for same-batch phone dedup
+      if (phone) existingPhones[phone] = dest.getLastRow();
       newCount++;
 
     } else {
