@@ -96,7 +96,42 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 
 .mp select{padding:7px 11px;border:1px solid var(--bdr);border-radius:7px;font-size:13px;font-family:inherit;margin-bottom:12px}
 
-@media(max-width:700px){.kb{flex-direction:column}.kc{min-width:100%;max-width:100%}.kb-body{max-height:260px}.met{grid-template-columns:1fr 1fr}#tds{grid-template-columns:1fr!important}.dw{flex-direction:column}}
+/* Mobile card styles */
+.mc{background:#fff;border:.5px solid #E5E7EB;border-radius:8px;overflow:hidden}
+.mc-head{padding:10px 12px;display:flex;align-items:center;gap:8px;cursor:pointer}
+.mc-cb{width:16px;height:16px;border-radius:4px;border:1.5px solid #D1D5DB;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.mc-cb.chk{background:#3B82F6;border-color:#3B82F6}
+.mc-cb.chk::after{content:'✓';color:#fff;font-size:10px;font-weight:700}
+.mc-accent{width:3px;height:38px;border-radius:2px;flex-shrink:0}
+.mc-info{flex:1;min-width:0}
+.mc-name{font-size:12px;font-weight:500;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-sub{font-size:11px;color:#6B7280;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0}
+.mc-ph{font-size:10px;color:#0F6E56;font-weight:500}
+.mc-bdg{font-size:9px;font-weight:500;padding:1px 6px;border-radius:7px}
+.mc-chev{font-size:10px;color:#9CA3AF;margin-left:4px;flex-shrink:0;transition:transform .2s;display:inline-block}
+.mc-chev.open{transform:rotate(180deg)}
+.mc-body{border-top:.5px solid #F3F4F6;padding:10px 12px;display:none}
+.mc-body.open{display:block}
+.mc-row{display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:.5px solid #F9FAFB;gap:8px}
+.mc-row:last-of-type{border-bottom:none}
+.mc-lbl{color:#9CA3AF;flex-shrink:0}
+.mc-val{color:#111;font-weight:500;text-align:right;word-break:break-word}
+.mc-val.addr{color:#374151;font-weight:400;line-height:1.5}
+.mc-acts{display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:.5px solid #F3F4F6}
+.mc-btn-next{flex:1;padding:6px 0;background:#1D9E75;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer}
+.mc-btn-next:hover{background:#0F6E56}
+.mc-btn-jump{padding:6px 12px;background:#F3F4F6;color:#374151;border:none;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer}
+.mc-empty{text-align:center;padding:32px 16px;color:#9CA3AF;font-size:12px}
+
+#mob-view{display:none}
+@media(max-width:700px){
+  #pg-kanban .ctrl,#pg-kanban .kb,#bulkBar{display:none!important}
+  #mob-view{display:block!important}
+  .met{grid-template-columns:1fr 1fr}
+  #tds{grid-template-columns:1fr!important}
+  .dw{flex-direction:column}
+}
 </style>
 </head>
 <body>
@@ -116,6 +151,22 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <button onclick="clearSelection()" style="padding:5px 10px;background:rgba(255,255,255,0.1);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer">Cancel</button>
 </div>
 <div class="kb" id="kB"></div>
+
+<!-- MOBILE VIEW -->
+<div id="mob-view">
+  <div style="padding:8px 12px;background:#fff;border-bottom:.5px solid #E5E7EB">
+    <input type="search" id="mob-search" placeholder="Search name, phone, location..." oninput="renderMobCards()" style="width:100%;padding:6px 10px;border:.5px solid #D1D5DB;border-radius:6px;font-size:12px;font-family:inherit;background:#F9FAFB;color:#111">
+  </div>
+  <div id="mob-tabs" style="display:flex;overflow-x:auto;padding:8px 12px;gap:6px;background:#fff;border-bottom:.5px solid #E5E7EB;scrollbar-width:none"></div>
+  <div id="mob-bulk" style="display:none;background:#2D2A6E;color:#fff;padding:8px 12px;align-items:center;gap:8px">
+    <span id="mob-bulk-count" style="font-size:11px;font-weight:500;flex:1"></span>
+    <select id="mob-bulk-sel" style="padding:4px 8px;border-radius:6px;font-size:11px;border:none;background:rgba(255,255,255,0.15);color:#fff;font-family:inherit"><option value="">Move to...</option><option>New Lead</option><option>Pending Site Visit</option><option>Site Visit Confirmed</option><option>Pending QT</option><option>Quotation Sent</option><option>Follow Up</option><option>Pending I.Date</option><option>I.Date Confirmed</option><option>Job In Progress</option><option>Job Complete</option><option>Receipt Sent</option><option>Cold Lead</option><option>Lost</option><option>Rejected</option><option>Out of Area</option><option>Human Handoff</option></select>
+    <button onclick="mobBulkMove()" style="padding:4px 12px;background:#1D9E75;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer">Move</button>
+    <button onclick="mobClearSel()" style="padding:4px 8px;background:rgba(255,255,255,0.1);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer">Cancel</button>
+  </div>
+  <div id="mob-cards" style="padding:8px 12px;display:flex;flex-direction:column;gap:6px;background:#F9FAFB;min-height:200px"></div>
+</div>
+
 </div>
 
 <div class="pg" id="pg-today"><div class="met" id="tM"></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="tds"></div></div>
@@ -189,7 +240,7 @@ async function load(){
 
 function bAD(){var s=$('kA'),p=s.value,n={};D.forEach(function(d){if(d.at)n[d.at]=1});s.innerHTML='<option value="">All Staff</option>';Object.keys(n).sort().forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=k;s.appendChild(o)});s.value=p}
 function sT(n,e){document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on')});document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('on')});$('pg-'+n).classList.add('on');e.classList.add('on')}
-function rAll(){rK();rTd();rM()}
+function rAll(){rK();rTd();rM();renderMobTabs();renderMobCards()}
 
 function bCls(n){if(!n)return'badge-none';if(n==='Ken')return'badge-ken';if(n==='Admin')return'badge-admin';if(n==='Team KL')return'badge-kl';if(n==='Team JB')return'badge-jb';return'badge-none'}
 
@@ -380,7 +431,96 @@ function rM(){
     '<tr><td><strong>Johor / JB</strong></td><td>'+jb.l+'</td><td>'+jb.c+'</td><td>'+jb.d+'</td><td>RM '+fn(jb.r)+'</td></tr></tbody></table></div>';
 }
 
-document.addEventListener('keydown',function(e){if(e.key==='Escape')cM()});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){cM();closeMoveModal()}});
+
+// ═══ MOBILE VIEW ═══
+var mobActiveStatus=KC[0].s,mobExpanded=new Set(),mobSelected=new Set();
+
+function mobBadgeStyle(at){
+  if(at==='Ken')return'background:#EEF2FF;color:#3730A3';
+  if(at==='Admin')return'background:#F1F5F9;color:#475569';
+  if(at==='Team KL')return'background:#DCFCE7;color:#166534';
+  if(at==='Team JB')return'background:#FEF9C3;color:#854D0E';
+  return'background:#F1F5F9;color:#9CA3AF';
+}
+
+function renderMobTabs(){
+  var el=$('mob-tabs');if(!el)return;
+  el.innerHTML=KC.map(function(st){
+    var count=D.filter(function(l){return l.ss===st.s}).length;
+    var isAct=st.s===mobActiveStatus;
+    return'<div style="white-space:nowrap;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;flex-shrink:0;border:.5px solid '+st.fg+';background:'+(isAct?st.bg:'transparent')+';color:'+st.fg+'" onclick="setMobStatus(\''+st.s.replace(/'/g,"\\'")+'\')">'+st.s+' ('+count+')</div>';
+  }).join('');
+}
+
+function setMobStatus(s){mobActiveStatus=s;mobExpanded.clear();renderMobTabs();renderMobCards()}
+
+function renderMobCards(){
+  var el=$('mob-cards');if(!el)return;
+  var q=($('mob-search')?$('mob-search').value:'').toLowerCase().trim();
+  var filtered=D.filter(function(l){
+    if(l.ss!==mobActiveStatus)return false;
+    if(q&&![l.nm,l.ph,l.lo,l.pr,l.ad].join(' ').toLowerCase().includes(q))return false;
+    return true;
+  }).sort(function(a,b){return new Date(b.sca||b.ts||0)-new Date(a.sca||a.ts||0)});
+
+  if(!filtered.length){el.innerHTML='<div class="mc-empty">No jobs in this status</div>';return}
+  var st=KC.find(function(k){return k.s===mobActiveStatus});
+  var color=st?st.fg:'#94A3B8';
+  var statusList=KC.map(function(k){return k.s});
+
+  el.innerHTML=filtered.map(function(l){
+    var idx=D.indexOf(l),isExp=mobExpanded.has(idx),isSel=mobSelected.has(idx);
+    var nextSt=statusList[statusList.indexOf(l.ss)+1]||null;
+    return'<div class="mc"><div class="mc-head" onclick="mobToggleCard('+idx+')">'+
+      '<div class="mc-cb'+(isSel?' chk':'')+'" onclick="event.stopPropagation();mobToggleSel('+idx+')"></div>'+
+      '<div class="mc-accent" style="background:'+color+'"></div>'+
+      '<div class="mc-info"><div class="mc-name">'+(l.nm||l.ph||'—')+'</div><div class="mc-sub">'+(l.pr||'—')+'</div></div>'+
+      '<div class="mc-right"><span class="mc-ph">'+(l.ph||'')+'</span><span class="mc-bdg" style="'+mobBadgeStyle(l.at)+'">'+(l.at||'Unassigned')+'</span></div>'+
+      '<span class="mc-chev'+(isExp?' open':'')+'">▼</span></div>'+
+      '<div class="mc-body'+(isExp?' open':'')+'">'+
+        '<div class="mc-row"><span class="mc-lbl">Location</span><span class="mc-val">'+(l.lo||'—')+'</span></div>'+
+        '<div class="mc-row" style="align-items:flex-start"><span class="mc-lbl">Address</span><span class="mc-val addr">'+(l.ad||'—')+'</span></div>'+
+        (l.st?'<div class="mc-row"><span class="mc-lbl">Slot</span><span class="mc-val" style="color:#92400E">'+fd(l.st)+'</span></div>':'')+
+        '<div class="mc-row"><span class="mc-lbl">Slab size</span><span class="mc-val">'+(l.sl?l.sl+' sqft':'—')+'</span></div>'+
+        '<div class="mc-row"><span class="mc-lbl">Assigned</span><span class="mc-val">'+(l.at||'—')+'</span></div>'+
+        '<div class="mc-row"><span class="mc-lbl">Phone</span><a href="tel:'+(l.ph||'')+'" onclick="event.stopPropagation()" style="color:#0F6E56;font-weight:500;font-size:11px">'+(l.ph||'—')+'</a></div>'+
+        '<div class="mc-acts">'+
+          (nextSt?'<button class="mc-btn-next" onclick="event.stopPropagation();initMove('+idx+',\''+nextSt.replace(/'/g,"\\'")+'\')">Next</button>':'')+
+          '<button class="mc-btn-jump" onclick="event.stopPropagation();initJump('+idx+')">Jump ▾</button>'+
+        '</div></div></div>';
+  }).join('');
+}
+
+function mobToggleCard(idx){if(mobExpanded.has(idx))mobExpanded.delete(idx);else mobExpanded.add(idx);renderMobCards()}
+
+function mobToggleSel(idx){
+  if(mobSelected.has(idx))mobSelected.delete(idx);else mobSelected.add(idx);
+  var bar=$('mob-bulk'),cnt=$('mob-bulk-count');
+  if(mobSelected.size>0){bar.style.display='flex';cnt.textContent=mobSelected.size+' selected'}else{bar.style.display='none'}
+  renderMobCards();
+}
+
+function mobClearSel(){mobSelected.clear();$('mob-bulk').style.display='none';renderMobCards()}
+
+async function mobBulkMove(){
+  var status=$('mob-bulk-sel').value;
+  if(!status){alert('Select a status.');return}
+  if(DATE_REQUIRED.indexOf(status)!==-1){alert('This status requires a date. Move cards individually.');return}
+  var autoDate=DATE_AUTO.indexOf(status)!==-1?new Date().toISOString():null;
+  var idxs=Array.from(mobSelected),errors=0;
+  for(var i=0;i<idxs.length;i++){
+    var d=D[idxs[i]];
+    try{
+      var res=await fetch(WEBAPP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({action:'updateStatus',phone:d.ph,status:status,changedBy:'Web',statusChangedAt:new Date().toISOString(),dateCol:DATE_COL_MAP[status]||null,dateVal:autoDate})});
+      var j=await res.json();if(j.status==='ok'){d.ss=status;d.sca=new Date().toISOString()}else errors++
+    }catch(e){errors++}
+  }
+  if(errors)alert(errors+' card(s) failed.');
+  mobClearSel();renderMobTabs();renderMobCards();
+}
+
 load();setInterval(load,60000);
 </script>
 </body>
