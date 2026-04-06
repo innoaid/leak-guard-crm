@@ -85,7 +85,7 @@ const HEADERS = [
   'Date Lead In',        // S  — Filled on first sync (copy Timestamp)
   'Date Appt Confirmed', // T  — Filled when status = "Site Visit Confirmed"
   'Date QT Issued',      // U  — Filled when status = "Quotation Sent"
-  'Date Confirmed',      // V  — Filled when status = "Pending Installation Date"
+  'Date Confirmed',      // V  — Filled when status = "Pending I.Date"
   'Date Installed',      // W  — Filled when status = "Job Complete"
   'Status Changed At',   // X  — Filled every time status changes
   'Changed By',          // Y  — Filled by Make.com with staff name
@@ -121,7 +121,7 @@ function setupLeakGuardSheet() {
   const statusList = [
     'New Lead', 'Pending Site Visit', 'Site Visit Confirmed',
     'Pending QT', 'Quotation Sent', 'Follow Up',
-    'Pending Installation Date', 'Downpayment Received',
+    'Pending I.Date', 'I.Date Confirmed',
     'Job In Progress', 'Job Complete', 'Receipt Sent',
     'Cold Lead', 'Lost', 'Rejected', 'Out of Area', 'Human Handoff'
   ];
@@ -573,4 +573,45 @@ function removeDuplicatePhones() {
       'Kept first occurrence of each phone number.'
     );
   } catch(e) { Logger.log('Removed ' + rowsToDelete.length + ' duplicates'); }
+}
+
+
+// ================================================================
+// ONE-TIME UTILITY — Rename statuses + update dropdown
+// ================================================================
+// Run once from Apps Script editor, then delete this function.
+
+function renameStatuses() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName('Leak Guard Leads');
+  var data = sheet.getDataRange().getValues();
+
+  var renames = {
+    'Pending Installation Date': 'Pending I.Date',
+    'Downpayment Received': 'I.Date Confirmed'
+  };
+
+  for (var i = 1; i < data.length; i++) {
+    var status = data[i][8];
+    if (renames[status]) {
+      sheet.getRange(i+1, 9).setValue(renames[status]);
+      Logger.log('Row '+(i+1)+': '+status+' → '+renames[status]);
+    }
+  }
+
+  var range = sheet.getRange(2, 9, sheet.getMaxRows()-1, 1);
+  var rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList([
+      'New Lead','Pending Site Visit','Site Visit Confirmed',
+      'Pending QT','Quotation Sent','Follow Up',
+      'Pending I.Date','I.Date Confirmed',
+      'Job In Progress','Job Complete','Receipt Sent',
+      'Cold Lead','Lost','Rejected','Out of Area','Human Handoff'
+    ], true)
+    .build();
+  range.setDataValidation(rule);
+
+  Logger.log('Done — statuses renamed and dropdown updated.');
+  try { SpreadsheetApp.getUi().alert('Done! Statuses renamed successfully.'); }
+  catch(e) { Logger.log('Statuses renamed successfully.'); }
 }

@@ -118,8 +118,8 @@ var KC=[
 {s:'Pending QT',bg:'#FDF2F8',fg:'#9D174D',bb:'#FBCFE8',bf:'#9D174D'},
 {s:'Quotation Sent',bg:'#FFF4EE',fg:'#9A3412',bb:'#FED7AA',bf:'#9A3412'},
 {s:'Follow Up',bg:'#FFF7ED',fg:'#9A3412',bb:'#FED7AA',bf:'#9A3412'},
-{s:'Pending Installation Date',bg:'#E0F2FE',fg:'#0C4A6E',bb:'#BAE6FD',bf:'#0C4A6E'},
-{s:'Downpayment Received',bg:'#F0FDFA',fg:'#134E4A',bb:'#99F6E4',bf:'#134E4A'},
+{s:'Pending I.Date',bg:'#E0F2FE',fg:'#0C4A6E',bb:'#BAE6FD',bf:'#0C4A6E'},
+{s:'I.Date Confirmed',bg:'#F0FDFA',fg:'#134E4A',bb:'#99F6E4',bf:'#134E4A'},
 {s:'Job In Progress',bg:'#E0F7FA',fg:'#164E63',bb:'#A5F3FC',bf:'#164E63'},
 {s:'Job Complete',bg:'#E1F5EE',fg:'#085041',bb:'#9FE1CB',bf:'#085041'},
 {s:'Receipt Sent',bg:'#ECFDF5',fg:'#064E3B',bb:'#A7F3D0',bf:'#064E3B'},
@@ -220,8 +220,8 @@ function rM(){
   var mD=D.filter(function(d){return iM(d.din,yr,mo)});
   var cv=mL.length?(mD.length/mL.length*100).toFixed(1):0;
 
-  var aS=['New Lead','Pending Site Visit','Site Visit Confirmed','Pending QT','Quotation Sent','Follow Up','Pending Installation Date','Downpayment Received','Job In Progress'];
-  var pS=['Pending Installation Date','Downpayment Received','Job In Progress'];
+  var aS=['New Lead','Pending Site Visit','Site Visit Confirmed','Pending QT','Quotation Sent','Follow Up','Pending I.Date','I.Date Confirmed','Job In Progress'];
+  var pS=['Pending I.Date','I.Date Confirmed','Job In Progress'];
   var pipe=D.filter(function(d){return aS.indexOf(d.ss)>=0}).reduce(function(s,d){return s+(+d.qt||0)},0);
   var coll=mD.reduce(function(s,d){return s+(+d.qt||0)},0);
   var pend=D.filter(function(d){return pS.indexOf(d.ss)>=0}).reduce(function(s,d){return s+(+d.qt||0)},0);
