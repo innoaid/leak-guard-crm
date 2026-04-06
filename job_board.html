@@ -35,10 +35,13 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd:hover{border-color:#D1D5DB}
 .cd-n{font-size:12px;font-weight:500;color:#111827;margin-bottom:2px}
 .cd-prob{font-size:11px;color:#6B7280;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cd-loc{font-size:10px;color:#9CA3AF;margin-bottom:5px}
+.cd-loc{font-size:10px;color:#9CA3AF;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd-slot{display:inline-block;margin-bottom:4px;padding:2px 7px;border-radius:8px;background:#FEF3C7;color:#92400E;font-size:10px;font-weight:500}
 .cd-bot{display:flex;justify-content:space-between;align-items:center}
 .cd-b{display:inline-block;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:600}
+.badge-ken{background:#EEF2FF;color:#3730A3}.badge-admin{background:#F1F5F9;color:#475569}
+.badge-kl{background:#DCFCE7;color:#166534}.badge-jb{background:#FEF9C3;color:#854D0E}
+.badge-none{background:#F1F5F9;color:#9CA3AF}
 .cd-ph{color:#0F6E56;text-decoration:none;font-size:10px;font-weight:500}
 .kc-e{text-align:center;padding:16px;color:var(--mt);font-size:10px}
 
@@ -152,8 +155,7 @@ function bAD(){var s=$('kA'),p=s.value,n={};D.forEach(function(d){if(d.at)n[d.at
 function sT(n,e){document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on')});document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('on')});$('pg-'+n).classList.add('on');e.classList.add('on')}
 function rAll(){rK();rTd();rM()}
 
-var BADGE_COLORS={'Ken':['#EEF2FF','#3730A3'],'Admin':['#F1F5F9','#475569'],'Team KL':['#DCFCE7','#166534'],'Team JB':['#FEF9C3','#854D0E']};
-function bdgStyle(name){var c=BADGE_COLORS[name]||['#F1F5F9','#9CA3AF'];return'background:'+c[0]+';color:'+c[1]}
+function bCls(n){if(!n)return'badge-none';if(n==='Ken')return'badge-ken';if(n==='Admin')return'badge-admin';if(n==='Team KL')return'badge-kl';if(n==='Team JB')return'badge-jb';return'badge-none'}
 
 function rK(){
   var q=($('kS').value||'').toLowerCase().trim(),af=$('kA').value;
@@ -166,10 +168,10 @@ function rK(){
       return'<div class="cd" onclick="oM('+i+')">'+
         '<div class="cd-n">'+(d.nm||d.ph||'—')+'</div>'+
         (d.pr?'<div class="cd-prob">'+d.pr+'</div>':'')+
-        (locLine?'<div class="cd-loc">'+locLine+'</div>':'')+
+        '<div class="cd-loc">'+(d.lo||'—')+(d.sl?' · '+d.sl+' sqft':'')+'</div>'+
         (d.st?'<div class="cd-slot">'+fd(d.st)+'</div>':'')+
         '<div class="cd-bot">'+
-          (d.at?'<span class="cd-b" style="'+bdgStyle(d.at)+'">'+d.at+'</span>':'<span></span>')+
+          '<span class="cd-b '+bCls(d.at)+'">'+(d.at||'Unassigned')+'</span>'+
           (d.ph?'<a class="cd-ph" href="tel:'+d.ph+'" onclick="event.stopPropagation()">'+d.ph+'</a>':'')+
         '</div></div>'
     }).join(''):'<div class="kc-e">No jobs</div>')+'</div></div>';
