@@ -218,20 +218,8 @@ function setupLeakGuardSheet() {
     }
   }
 
-  SpreadsheetApp.getUi().alert(
-    'Setup complete!\n\n' +
-    'Tabs created:\n' +
-    '✓ Leak Guard Leads (with dropdowns + timeline columns)\n' +
-    '✓ Staff List\n' +
-    '✓ Schedule\n' +
-    '✓ Summary (with live formulas)\n' +
-    '✓ Job History\n' +
-    '✓ Sync Log\n\n' +
-    'Next steps:\n' +
-    '1. Run setupTrigger() to create auto-sync\n' +
-    '2. Run testSyncOnce() to test\n' +
-    '3. Set CONFIG.ACTIVE = true for live sync'
-  );
+  var setupMsg = 'Setup complete!\n\nTabs created:\n✓ Leak Guard Leads (with dropdowns + timeline columns)\n✓ Staff List\n✓ Schedule\n✓ Summary (with live formulas)\n✓ Job History\n✓ Sync Log\n\nNext steps:\n1. Run setupTrigger() to create auto-sync\n2. Run testSyncOnce() to test\n3. Set CONFIG.ACTIVE = true for live sync';
+  try { SpreadsheetApp.getUi().alert(setupMsg); } catch(e) { Logger.log(setupMsg); }
 }
 
 
@@ -427,11 +415,8 @@ function setupTrigger() {
     .everyMinutes(5)
     .create();
 
-  SpreadsheetApp.getUi().alert(
-    'Trigger created!\n\n' +
-    'syncQualifiedLeads will run every 5 minutes.\n\n' +
-    'Remember: set CONFIG.ACTIVE = true when ready for live sync.'
-  );
+  var trigMsg = 'Trigger created!\n\nsyncQualifiedLeads will run every 5 minutes.\n\nRemember: set CONFIG.ACTIVE = true when ready for live sync.';
+  try { SpreadsheetApp.getUi().alert(trigMsg); } catch(e) { Logger.log(trigMsg); }
 }
 
 
@@ -453,13 +438,8 @@ function testSyncOnce() {
   var log = ss.getSheetByName(CONFIG.LOG_TAB);
   var last = log ? log.getRange(log.getLastRow(), 1, 1, 5).getValues()[0] : [];
 
-  SpreadsheetApp.getUi().alert(
-    'Test sync complete!\n\n' +
-    'New rows:  ' + (last[1] || 0) + '\n' +
-    'Updated:   ' + (last[2] || 0) + '\n' +
-    'Skipped:   ' + (last[3] || 0) + '\n' +
-    'Total in sheet: ' + (last[4] || 0)
-  );
+  var testMsg = 'Test sync complete!\n\nNew rows: ' + (last[1]||0) + '\nUpdated: ' + (last[2]||0) + '\nSkipped: ' + (last[3]||0) + '\nTotal in sheet: ' + (last[4]||0);
+  try { SpreadsheetApp.getUi().alert(testMsg); } catch(e) { Logger.log(testMsg); }
 }
 
 
