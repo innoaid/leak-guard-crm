@@ -31,8 +31,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .kh{padding:8px 10px;font-size:11px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
 .kn{padding:1px 6px;border-radius:16px;font-size:9px;font-weight:600}
 .kb-body{flex:1;background:#F9FAFB;padding:5px;overflow-y:auto;max-height:calc(100vh - 200px);transition:background .15s,border .15s;min-height:60px}
-.kb-body.drag-over{background:#EEF2FF;border:2px dashed #3B82F6;border-top:none}
-.kc.drag-over-col .kh{filter:brightness(1.08)}
+.kb-body.drag-over{background:#EEF2FF;outline:2px dashed #6366F1;outline-offset:-2px;border-radius:6px}
 .cd{background:#fff;border:.5px solid #E5E7EB;border-radius:6px;padding:8px 9px;margin-bottom:4px;cursor:pointer;transition:opacity .15s,transform .15s,border-color .15s}
 .cd:hover{border-color:#D1D5DB}
 .cd.dragging{opacity:.4;transform:scale(.97)}
@@ -262,11 +261,12 @@ var dragIdx=null,dragOriginStatus=null,dragTargetStatus=null;
 var WEBAPP_URL='https://script.google.com/macros/s/AKfycbzDEUnpwOcpP2m320qK9oFv5rK8m4AZLynooSsknk-ALdkfd8PUdQq9qiC9Kfx3Fp6hPQ/exec';
 
 // ═══ DRAG AND DROP ═══
-function dragStart(ev,idx){dragIdx=idx;dragOriginStatus=D[idx].ss;ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',idx);setTimeout(function(){var el=document.querySelector('.cd[data-idx="'+idx+'"]');if(el)el.classList.add('dragging')},0)}
-function dragEnd(ev){document.querySelectorAll('.cd.dragging').forEach(function(el){el.classList.remove('dragging')});document.querySelectorAll('.kb-body.drag-over').forEach(function(el){el.classList.remove('drag-over')});document.querySelectorAll('.kc.drag-over-col').forEach(function(el){el.classList.remove('drag-over-col')});dragIdx=null}
-function dragOver(ev){ev.preventDefault();ev.dataTransfer.dropEffect='move';var body=ev.currentTarget;var col=body.closest('.kc');if(!body.classList.contains('drag-over')){document.querySelectorAll('.kb-body.drag-over').forEach(function(el){el.classList.remove('drag-over')});document.querySelectorAll('.kc.drag-over-col').forEach(function(el){el.classList.remove('drag-over-col')});body.classList.add('drag-over');if(col)col.classList.add('drag-over-col')}}
-function dragLeave(ev){var body=ev.currentTarget;var col=body.closest('.kc');if(!body.contains(ev.relatedTarget)){body.classList.remove('drag-over');if(col)col.classList.remove('drag-over-col')}}
-async function dropCard(ev,targetStatus){ev.preventDefault();document.querySelectorAll('.kb-body.drag-over').forEach(function(el){el.classList.remove('drag-over')});document.querySelectorAll('.kc.drag-over-col').forEach(function(el){el.classList.remove('drag-over-col')});if(dragIdx===null)return;var idx=dragIdx;var d=D[idx];if(targetStatus===d.ss){dragIdx=null;return}dragTargetStatus=targetStatus;dragOriginStatus=d.ss;initMove(idx,targetStatus);dragIdx=null}
+function dragStart(ev,idx){dragIdx=idx;dragOriginStatus=D[idx].ss;ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',String(idx));var el=ev.currentTarget;if(el)el.classList.add('dragging')}
+function dragEnd(ev){document.querySelectorAll('.cd.dragging').forEach(function(el){el.classList.remove('dragging')});document.querySelectorAll('.kb-body.drag-over').forEach(function(el){el.classList.remove('drag-over')});dragIdx=null}
+var dragOverTimer=null;
+function dragOver(ev){ev.preventDefault();ev.dataTransfer.dropEffect='move';if(dragOverTimer)return;dragOverTimer=setTimeout(function(){dragOverTimer=null},50);var body=ev.currentTarget;if(body.classList.contains('drag-over'))return;document.querySelectorAll('.kb-body.drag-over').forEach(function(el){el.classList.remove('drag-over')});body.classList.add('drag-over')}
+function dragLeave(ev){var body=ev.currentTarget;if(!body.contains(ev.relatedTarget))body.classList.remove('drag-over')}
+async function dropCard(ev,targetStatus){ev.preventDefault();document.querySelectorAll('.kb-body.drag-over').forEach(function(el){el.classList.remove('drag-over')});if(dragIdx===null)return;var idx=dragIdx;var d=D[idx];dragIdx=null;if(targetStatus===d.ss)return;if(DATE_REQUIRED.indexOf(targetStatus)!==-1){initMove(idx,targetStatus);return}var autoDate=DATE_AUTO.indexOf(targetStatus)!==-1?new Date().toISOString():null;var prevStatus=d.ss;d.ss=targetStatus;d.sca=new Date().toISOString();rK();var payload={action:'updateStatus',phone:d.ph,status:targetStatus,changedBy:'Web',statusChangedAt:d.sca,dateCol:DATE_COL_MAP[targetStatus]||null,dateVal:autoDate};try{var res=await fetch(WEBAPP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});var j=await res.json();if(j.status!=='ok'){d.ss=prevStatus;d.sca=null;rK();alert('Move failed: '+(j.message||'Unknown error'))}}catch(e){d.ss=prevStatus;d.sca=null;rK();alert('Network error — card moved back.')}}
 
 function initMove(idx,status){
   moveTargetIdx=idx;moveTargetStatus=status;var d=D[idx];
