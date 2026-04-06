@@ -82,6 +82,13 @@ const HEADERS = [
   'CH Chat URL',      // P  — Link to ChatHero conversation
   'Source',           // Q  — Lead source (ChatHero, Manual, etc.)
   'Last Synced',      // R  — When this row was last updated by sync
+  'Date Lead In',     // S  — Filled on first sync (copy Timestamp)
+  'Date Site Visit',  // T  — Filled when status = "Site Visit Done"
+  'Date Quote Sent',  // U  — Filled when status = "Quotation Sent"
+  'Date Confirmed',   // V  — Filled when status = "Job Confirmed"
+  'Date Installed',   // W  — Filled when status = "Job Complete"
+  'Status Changed At',// X  — Filled every time status changes
+  'Changed By',       // Y  — Filled by Make.com with staff name
 ];
 
 
@@ -139,8 +146,8 @@ function setupLeakGuardSheet() {
       ], true).build()
   );
 
-  // Column widths
-  var widths = [160, 140, 130, 160, 120, 240, 120, 160, 150, 130, 120, 130, 200, 180, 130, 200, 100, 160];
+  // Column widths (18 original + 7 timeline columns)
+  var widths = [160, 140, 130, 160, 120, 240, 120, 160, 150, 130, 120, 130, 200, 180, 130, 200, 100, 160, 130, 130, 130, 130, 130, 140, 120];
   widths.forEach(function(w, i) { dest.setColumnWidth(i + 1, w); });
 
   // ── Staff List tab ────────────────────────────────────────────
@@ -188,6 +195,17 @@ function setupLeakGuardSheet() {
   sum.getRange('B11').setNumberFormat('0.0%');
   sum.setTabColor('#1D9E75');
 
+  // ── Job History tab ────────────────────────────────────────────
+  let jobHist = ss.getSheetByName('Job History');
+  if (!jobHist) jobHist = ss.insertSheet('Job History');
+  jobHist.clear();
+  jobHist.getRange(1, 1, 1, 7).setValues([['Timestamp', 'Phone', 'Customer Name', 'Old Status', 'New Status', 'Changed By', 'Notes']])
+    .setBackground('#4A1D96')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold');
+  jobHist.setTabColor('#4A1D96');
+  jobHist.setFrozenRows(1);
+
   // ── Sync Log tab ──────────────────────────────────────────────
   ensureLogTab(ss);
 
@@ -203,10 +221,11 @@ function setupLeakGuardSheet() {
   SpreadsheetApp.getUi().alert(
     'Setup complete!\n\n' +
     'Tabs created:\n' +
-    '✓ Leak Guard Leads (with dropdowns)\n' +
+    '✓ Leak Guard Leads (with dropdowns + timeline columns)\n' +
     '✓ Staff List\n' +
     '✓ Schedule\n' +
     '✓ Summary (with live formulas)\n' +
+    '✓ Job History\n' +
     '✓ Sync Log\n\n' +
     'Next steps:\n' +
     '1. Run setupTrigger() to create auto-sync\n' +
@@ -332,6 +351,13 @@ function syncQualifiedLeads() {
       newRow[15] = chatUrl;                              // CH Chat URL
       newRow[16] = 'ChatHero';                           // Source
       newRow[17] = now;                                  // Last Synced
+      newRow[18] = now;                                  // Date Lead In
+      newRow[19] = '';                                   // Date Site Visit
+      newRow[20] = '';                                   // Date Quote Sent
+      newRow[21] = '';                                   // Date Confirmed
+      newRow[22] = '';                                   // Date Installed
+      newRow[23] = now;                                  // Status Changed At
+      newRow[24] = '';                                   // Changed By
 
       dest.appendRow(newRow);
       newCount++;

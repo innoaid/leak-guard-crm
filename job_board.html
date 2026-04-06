@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leak Guard — Job Board</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f5;--card:#fff;--border:#e5e7eb;--ink:#111;--muted:#6b7280;--primary:#2D2A6E;--accent:#1D9E75}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+
+/* Header */
+.hdr{background:var(--primary);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.hdr-title{font-size:18px;font-weight:800;letter-spacing:.3px}
+.hdr-meta{font-size:11px;opacity:.7}
+
+/* Tabs */
+.tabs{display:flex;background:#fff;border-bottom:2px solid var(--border);position:sticky;top:52px;z-index:90}
+.tab{flex:1;padding:12px;text-align:center;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;transition:.15s}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.pg{display:none;padding:16px}.pg.on{display:block}
+
+/* Controls */
+.controls{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.controls input,.controls select{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit}
+.controls input{flex:1;min-width:180px}
+.controls select{min-width:140px}
+
+/* Kanban */
+.kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;min-height:70vh}
+.kanban::-webkit-scrollbar{height:6px}.kanban::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px}
+.kcol{min-width:260px;max-width:280px;flex-shrink:0;display:flex;flex-direction:column}
+.kcol-hdr{padding:10px 12px;border-radius:10px 10px 0 0;color:#fff;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center}
+.kcol-count{background:rgba(255,255,255,.3);padding:2px 8px;border-radius:20px;font-size:11px}
+.kcol-body{flex:1;background:#f9fafb;border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;padding:8px;overflow-y:auto;max-height:75vh}
+.kcard{background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .15s}
+.kcard:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.kcard-name{font-size:13px;font-weight:700;margin-bottom:4px}
+.kcard-meta{font-size:11px;color:var(--muted);line-height:1.6}
+.kcard-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;margin-top:4px}
+.kcard-phone{color:var(--accent);text-decoration:none;font-weight:600}
+.kcol-empty{text-align:center;padding:24px;color:var(--muted);font-size:12px}
+
+/* Metric cards */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.metric{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.metric-n{font-size:28px;font-weight:800;line-height:1.2}
+.metric-l{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+
+/* Lists */
+.list-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:8px}
+.list-card-hdr{font-size:14px;font-weight:700;margin-bottom:4px}
+.list-card-meta{font-size:12px;color:var(--muted);line-height:1.6}
+.section-title{font-size:13px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:16px 0 8px}
+
+/* Charts */
+.bar-chart{display:flex;align-items:flex-end;gap:4px;height:120px;padding:8px 0}
+.bar{flex:1;background:var(--accent);border-radius:4px 4px 0 0;min-width:8px;position:relative;transition:.2s}
+.bar-label{position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--muted)}
+.donut-wrap{display:flex;align-items:center;justify-content:center;gap:20px}
+.donut{width:140px;height:140px;border-radius:50%;position:relative}
+.donut-legend{font-size:12px;line-height:2}
+.donut-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+
+/* Split table */
+.split-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+.split-table th{background:var(--primary);color:#fff;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.split-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.split-table tr:nth-child(even) td{background:#fafafa}
+
+/* Modal */
+.modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center;padding:16px}
+.modal-ov.open{display:flex}
+.modal{background:#fff;border-radius:14px;max-width:500px;width:100%;max-height:85vh;overflow-y:auto;padding:24px}
+.modal-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)}
+.modal h3{font-size:17px;font-weight:800;margin-bottom:14px}
+.modal-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:13px}
+.modal-label{color:var(--muted);font-weight:500}
+.modal-val{font-weight:600;text-align:right;max-width:60%}
+
+/* Timeline */
+.timeline{display:flex;gap:0;margin:16px 0;overflow-x:auto}
+.tl-step{flex:1;min-width:70px;text-align:center;position:relative}
+.tl-dot{width:16px;height:16px;border-radius:50%;margin:0 auto 4px;border:2px solid var(--border);background:#fff}
+.tl-dot.done{background:var(--accent);border-color:var(--accent)}
+.tl-dot.active{background:var(--primary);border-color:var(--primary)}
+.tl-label{font-size:9px;color:var(--muted);font-weight:600}
+.tl-date{font-size:9px;color:var(--ink);font-weight:700}
+.tl-days{font-size:8px;color:var(--accent);margin-top:1px}
+.tl-line{position:absolute;top:8px;left:50%;width:100%;height:2px;background:var(--border);z-index:-1}
+.tl-line.done{background:var(--accent)}
+
+/* Loading/Error */
+.loading{text-align:center;padding:60px;color:var(--muted);font-size:14px}
+.spinner-lg{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Month picker */
+.month-pick{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.month-pick select{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit}
+
+@media(max-width:640px){.metrics{grid-template-columns:1fr 1fr}.kanban{min-height:60vh}.controls{flex-direction:column}}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-title">🔒 Leak Guard — Job Board</div>
+  <div class="hdr-meta" id="lastUpdated">Loading...</div>
+</div>
+
+<div class="tabs">
+  <div class="tab on" onclick="showTab('kanban',this)">Kanban</div>
+  <div class="tab" onclick="showTab('today',this)">Today</div>
+  <div class="tab" onclick="showTab('monthly',this)">Monthly</div>
+</div>
+
+<div id="loadingEl" class="loading"><div class="spinner-lg"></div>Loading data...</div>
+
+<!-- KANBAN TAB -->
+<div class="pg on" id="pg-kanban">
+  <div class="controls">
+    <input type="text" id="kSearch" placeholder="Search name, phone, location..." oninput="renderKanban()">
+    <select id="kAssigned" onchange="renderKanban()"><option value="">All Staff</option></select>
+  </div>
+  <div class="kanban" id="kanbanBoard"></div>
+</div>
+
+<!-- TODAY TAB -->
+<div class="pg" id="pg-today">
+  <div class="metrics" id="todayMetrics"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="todaySections"></div>
+</div>
+
+<!-- MONTHLY TAB -->
+<div class="pg" id="pg-monthly">
+  <div class="month-pick">
+    <select id="monthSel" onchange="renderMonthly()"></select>
+  </div>
+  <div id="monthlyContent"></div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-ov" id="modalOv" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<script>
+var DATA = [];
+var SHEET_URL = 'https://docs.google.com/spreadsheets/d/17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE/gviz/tq?tqx=out:json&sheet=Leak+Guard+Leads';
+
+var KANBAN_COLS = [
+  {status:'New Lead',color:'#3B82F6'},
+  {status:'Pending Site Visit',color:'#F59E0B'},
+  {status:'Site Visit Done',color:'#8B5CF6'},
+  {status:'Quotation Sent',color:'#F97316'},
+  {status:'Job Confirmed',color:'#10B981'},
+  {status:'Job In Progress',color:'#06B6D4'},
+  {status:'Job Complete',color:'#1D9E75'},
+  {status:'Lost',color:'#EF4444'}
+];
+
+function ge(id){return document.getElementById(id)}
+function fmtD(v){if(!v)return'—';var d=new Date(v);if(isNaN(d))return String(v).substring(0,10);return d.toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})}
+function fmtN(n){return n?Number(n).toLocaleString('en-MY'):'—'}
+function isToday(v){if(!v)return false;var d=new Date(v),t=new Date();return d.getDate()===t.getDate()&&d.getMonth()===t.getMonth()&&d.getFullYear()===t.getFullYear()}
+function daysBetween(a,b){if(!a||!b)return null;var d1=new Date(a),d2=new Date(b);if(isNaN(d1)||isNaN(d2))return null;return Math.round((d2-d1)/86400000)}
+
+function cell(row,i){var c=row.c[i];if(!c)return'';if(c.v===null||c.v===undefined)return'';return c.v}
+
+async function fetchData(){
+  try{
+    var r=await fetch(SHEET_URL);
+    var text=await r.text();
+    var json=JSON.parse(text.substring(47).slice(0,-2));
+    DATA=json.table.rows.map(function(row){
+      return{
+        timestamp:cell(row,0),phone:cell(row,1),name:cell(row,2),
+        problem:cell(row,3),location:cell(row,4),address:cell(row,5),
+        slabSize:cell(row,6),slot:cell(row,7),status:cell(row,8),
+        assignedTo:cell(row,9),quotation:cell(row,10),jobOutcome:cell(row,11),
+        notes:cell(row,12),convId:cell(row,13),
+        dateLeadIn:cell(row,18),dateSiteVisit:cell(row,19),
+        dateQuoteSent:cell(row,20),dateConfirmed:cell(row,21),
+        dateInstalled:cell(row,22),statusChangedAt:cell(row,23)
+      };
+    });
+    ge('loadingEl').style.display='none';
+    ge('lastUpdated').textContent='Updated: '+new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
+    buildAssignedDropdown();
+    initMonthPicker();
+    renderAll();
+  }catch(e){
+    ge('loadingEl').innerHTML='<div style="color:#EF4444">Failed to load data. Check sheet permissions.</div>';
+  }
+}
+
+function buildAssignedDropdown(){
+  var sel=ge('kAssigned');
+  var names={};
+  DATA.forEach(function(d){if(d.assignedTo)names[d.assignedTo]=1});
+  Object.keys(names).sort().forEach(function(n){
+    var o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o);
+  });
+}
+
+function showTab(name,el){
+  document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on')});
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('on')});
+  ge('pg-'+name).classList.add('on');
+  el.classList.add('on');
+}
+
+function renderAll(){renderKanban();renderToday();renderMonthly()}
+
+// ═══ KANBAN ═══
+function renderKanban(){
+  var q=(ge('kSearch').value||'').toLowerCase().trim();
+  var af=ge('kAssigned').value;
+  var filtered=DATA.filter(function(d){
+    if(af&&d.assignedTo!==af)return false;
+    if(q){
+      var s=(d.name+' '+d.phone+' '+d.location+' '+d.problem+' '+d.address).toLowerCase();
+      if(!s.includes(q))return false;
+    }
+    return true;
+  });
+  var board=ge('kanbanBoard');
+  board.innerHTML=KANBAN_COLS.map(function(col){
+    var items=filtered.filter(function(d){return d.status===col.status});
+    return '<div class="kcol">'+
+      '<div class="kcol-hdr" style="background:'+col.color+'">'+col.status+' <span class="kcol-count">'+items.length+'</span></div>'+
+      '<div class="kcol-body">'+(items.length?items.map(function(d,i){
+        var idx=DATA.indexOf(d);
+        var badge=d.assignedTo?'<div class="kcard-badge" style="background:#e0e7ff;color:#3730a3">'+d.assignedTo+'</div>':'';
+        return '<div class="kcard" onclick="openModal('+idx+')">'+
+          '<div class="kcard-name">'+(d.name||d.phone||'—')+'</div>'+
+          '<div class="kcard-meta">'+
+            (d.problem?d.problem+'<br>':'')+
+            (d.location?'📍 '+d.location+'<br>':'')+
+            (d.slabSize?'📐 '+d.slabSize+' sqft<br>':'')+
+            (d.slot?'📅 '+d.slot+'<br>':'')+
+            (d.phone?'<a class="kcard-phone" href="tel:'+d.phone+'">📞 '+d.phone+'</a>':'')+
+          '</div>'+badge+'</div>';
+      }).join(''):'<div class="kcol-empty">No jobs here</div>')+'</div></div>';
+  }).join('');
+}
+
+// ═══ MODAL ═══
+function openModal(idx){
+  var d=DATA[idx];if(!d)return;
+  var rows=[
+    ['Name',d.name],['Phone',d.phone?'<a href="tel:'+d.phone+'">'+d.phone+'</a>':''],
+    ['Problem Type',d.problem],['Location',d.location],['Full Address',d.address],
+    ['Slab Size',d.slabSize?d.slabSize+' sqft':''],['Slot Chosen',d.slot],
+    ['Status',d.status],['Assigned To',d.assignedTo],
+    ['Quotation (RM)',d.quotation?'RM '+fmtN(d.quotation):''],
+    ['Job Outcome',d.jobOutcome],['Notes',d.notes],['Source','ChatHero'],
+    ['Conv ID',d.convId]
+  ];
+
+  // Timeline
+  var stages=[
+    {label:'Lead In',date:d.dateLeadIn},
+    {label:'Site Visit',date:d.dateSiteVisit},
+    {label:'Quote Sent',date:d.dateQuoteSent},
+    {label:'Confirmed',date:d.dateConfirmed},
+    {label:'Installed',date:d.dateInstalled}
+  ];
+  var lastDone=-1;
+  stages.forEach(function(s,i){if(s.date)lastDone=i});
+
+  var tlHtml='<div class="timeline">'+stages.map(function(s,i){
+    var done=i<=lastDone&&s.date;
+    var active=i===lastDone;
+    var days=i>0&&stages[i-1].date&&s.date?daysBetween(stages[i-1].date,s.date):null;
+    return '<div class="tl-step">'+
+      (i<stages.length-1?'<div class="tl-line'+(done?' done':'')+'"></div>':'')+
+      '<div class="tl-dot'+(done?' done':'')+(active?' active':'')+'"></div>'+
+      '<div class="tl-label">'+s.label+'</div>'+
+      (s.date?'<div class="tl-date">'+fmtD(s.date)+'</div>':'')+
+      (days!==null?'<div class="tl-days">'+days+'d</div>':'')+
+    '</div>';
+  }).join('')+'</div>';
+
+  ge('modalBody').innerHTML='<button class="modal-close" onclick="closeModal()">&times;</button>'+
+    '<h3>'+(d.name||d.phone||'Lead Details')+'</h3>'+tlHtml+
+    rows.map(function(r){return r[1]?'<div class="modal-row"><span class="modal-label">'+r[0]+'</span><span class="modal-val">'+r[1]+'</span></div>':''}).join('');
+  ge('modalOv').classList.add('open');
+}
+function closeModal(){ge('modalOv').classList.remove('open')}
+
+// ═══ TODAY ═══
+function renderToday(){
+  var newToday=DATA.filter(function(d){return isToday(d.timestamp)}).length;
+  var changedToday=DATA.filter(function(d){return isToday(d.statusChangedAt)}).length;
+  var svToday=DATA.filter(function(d){return d.slot&&isToday(d.slot)});
+  var completedToday=DATA.filter(function(d){return isToday(d.dateInstalled)}).length;
+
+  ge('todayMetrics').innerHTML=[
+    {n:newToday,l:'New Leads Today',c:'#3B82F6'},
+    {n:changedToday,l:'Status Changes',c:'#F59E0B'},
+    {n:svToday.length,l:'Site Visits Today',c:'#8B5CF6'},
+    {n:completedToday,l:'Completed Today',c:'#1D9E75'}
+  ].map(function(m){return '<div class="metric"><div class="metric-n" style="color:'+m.c+'">'+m.n+'</div><div class="metric-l">'+m.l+'</div></div>'}).join('');
+
+  var svHtml=svToday.length?svToday.map(function(d){
+    return '<div class="list-card"><div class="list-card-hdr">'+(d.name||d.phone||'—')+'</div>'+
+      '<div class="list-card-meta">📍 '+d.address+'<br>📞 '+(d.phone||'—')+' · 👷 '+(d.assignedTo||'—')+(d.slabSize?' · 📐 '+d.slabSize+' sqft':'')+'</div></div>';
+  }).join(''):'<div class="list-card" style="text-align:center;color:var(--muted)">No site visits today</div>';
+
+  var recent=DATA.filter(function(d){return d.statusChangedAt}).sort(function(a,b){return new Date(b.statusChangedAt)-new Date(a.statusChangedAt)}).slice(0,20);
+  var recHtml=recent.length?recent.map(function(d){
+    return '<div class="list-card"><div class="list-card-hdr">'+(d.name||d.phone||'—')+'</div>'+
+      '<div class="list-card-meta">→ '+d.status+' · '+(d.assignedTo||'')+' · '+fmtD(d.statusChangedAt)+'</div></div>';
+  }).join(''):'<div class="list-card" style="text-align:center;color:var(--muted)">No recent activity</div>';
+
+  ge('todaySections').innerHTML=
+    '<div><div class="section-title">Today\'s Site Visits</div>'+svHtml+'</div>'+
+    '<div><div class="section-title">Recent Activity</div>'+recHtml+'</div>';
+}
+
+// ═══ MONTHLY ═══
+function initMonthPicker(){
+  var sel=ge('monthSel');
+  var now=new Date();
+  var mNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  for(var m=now.getMonth();m>=0;m--){
+    var o=document.createElement('option');o.value=now.getFullYear()+'-'+m;
+    o.textContent=mNames[m]+' '+now.getFullYear();sel.appendChild(o);
+  }
+  for(var m2=11;m2>=0;m2--){
+    var o2=document.createElement('option');o2.value=(now.getFullYear()-1)+'-'+m2;
+    o2.textContent=mNames[m2]+' '+(now.getFullYear()-1);sel.appendChild(o2);
+  }
+}
+
+function inMonth(v,yr,mo){if(!v)return false;var d=new Date(v);return d.getMonth()===mo&&d.getFullYear()===yr}
+
+function renderMonthly(){
+  var parts=ge('monthSel').value.split('-');
+  var yr=Number(parts[0]),mo=Number(parts[1]);
+
+  var mLeads=DATA.filter(function(d){return inMonth(d.timestamp,yr,mo)});
+  var mSV=DATA.filter(function(d){return inMonth(d.dateSiteVisit,yr,mo)});
+  var mQuote=DATA.filter(function(d){return inMonth(d.dateQuoteSent,yr,mo)});
+  var mConfirmed=DATA.filter(function(d){return inMonth(d.dateConfirmed,yr,mo)});
+  var mComplete=DATA.filter(function(d){return inMonth(d.dateInstalled,yr,mo)});
+  var convRate=mLeads.length>0?(mComplete.length/mLeads.length*100).toFixed(1):0;
+
+  var activeStatuses=['New Lead','Pending Site Visit','Confirmed','Site Visit Done','Quotation Sent','Follow Up','Job Confirmed','Downpayment Received','Job In Progress'];
+  var pipeline=DATA.filter(function(d){return activeStatuses.indexOf(d.status)>=0}).reduce(function(s,d){return s+(Number(d.quotation)||0)},0);
+  var collected=mComplete.reduce(function(s,d){return s+(Number(d.quotation)||0)},0);
+  var confirmInProg=DATA.filter(function(d){return d.status==='Job Confirmed'||d.status==='Job In Progress'}).reduce(function(s,d){return s+(Number(d.quotation)||0)},0);
+
+  // Leads per day chart
+  var daysInMonth=new Date(yr,mo+1,0).getDate();
+  var dailyCounts=[];
+  for(var dd=1;dd<=daysInMonth;dd++){
+    var cnt=mLeads.filter(function(d){var dt=new Date(d.timestamp);return dt.getDate()===dd}).length;
+    dailyCounts.push(cnt);
+  }
+  var maxDay=Math.max.apply(null,dailyCounts)||1;
+  var barsHtml=dailyCounts.map(function(c,i){
+    var h=Math.max(2,c/maxDay*100);
+    return '<div class="bar" style="height:'+h+'%" title="Day '+(i+1)+': '+c+'"><div class="bar-label">'+(i+1)+'</div></div>';
+  }).join('');
+
+  // Status donut
+  var statusCounts={};
+  DATA.forEach(function(d){if(d.status){statusCounts[d.status]=(statusCounts[d.status]||0)+1}});
+  var total=DATA.length||1;
+  var donutColors={'New Lead':'#3B82F6','Pending Site Visit':'#F59E0B','Site Visit Done':'#8B5CF6','Quotation Sent':'#F97316','Job Confirmed':'#10B981','Job In Progress':'#06B6D4','Job Complete':'#1D9E75','Lost':'#EF4444'};
+  var gradParts=[],pct=0;
+  var legendHtml='';
+  Object.keys(statusCounts).sort(function(a,b){return statusCounts[b]-statusCounts[a]}).forEach(function(st){
+    var p=statusCounts[st]/total*100;
+    var col=donutColors[st]||'#9CA3AF';
+    gradParts.push(col+' '+pct+'% '+(pct+p)+'%');
+    pct+=p;
+    legendHtml+='<div><span class="donut-dot" style="background:'+col+'"></span>'+st+' ('+statusCounts[st]+')</div>';
+  });
+  var donutGrad='conic-gradient('+gradParts.join(',')+')';
+
+  // KL vs JB
+  var klPattern=/kuala lumpur|kl|selangor|pj|petaling|shah alam|subang|ampang|cheras|kepong|damansara/i;
+  var jbPattern=/johor|jb|iskandar|senai|kulai|skudai|tampoi|pasir gudang|gelang patah|nusajaya/i;
+  var klRows=DATA.filter(function(d){return klPattern.test(d.location+' '+d.address)});
+  var jbRows=DATA.filter(function(d){return jbPattern.test(d.location+' '+d.address)});
+  function branchStats(rows){
+    return{
+      leads:rows.length,
+      sv:rows.filter(function(d){return d.dateSiteVisit}).length,
+      confirmed:rows.filter(function(d){return d.dateConfirmed}).length,
+      completed:rows.filter(function(d){return d.dateInstalled}).length,
+      revenue:rows.filter(function(d){return d.status==='Job Complete'}).reduce(function(s,d){return s+(Number(d.quotation)||0)},0)
+    };
+  }
+  var klS=branchStats(klRows),jbS=branchStats(jbRows);
+
+  ge('monthlyContent').innerHTML=
+    '<div class="metrics">'+
+      [{n:mLeads.length,l:'New Leads',c:'#3B82F6'},{n:mSV.length,l:'Site Visits',c:'#8B5CF6'},
+       {n:mQuote.length,l:'Quotes Sent',c:'#F97316'},{n:mConfirmed.length,l:'Confirmed',c:'#10B981'},
+       {n:mComplete.length,l:'Completed',c:'#1D9E75'},{n:convRate+'%',l:'Conversion',c:'#2D2A6E'}
+      ].map(function(m){return '<div class="metric"><div class="metric-n" style="color:'+m.c+'">'+m.n+'</div><div class="metric-l">'+m.l+'</div></div>'}).join('')+
+    '</div>'+
+    '<div class="metrics">'+
+      [{n:'RM '+fmtN(pipeline),l:'Pipeline Value',c:'#F59E0B'},
+       {n:'RM '+fmtN(collected),l:'Collected',c:'#1D9E75'},
+       {n:'RM '+fmtN(confirmInProg),l:'Pending Balance',c:'#F97316'}
+      ].map(function(m){return '<div class="metric"><div class="metric-n" style="color:'+m.c+'">'+m.n+'</div><div class="metric-l">'+m.l+'</div></div>'}).join('')+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0">'+
+      '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px">'+
+        '<div class="section-title" style="margin-top:0">Leads per Day</div>'+
+        '<div class="bar-chart">'+barsHtml+'</div>'+
+      '</div>'+
+      '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px">'+
+        '<div class="section-title" style="margin-top:0">Status Breakdown</div>'+
+        '<div class="donut-wrap"><div class="donut" style="background:'+donutGrad+'"></div><div class="donut-legend">'+legendHtml+'</div></div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:16px">'+
+      '<div class="section-title" style="margin-top:0">KL vs JB</div>'+
+      '<table class="split-table"><thead><tr><th>Branch</th><th>New Leads</th><th>Site Visits</th><th>Confirmed</th><th>Completed</th><th>Revenue</th></tr></thead><tbody>'+
+      '<tr><td><strong>KL / Selangor</strong></td><td>'+klS.leads+'</td><td>'+klS.sv+'</td><td>'+klS.confirmed+'</td><td>'+klS.completed+'</td><td>RM '+fmtN(klS.revenue)+'</td></tr>'+
+      '<tr><td><strong>Johor / JB</strong></td><td>'+jbS.leads+'</td><td>'+jbS.sv+'</td><td>'+jbS.confirmed+'</td><td>'+jbS.completed+'</td><td>RM '+fmtN(jbS.revenue)+'</td></tr>'+
+      '</tbody></table>'+
+    '</div>';
+}
+
+// Init + auto-refresh
+fetchData();
+setInterval(fetchData, 60000);
+</script>
+</body>
+</html>
