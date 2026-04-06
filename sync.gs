@@ -231,12 +231,23 @@ function setupLeakGuardSheet() {
 // Existing leads: only ChatHero fields are updated. User columns (Status,
 // Assigned To, Quotation RM, Job Outcome, Notes) are NEVER overwritten.
 
+function hashData(rows) {
+  return rows.map(function(r){ return r.join('|'); }).join('\n').length + '_' + rows.length;
+}
+
+function resetHash() {
+  PropertiesService.getScriptProperties().deleteProperty('LAST_DATA_HASH');
+  Logger.log('LAST_DATA_HASH cleared. Next sync will do a full scan.');
+}
+
 function syncQualifiedLeads() {
   // Guard: don't run if sync is paused
   if (!CONFIG.ACTIVE) {
     Logger.log('Sync paused. Set CONFIG.ACTIVE = true to start.');
     return;
   }
+
+ try {
 
   // Calculate effective date window
   var startDate = new Date(CONFIG.START_DATE);
@@ -269,8 +280,16 @@ function syncQualifiedLeads() {
 
   ensureLogTab(ss);
 
-  // Read all data
+  // Read source data + check for changes via hash
   var srcData = srcSheet.getDataRange().getValues();
+  var props = PropertiesService.getScriptProperties();
+  var currentHash = hashData(srcData);
+  var lastHash = props.getProperty('LAST_DATA_HASH') || '';
+  if (currentHash === lastHash) {
+    Logger.log('No changes detected in ChatHero sheet, skipping sync.');
+    return;
+  }
+
   var destData = dest.getDataRange().getValues();
   var convIdCol = HEADERS.indexOf('CH Conv ID'); // column N = index 13
 
@@ -412,9 +431,20 @@ function syncQualifiedLeads() {
     if (i % 50 === 0) Utilities.sleep(100);
   }
 
+  // Save hash after successful sync
+  props.setProperty('LAST_DATA_HASH', currentHash);
+
   // Log this sync run
   logRun(ss, newCount, updateCount, skipCount);
   Logger.log('Sync complete — New: ' + newCount + ' | Updated: ' + updateCount + ' | Skipped: ' + skipCount);
+
+ } catch(e) {
+    if (e.message && e.message.indexOf('Service Spreadsheets') !== -1) {
+      Logger.log('Sheets temporarily unavailable, retrying next run.');
+      return;
+    }
+    throw e;
+ }
 }
 
 
