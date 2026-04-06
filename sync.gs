@@ -281,6 +281,13 @@ function syncQualifiedLeads() {
     if (id) existingMap[String(id)] = d + 1;
   }
 
+  // Build set of existing phone numbers to prevent duplicates
+  var existingPhones = {};
+  for (var p = 1; p < destData.length; p++) {
+    var ph = String(destData[p][1] || '').trim();
+    if (ph) existingPhones[ph] = true;
+  }
+
   var newCount = 0, updateCount = 0, skipCount = 0;
 
   // Process each ChatHero row
@@ -319,6 +326,14 @@ function syncQualifiedLeads() {
     if (!existingMap[convId]) {
       // ── NEW LEAD ──────────────────────────────────────────────
       if (!qualified) { skipCount++; continue; }
+
+      // Skip if phone already exists in sheet (cross-session + same-batch)
+      if (phone && existingPhones[phone]) {
+        Logger.log('Skipping duplicate phone: ' + phone);
+        skipCount++;
+        continue;
+      }
+      if (phone) existingPhones[phone] = true;
 
       var newRow = new Array(HEADERS.length).fill('');
       newRow[0]  = now;                                  // Timestamp
