@@ -82,13 +82,13 @@ const HEADERS = [
   'CH Chat URL',      // P  — Link to ChatHero conversation
   'Source',           // Q  — Lead source (ChatHero, Manual, etc.)
   'Last Synced',      // R  — When this row was last updated by sync
-  'Date Lead In',     // S  — Filled on first sync (copy Timestamp)
-  'Date Site Visit',  // T  — Filled when status = "Site Visit Done"
-  'Date Quote Sent',  // U  — Filled when status = "Quotation Sent"
-  'Date Confirmed',   // V  — Filled when status = "Job Confirmed"
-  'Date Installed',   // W  — Filled when status = "Job Complete"
-  'Status Changed At',// X  — Filled every time status changes
-  'Changed By',       // Y  — Filled by Make.com with staff name
+  'Date Lead In',        // S  — Filled on first sync (copy Timestamp)
+  'Date Appt Confirmed', // T  — Filled when status = "Site Visit Confirmed"
+  'Date QT Issued',      // U  — Filled when status = "Quotation Sent"
+  'Date Confirmed',      // V  — Filled when status = "Pending Installation Date"
+  'Date Installed',      // W  — Filled when status = "Job Complete"
+  'Status Changed At',   // X  — Filled every time status changes
+  'Changed By',          // Y  — Filled by Make.com with staff name
 ];
 
 
@@ -119,9 +119,9 @@ function setupLeakGuardSheet() {
 
   // Status dropdown — col I (column 9)
   const statusList = [
-    'New Lead', 'Pending Site Visit', 'Confirmed',
-    'Site Visit Done', 'Quotation Sent', 'Follow Up',
-    'Job Confirmed', 'Pending Installation Date', 'Downpayment Received',
+    'New Lead', 'Pending Site Visit', 'Site Visit Confirmed',
+    'Pending QT', 'Quotation Sent', 'Follow Up',
+    'Pending Installation Date', 'Downpayment Received',
     'Job In Progress', 'Job Complete', 'Receipt Sent',
     'Cold Lead', 'Lost', 'Rejected', 'Out of Area', 'Human Handoff'
   ];
