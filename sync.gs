@@ -240,6 +240,45 @@ function resetHash() {
   Logger.log('LAST_DATA_HASH cleared. Next sync will do a full scan.');
 }
 
+// ================================================================
+// doPost — Web App endpoint for status updates from job_board.html
+// ================================================================
+// Deploy as Web App: Execute as Me, Anyone can access.
+// After adding, redeploy: Deploy → Manage → Edit → New version → Deploy.
+
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    if (data.action !== 'updateStatus') throw new Error('Unknown action');
+
+    var ss = SpreadsheetApp.openById('17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE');
+    var sheet = ss.getSheetByName('Leak Guard Leads');
+    var rows = sheet.getDataRange().getValues();
+
+    var rowIdx = -1;
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][1]).trim() === String(data.phone).trim()) {
+        rowIdx = i + 1;
+        break;
+      }
+    }
+    if (rowIdx === -1) throw new Error('Lead not found: ' + data.phone);
+
+    sheet.getRange(rowIdx, 9).setValue(data.status);
+    sheet.getRange(rowIdx, 24).setValue(new Date(data.statusChangedAt));
+    sheet.getRange(rowIdx, 25).setValue(data.changedBy || 'Web');
+    if (data.dateCol && data.dateVal) {
+      sheet.getRange(rowIdx, data.dateCol + 1).setValue(new Date(data.dateVal));
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({status:'error',message:err.toString()}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
 function syncQualifiedLeads() {
   // Guard: don't run if sync is paused
   if (!CONFIG.ACTIVE) {

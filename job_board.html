@@ -44,6 +44,13 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .badge-none{background:#F1F5F9;color:#9CA3AF}
 .cd-ph{color:#0F6E56;text-decoration:none;font-size:10px;font-weight:500}
 .kc-e{text-align:center;padding:16px;color:var(--mt);font-size:10px}
+.cd{position:relative}
+.cd-cb{position:absolute;top:8px;right:8px;width:14px;height:14px;cursor:pointer;accent-color:#3B82F6}
+.cd-actions{display:flex;gap:4px;margin-top:6px;border-top:.5px solid #F3F4F6;padding-top:6px}
+.btn-next{flex:1;padding:4px 0;background:#1D9E75;color:#fff;border:none;border-radius:5px;font-size:10px;font-weight:500;cursor:pointer}
+.btn-next:hover{background:#0F6E56}
+.btn-jump{padding:4px 8px;background:#F3F4F6;color:#374151;border:none;border-radius:5px;font-size:10px;font-weight:500;cursor:pointer;flex-shrink:0}
+.btn-jump:hover{background:#E5E7EB}
 
 .met{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
 .me{background:#fff;border:1px solid var(--bdr);border-radius:9px;padding:13px;text-align:center;box-shadow:var(--sh)}
@@ -100,6 +107,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 
 <div class="pg on" id="pg-kanban">
 <div class="ctrl"><input type="text" id="kS" placeholder="Search name, phone, location..." oninput="rK()"><select id="kA" onchange="rK()"><option value="">All Staff</option></select></div>
+<div id="bulkBar" style="display:none;background:#2D2A6E;color:#fff;padding:9px 14px;align-items:center;gap:10px;border-bottom:2px solid #1D9E75">
+  <span id="bulkCount" style="font-size:12px;font-weight:500;flex:1"></span>
+  <select id="bulkStatus" style="padding:5px 9px;border-radius:6px;font-size:11px;border:none;background:rgba(255,255,255,0.15);color:#fff;font-family:inherit">
+    <option value="">Move to...</option><option>New Lead</option><option>Pending Site Visit</option><option>Site Visit Confirmed</option><option>Pending QT</option><option>Quotation Sent</option><option>Follow Up</option><option>Pending I.Date</option><option>I.Date Confirmed</option><option>Job In Progress</option><option>Job Complete</option><option>Receipt Sent</option><option>Cold Lead</option><option>Lost</option><option>Rejected</option><option>Out of Area</option><option>Human Handoff</option>
+  </select>
+  <button onclick="bulkMove()" style="padding:5px 14px;background:#1D9E75;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer">Move</button>
+  <button onclick="clearSelection()" style="padding:5px 10px;background:rgba(255,255,255,0.1);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer">Cancel</button>
+</div>
 <div class="kb" id="kB"></div>
 </div>
 
@@ -108,6 +123,27 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 <div class="pg" id="pg-monthly"><div class="mp"><select id="mS" onchange="rM()"></select></div><div id="mC"></div></div>
 
 <div class="mo" id="mO" onclick="if(event.target===this)cM()"><div class="ml" id="mB"></div></div>
+
+<div id="moveOverlay" style="display:none;background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:300;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:10px;width:100%;max-width:340px;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:.5px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center">
+      <span id="moveTitle" style="font-size:13px;font-weight:500"></span>
+      <button onclick="closeMoveModal()" style="background:none;border:none;color:#9CA3AF;font-size:18px;cursor:pointer">&times;</button>
+    </div>
+    <div style="padding:14px 16px">
+      <div id="moveLeadInfo" style="font-size:11px;color:#6B7280;margin-bottom:12px"></div>
+      <div id="moveDateRow" style="display:none;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:500;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Required Date</div>
+        <input type="datetime-local" id="moveDate" style="width:100%;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:6px;font-size:12px;font-family:inherit;background:#F9FAFB">
+        <div style="font-size:10px;color:#F59E0B;margin-top:3px">&#9888; Required to move to this status</div>
+      </div>
+    </div>
+    <div style="padding:10px 16px;border-top:.5px solid #E5E7EB;display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeMoveModal()" style="padding:6px 12px;background:#F3F4F6;color:#374151;border:none;border-radius:6px;font-size:12px;cursor:pointer">Cancel</button>
+      <button onclick="confirmMove()" style="padding:6px 16px;background:#1D9E75;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer">Confirm</button>
+    </div>
+  </div>
+</div>
 
 <script>
 var D=[],SU='https://docs.google.com/spreadsheets/d/17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE/gviz/tq?tqx=out:json&sheet=Leak+Guard+Leads';
@@ -157,15 +193,91 @@ function rAll(){rK();rTd();rM()}
 
 function bCls(n){if(!n)return'badge-none';if(n==='Ken')return'badge-ken';if(n==='Admin')return'badge-admin';if(n==='Team KL')return'badge-kl';if(n==='Team JB')return'badge-jb';return'badge-none'}
 
+// Selection state
+var selectedCards=new Set();
+function toggleSelect(idx){if(selectedCards.has(idx))selectedCards.delete(idx);else selectedCards.add(idx);updateBulkBar()}
+function updateBulkBar(){var bar=$('bulkBar'),cnt=$('bulkCount');if(selectedCards.size>0){bar.style.display='flex';cnt.textContent=selectedCards.size+' selected'}else{bar.style.display='none'}}
+function clearSelection(){selectedCards.clear();document.querySelectorAll('.cd-cb').forEach(function(cb){cb.checked=false});updateBulkBar()}
+
+// Move modal state
+var DATE_REQUIRED=['Site Visit Confirmed','I.Date Confirmed'];
+var DATE_AUTO=['Quotation Sent','Job Complete'];
+var DATE_COL_MAP={'Site Visit Confirmed':19,'Quotation Sent':20,'I.Date Confirmed':21,'Job Complete':22};
+var moveTargetIdx=null,moveTargetStatus=null;
+var WEBAPP_URL='https://script.google.com/macros/s/AKfycbzUlf76a-FfkIIKwrjFnbxoyC4i0Ick2f40IzzzvbP2bhnRu2xE0O_F09xzmTx08Mud7Q/exec';
+
+function initMove(idx,status){
+  moveTargetIdx=idx;moveTargetStatus=status;var d=D[idx];
+  $('moveTitle').textContent='Move to '+status;
+  $('moveLeadInfo').innerHTML='Lead: <strong>'+(d.nm||d.ph||'—')+'</strong>';
+  $('moveDateRow').style.display=DATE_REQUIRED.indexOf(status)!==-1?'block':'none';
+  $('moveDate').value='';
+  var jsr=$('jumpStatusRow');if(jsr)jsr.style.display='none';
+  $('moveOverlay').style.display='flex';
+}
+
+function initJump(idx){
+  var d=D[idx];moveTargetIdx=idx;moveTargetStatus=null;
+  $('moveTitle').textContent='Jump to status';
+  $('moveLeadInfo').innerHTML='Lead: <strong>'+(d.nm||d.ph||'—')+'</strong> · <span style="color:#6B7280">'+d.ss+'</span>';
+  var existing=$('jumpStatusRow');
+  if(!existing){
+    var row=document.createElement('div');row.id='jumpStatusRow';row.style.marginBottom='10px';
+    row.innerHTML='<div style="font-size:10px;font-weight:500;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Move to</div><select id="jumpStatusSel" onchange="onJumpSelect()" style="width:100%;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:6px;font-size:12px;font-family:inherit;background:#F9FAFB"><option value="">Select status...</option>'+KC.map(function(k){return'<option>'+k.s+'</option>'}).join('')+'</select>';
+    $('moveDateRow').parentNode.insertBefore(row,$('moveDateRow'));
+  }else{existing.style.display='block';$('jumpStatusSel').value=''}
+  $('moveDateRow').style.display='none';$('moveDate').value='';
+  $('moveOverlay').style.display='flex';
+}
+
+function onJumpSelect(){moveTargetStatus=$('jumpStatusSel').value;$('moveDateRow').style.display=DATE_REQUIRED.indexOf(moveTargetStatus)!==-1?'block':'none';$('moveDate').value=''}
+function closeMoveModal(){$('moveOverlay').style.display='none';var jsr=$('jumpStatusRow');if(jsr)jsr.style.display='none'}
+
+async function confirmMove(){
+  if(!moveTargetStatus){alert('Please select a status.');return}
+  var dateVal='';
+  if(DATE_REQUIRED.indexOf(moveTargetStatus)!==-1){dateVal=$('moveDate').value;if(!dateVal){alert('Please fill in the required date.');return}}
+  else if(DATE_AUTO.indexOf(moveTargetStatus)!==-1){dateVal=new Date().toISOString()}
+  var d=D[moveTargetIdx];
+  try{
+    var res=await fetch(WEBAPP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'updateStatus',phone:d.ph,status:moveTargetStatus,changedBy:'Web',statusChangedAt:new Date().toISOString(),dateCol:DATE_COL_MAP[moveTargetStatus]||null,dateVal:dateVal||null})});
+    var j=await res.json();
+    if(j.status==='ok'){d.ss=moveTargetStatus;d.sca=new Date().toISOString();closeMoveModal();clearSelection();rK()}
+    else{alert('Error: '+(j.message||'Unknown'))}
+  }catch(e){alert('Failed to update.');console.error(e)}
+}
+
+async function bulkMove(){
+  var status=$('bulkStatus').value;
+  if(!status){alert('Select a status.');return}
+  if(DATE_REQUIRED.indexOf(status)!==-1){alert('This status requires a date. Move cards individually.');return}
+  var autoDate=DATE_AUTO.indexOf(status)!==-1?new Date().toISOString():null;
+  var idxs=Array.from(selectedCards),errors=0;
+  for(var i=0;i<idxs.length;i++){
+    var d=D[idxs[i]];
+    try{
+      var res=await fetch(WEBAPP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({action:'updateStatus',phone:d.ph,status:status,changedBy:'Web',statusChangedAt:new Date().toISOString(),dateCol:DATE_COL_MAP[status]||null,dateVal:autoDate})});
+      var j=await res.json();if(j.status==='ok'){d.ss=status;d.sca=new Date().toISOString()}else errors++
+    }catch(e){errors++}
+  }
+  if(errors)alert(errors+' card(s) failed.');
+  clearSelection();rK();
+}
+
 function rK(){
   var q=($('kS').value||'').toLowerCase().trim(),af=$('kA').value;
+  var statusList=KC.map(function(k){return k.s});
   var f=D.filter(function(d){if(af&&d.at!==af)return!1;if(q&&!(d.nm+' '+d.ph+' '+d.lo+' '+d.pr+' '+d.ad).toLowerCase().includes(q))return!1;return!0});
   $('kB').innerHTML=KC.map(function(col){
     var it=f.filter(function(d){return d.ss===col.s});
     return'<div class="kc"><div class="kh" style="background:'+col.bg+';color:'+col.fg+'">'+col.s+' <span class="kn" style="background:'+col.bb+';color:'+col.bf+'">'+it.length+'</span></div><div class="kb-body">'+
     (it.length?it.map(function(d){var i=D.indexOf(d);
-      var locLine=(d.lo||'')+(d.sl?' · '+d.sl+' sqft':'');
+      var nextSt=statusList[statusList.indexOf(d.ss)+1]||null;
+      var chk=selectedCards.has(i)?' checked':'';
       return'<div class="cd" onclick="oM('+i+')">'+
+        '<input type="checkbox" class="cd-cb"'+chk+' onclick="event.stopPropagation();toggleSelect('+i+')" style="position:absolute;top:8px;right:8px;width:14px;height:14px;cursor:pointer;accent-color:#3B82F6">'+
         '<div class="cd-n">'+(d.nm||d.ph||'—')+'</div>'+
         (d.pr?'<div class="cd-prob">'+d.pr+'</div>':'')+
         '<div class="cd-loc">'+(d.lo||'—')+(d.sl?' · '+d.sl+' sqft':'')+'</div>'+
@@ -173,6 +285,10 @@ function rK(){
         '<div class="cd-bot">'+
           '<span class="cd-b '+bCls(d.at)+'">'+(d.at||'Unassigned')+'</span>'+
           (d.ph?'<a class="cd-ph" href="tel:'+d.ph+'" onclick="event.stopPropagation()">'+d.ph+'</a>':'')+
+        '</div>'+
+        '<div class="cd-actions">'+
+          (nextSt?'<button class="btn-next" onclick="event.stopPropagation();initMove('+i+',\''+nextSt.replace(/'/g,"\\'")+'\')">Next</button>':'')+
+          '<button class="btn-jump" onclick="event.stopPropagation();initJump('+i+')">Jump ▾</button>'+
         '</div></div>'
     }).join(''):'<div class="kc-e">No jobs</div>')+'</div></div>';
   }).join('');
