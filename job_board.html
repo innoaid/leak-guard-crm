@@ -123,7 +123,7 @@ function cv(r,i,useFmt){var c=r.c?r.c[i]:null;if(!c||c.v==null)return'';if(useFm
 async function load(){
   try{
     $('err').style.display='none';
-    var r=await fetch(SU),t=await r.text(),j=JSON.parse(t.substring(47).slice(0,-2));
+    var r=await fetch(SU+'&nocache='+Date.now()),t=await r.text(),j=JSON.parse(t.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/)[1]);
     D=j.table.rows.map(function(r){return{
       ts:cv(r,0),ph:cv(r,1),nm:cv(r,2),pr:cv(r,3),lo:cv(r,4),ad:cv(r,5),
       sl:cv(r,6),st:cv(r,7),ss:cv(r,8),at:cv(r,9),qt:cv(r,10),jo:cv(r,11),
