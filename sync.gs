@@ -499,3 +499,42 @@ function logRun(ss, newCount, updateCount, skipCount) {
     log.deleteRows(2, rows - 501);
   }
 }
+
+
+// ================================================================
+// ONE-TIME UTILITY — Remove duplicate phone entries
+// ================================================================
+// Run once from Apps Script editor, then delete this function.
+// Keeps the first occurrence of each phone number, deletes later duplicates.
+
+function removeDuplicatePhones() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName('Leak Guard Leads');
+  var data = sheet.getDataRange().getValues();
+  var seen = {};
+  var rowsToDelete = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var phone = String(data[i][1] || '').trim();
+    if (!phone) continue;
+    if (seen[phone]) {
+      rowsToDelete.push(i + 1);
+    } else {
+      seen[phone] = true;
+    }
+  }
+
+  rowsToDelete.reverse();
+  rowsToDelete.forEach(function(rowNum) {
+    sheet.deleteRow(rowNum);
+    Logger.log('Deleted duplicate row: ' + rowNum);
+  });
+
+  Logger.log('Done. Removed ' + rowsToDelete.length + ' duplicate rows.');
+  try {
+    SpreadsheetApp.getUi().alert(
+      'Done! Removed ' + rowsToDelete.length + ' duplicate phone entries. ' +
+      'Kept first occurrence of each phone number.'
+    );
+  } catch(e) { Logger.log('Removed ' + rowsToDelete.length + ' duplicates'); }
+}
