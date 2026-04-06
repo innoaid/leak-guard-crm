@@ -121,9 +121,9 @@ function setupLeakGuardSheet() {
   const statusList = [
     'New Lead', 'Pending Site Visit', 'Confirmed',
     'Site Visit Done', 'Quotation Sent', 'Follow Up',
-    'Job Confirmed', 'Downpayment Received', 'Job In Progress',
-    'Job Complete', 'Receipt Sent', 'Cold Lead', 'Lost',
-    'Out of Area', 'Human Handoff'
+    'Job Confirmed', 'Pending Installation Date', 'Downpayment Received',
+    'Job In Progress', 'Job Complete', 'Receipt Sent',
+    'Cold Lead', 'Lost', 'Rejected', 'Out of Area', 'Human Handoff'
   ];
   dest.getRange(2, 9, 500, 1).setDataValidation(
     SpreadsheetApp.newDataValidation()
@@ -200,10 +200,10 @@ function setupLeakGuardSheet() {
   if (!jobHist) jobHist = ss.insertSheet('Job History');
   jobHist.clear();
   jobHist.getRange(1, 1, 1, 7).setValues([['Timestamp', 'Phone', 'Customer Name', 'Old Status', 'New Status', 'Changed By', 'Notes']])
-    .setBackground('#4A1D96')
+    .setBackground('#444441')
     .setFontColor('#FFFFFF')
     .setFontWeight('bold');
-  jobHist.setTabColor('#4A1D96');
+  jobHist.setTabColor('#444441');
   jobHist.setFrozenRows(1);
 
   // ── Sync Log tab ──────────────────────────────────────────────
