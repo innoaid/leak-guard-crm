@@ -248,13 +248,7 @@ function resetHash() {
 
 function doPost(e) {
   try {
-    var ss = SpreadsheetApp.openById(
-      '17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE');
-    var log = ss.getSheetByName('Sync Log');
-    var raw = e.postData ? e.postData.contents : 'NO_BODY';
-    log.appendRow([new Date(), 'WEBHOOK', raw.substring(0,500)]);
     var body = JSON.parse(e.postData.contents);
-    log.appendRow([new Date(), 'KEYS', Object.keys(body).join(', ')]);
     if (body.action) {
       return doPostJobBoard(e);
     }
