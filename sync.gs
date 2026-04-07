@@ -248,7 +248,9 @@ function resetHash() {
 
 function doPost(e) {
   try {
+    Logger.log('RAW PAYLOAD: ' + e.postData.contents);
     var body = JSON.parse(e.postData.contents);
+    Logger.log('PARSED KEYS: ' + Object.keys(body).join(', '));
     if (body.messages || body.statuses || body.contacts) {
       return doPostWABot(e);
     }
