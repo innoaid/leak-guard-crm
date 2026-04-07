@@ -2,7 +2,7 @@ var BOT_CONFIG = {
   SHEET_ID: '17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE',
   SHEET_NAME: 'Leak Guard Leads',
   WA_NUMBER: '60138938657',
-  API_URL: 'https://waba-v2.360dialog.io/v2/messages'
+  API_URL: 'https://waba-v2.360dialog.io/messages'
 };
 
 function getProps() {
