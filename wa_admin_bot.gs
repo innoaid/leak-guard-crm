@@ -52,9 +52,22 @@ function doPostWABot(e) {
     var msg = messages[0];
     var senderPhone = String(msg.from).trim();
     var msgId = msg.id || '';
+    var msgTimestamp = parseInt(msg.timestamp || '0') * 1000;
     var props = getProps();
+
+    // Block if message is older than 5 minutes
+    var now = Date.now();
+    if (msgTimestamp && (now - msgTimestamp) > 300000) {
+      Logger.log('Stale message ignored: ' + msgId +
+        ' age: ' + Math.round((now-msgTimestamp)/1000) + 's');
+      return ContentService.createTextOutput('ok')
+        .setMimeType(ContentService.MimeType.TEXT);
+    }
+
+    // Block duplicate message ID
     var lastMsgId = props.getProperty('LAST_MSG_' + senderPhone) || '';
     if (msgId && msgId === lastMsgId) {
+      Logger.log('Duplicate message ignored: ' + msgId);
       return ContentService.createTextOutput('ok')
         .setMimeType(ContentService.MimeType.TEXT);
     }
