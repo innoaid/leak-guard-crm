@@ -51,6 +51,15 @@ function doPostWABot(e) {
     }
     var msg = messages[0];
     var senderPhone = String(msg.from).trim();
+    var msgId = msg.id || '';
+    var props = getProps();
+    var lastMsgId = props.getProperty('LAST_MSG_' + senderPhone) || '';
+    if (msgId && msgId === lastMsgId) {
+      Logger.log('Duplicate message ignored: ' + msgId);
+      return ContentService.createTextOutput('ok')
+        .setMimeType(ContentService.MimeType.TEXT);
+    }
+    if (msgId) props.setProperty('LAST_MSG_' + senderPhone, msgId);
     var msgType = msg.type;
     var msgText = '';
     if (msgType === 'text') {
@@ -217,6 +226,10 @@ function processAdminMessage(senderPhone, msgText) {
     'IMPORTANT RULES:\n' +
     '- Only perform ONE action per message\n' +
     '- After performing an action, STOP and wait for next instruction\n' +
+    '- Never ask follow-up questions like "Is there anything else?"\n' +
+    '- Never ask "How can I help you today?"\n' +
+    '- Keep replies short — one action confirmation or one answer, then stop\n' +
+    '- Do not send multiple messages or repeat yourself\n' +
     '- Never chain multiple status updates automatically\n' +
     '- For status updates, always confirm what you did and ask if anything else needed\n' +
     '- Never assume what the next action should be\n' +
