@@ -248,14 +248,21 @@ function resetHash() {
 
 function doPost(e) {
   try {
-    Logger.log('RAW PAYLOAD: ' + e.postData.contents);
+    var ss = SpreadsheetApp.openById(
+      '17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE');
+    var log = ss.getSheetByName('Sync Log');
+    var raw = e.postData ? e.postData.contents : 'NO_BODY';
+    log.appendRow([new Date(), 'WEBHOOK', raw.substring(0,500)]);
     var body = JSON.parse(e.postData.contents);
-    Logger.log('PARSED KEYS: ' + Object.keys(body).join(', '));
-    if (body.messages || body.statuses || body.contacts) {
-      return doPostWABot(e);
-    }
+    log.appendRow([new Date(), 'KEYS', Object.keys(body).join(', ')]);
     if (body.action) {
       return doPostJobBoard(e);
+    }
+    if (body.object === 'whatsapp_business_account' ||
+        body.entry ||
+        body.messages ||
+        body.statuses) {
+      return doPostWABot(e);
     }
     return ContentService
       .createTextOutput('ok')
