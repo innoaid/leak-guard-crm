@@ -345,11 +345,17 @@ function syncQualifiedLeads() {
   // Read source data + check for changes via hash
   var srcData = srcSheet.getDataRange().getValues();
   var props = PropertiesService.getScriptProperties();
+  Logger.log('syncQualifiedLeads start — source rows: ' + (srcData.length - 1));
   var currentHash = hashData(srcData);
   var lastHash = props.getProperty('LAST_DATA_HASH') || '';
-  if (currentHash === lastHash) {
-    Logger.log('No changes detected in ChatHero sheet, skipping sync.');
+  var lastSyncTime = parseInt(props.getProperty('LAST_SYNC_TIME') || '0');
+  var minutesSinceSync = lastSyncTime ? (Date.now() - lastSyncTime) / 60000 : Infinity;
+  if (currentHash === lastHash && minutesSinceSync < 30) {
+    Logger.log('No changes (last sync ' + Math.round(minutesSinceSync) + ' min ago), skipping.');
     return;
+  }
+  if (currentHash === lastHash) {
+    Logger.log('Hash unchanged but ' + Math.round(minutesSinceSync) + ' min since last sync — forcing full sync.');
   }
 
   var destData = dest.getDataRange().getValues();
@@ -411,6 +417,14 @@ function syncQualifiedLeads() {
       // Upsert: if phone already exists, update ChatHero fields on existing row
       if (phone && existingPhones[phone]) {
         var phoneRow = existingPhones[phone];
+        var existingRow = destData[phoneRow - 1] || [];
+        // Skip if existing row already has matching ChatHero data
+        if (String(existingRow[3] || '') === String(problem) &&
+            String(existingRow[5] || '') === String(address) &&
+            String(existingRow[13] || '') === String(convId)) {
+          skipCount++;
+          continue;
+        }
         // Update ChatHero-sourced cols only — never touch Status, Assigned To, Quotation, Job Outcome, Notes
         dest.getRange(phoneRow, 2, 1, 7).setValues([[phone, name, problem, state, address, slabSize, slot]]);
         dest.getRange(phoneRow, 14, 1, 5).setValues([[convId, chStatus, chatUrl, 'ChatHero', now]]);
@@ -493,12 +507,13 @@ function syncQualifiedLeads() {
     if (i % 50 === 0) Utilities.sleep(100);
   }
 
-  // Save hash after successful sync
+  // Save hash and timestamp after successful sync
   props.setProperty('LAST_DATA_HASH', currentHash);
+  props.setProperty('LAST_SYNC_TIME', String(Date.now()));
 
   // Log this sync run
   logRun(ss, newCount, updateCount, skipCount);
-  Logger.log('Sync complete — New: ' + newCount + ' | Updated: ' + updateCount + ' | Skipped: ' + skipCount);
+  Logger.log('Sync complete: ' + newCount + ' inserted, ' + updateCount + ' updated, ' + skipCount + ' skipped');
 
  } catch(e) {
     if (e.message && e.message.indexOf('Service Spreadsheets') !== -1) {
