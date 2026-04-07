@@ -258,7 +258,7 @@ var DATE_AUTO=['Quotation Sent','Job Complete'];
 var DATE_COL_MAP={'Site Visit Confirmed':19,'Quotation Sent':20,'I.Date Confirmed':21,'Job Complete':22};
 var moveTargetIdx=null,moveTargetStatus=null;
 var dragIdx=null,dragOriginStatus=null,dragTargetStatus=null;
-var WEBAPP_URL='https://script.google.com/macros/s/AKfycbzDEUnpwOcpP2m320qK9oFv5rK8m4AZLynooSsknk-ALdkfd8PUdQq9qiC9Kfx3Fp6hPQ/exec';
+var WEBAPP_URL='https://script.google.com/macros/s/AKfycbw17M1KRr7-JVlSMmese2PIHzZfx9uEWlbpxrFU4ersR2xGkRPk21KHc6wpq8DuPZ1tUg/exec';
 
 // ═══ DRAG AND DROP ═══
 function dragStart(ev,idx){dragIdx=idx;dragOriginStatus=D[idx].ss;ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',String(idx));var el=ev.currentTarget;if(el)el.classList.add('dragging')}
