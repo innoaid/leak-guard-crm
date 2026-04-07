@@ -299,6 +299,17 @@ function executeAction(action) {
       action.phone, action.status, action.date||null);
     if (action.status === 'Site Visit Confirmed' &&
         action.date) {
+      Logger.log('Calendar attempt - phone: ' +
+        action.phone + ' date: ' + action.date);
+
+      var calDate = action.date;
+      // If not ISO format, try to parse naturally
+      if (calDate && calDate.indexOf('T') === -1) {
+        var d = new Date(calDate);
+        if (!isNaN(d)) calDate = d.toISOString();
+      }
+      Logger.log('Normalized date: ' + calDate);
+
       var data = getSheetData();
       var lead = data.find(function(r){
         return String(r.phone).trim() ===
@@ -312,7 +323,7 @@ function executeAction(action) {
           lead.fullAddress,
           lead.problemType,
           lead.slabSize,
-          action.date
+          calDate
         );
         Logger.log('Calendar result: ' +
           JSON.stringify(result));
@@ -343,19 +354,20 @@ function updateLeadStatus(phone, status, dateVal) {
   var ss = SpreadsheetApp.openById(BOT_CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(BOT_CONFIG.SHEET_NAME);
   var rows = sheet.getDataRange().getValues();
+  // 0-based column indices; +1 applied at write time for getRange
   var DATE_COL_MAP = {
-    'Site Visit Confirmed': 20,
-    'Quotation Sent':       21,
-    'I.Date Confirmed':     22,
-    'Job Complete':         23
+    'Site Visit Confirmed': 19,  // col T = dateApptConf
+    'Quotation Sent':       20,  // col U = dateQTIssued
+    'I.Date Confirmed':     21,  // col V = dateConfirmed
+    'Job Complete':         22   // col W = dateInstalled
   };
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][1]).trim() === String(phone).trim()) {
       sheet.getRange(i+1, 9).setValue(status);
       sheet.getRange(i+1, 24).setValue(new Date());
       sheet.getRange(i+1, 25).setValue('WA Bot');
-      if (dateVal && DATE_COL_MAP[status]) {
-        sheet.getRange(i+1, DATE_COL_MAP[status])
+      if (dateVal && DATE_COL_MAP[status] !== undefined) {
+        sheet.getRange(i+1, DATE_COL_MAP[status] + 1)
           .setValue(new Date(dateVal));
       }
       Logger.log('Updated ' + phone + ' to ' + status);
