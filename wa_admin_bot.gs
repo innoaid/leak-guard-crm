@@ -214,16 +214,25 @@ function processAdminMessage(senderPhone, msgText) {
         ' | ' + r.status +
         ' | ' + r.location;
     }).join('\n') + '\n\n' +
+    'IMPORTANT RULES:\n' +
+    '- Only perform ONE action per message\n' +
+    '- After performing an action, STOP and wait for next instruction\n' +
+    '- Never chain multiple status updates automatically\n' +
+    '- For status updates, always confirm what you did and ask if anything else needed\n' +
+    '- Never assume what the next action should be\n' +
+    '- If asked to move to next phase, move ONE step only then stop\n\n' +
     'AVAILABLE ACTIONS:\n' +
     '1. Answer questions about leads, appointments, counts\n' +
-    '2. To update a lead status, add at END of reply:\n' +
+    '2. To update ONE lead status, add at END of reply:\n' +
     'ACTION:{"type":"updateStatus","phone":"60XXXXXXXXX",' +
     '"status":"New Status","date":"2026-04-08T10:00:00"}\n' +
     'Only include date if status requires it.\n' +
     'Date-required: Site Visit Confirmed, I.Date Confirmed\n' +
     'Auto-date: Quotation Sent, Job Complete\n' +
     '3. To send reminders:\n' +
-    'ACTION:{"type":"sendReminders","phones":["60XXX","60XXX"]}\n\n' +
+    'ACTION:{"type":"sendReminders","phones":["60XXX"]}\n' +
+    'NEVER include more than ONE ACTION per response.\n' +
+    'NEVER perform follow-up actions automatically.\n\n' +
     'FULL LEAD LIST:\n' +
     data.slice(0,200).map(function(r){
       return r.phone + '|' + (r.name||'') +
