@@ -22,7 +22,7 @@
 // Change these values to match your setup.
 
 const CONFIG = {
-  ACTIVE:           false,                                          // Set to true to enable auto-sync
+  ACTIVE:           true,                                           // Set to true to enable auto-sync
   START_DATE:       '2026-01-01',                                   // Only sync leads created on or after this date
   LOOKBACK_DAYS:    365,                                            // Re-check existing leads within this window
   SOURCE_SHEET_ID:  '1XXHMfXfj2UMgB39RSufqDtGHNPzuse18NadCLz-FNbA', // ChatHero Google Sheet ID
@@ -231,13 +231,10 @@ function setupLeakGuardSheet() {
 // Existing leads: only ChatHero fields are updated. User columns (Status,
 // Assigned To, Quotation RM, Job Outcome, Notes) are NEVER overwritten.
 
-function hashData(rows) {
-  return rows.map(function(r){ return r.join('|'); }).join('\n').length + '_' + rows.length;
-}
-
-function resetHash() {
-  PropertiesService.getScriptProperties().deleteProperty('LAST_DATA_HASH');
-  Logger.log('LAST_DATA_HASH cleared. Next sync will do a full scan.');
+function resetSyncTime() {
+  PropertiesService.getScriptProperties()
+    .deleteProperty('LAST_SYNC_TIME');
+  Logger.log('Sync time reset. Next run will process all rows.');
 }
 
 // ================================================================
@@ -342,20 +339,30 @@ function syncQualifiedLeads() {
 
   ensureLogTab(ss);
 
-  // Read source data + check for changes via hash
+  // Read source data + filter for rows updated since last sync (timestamp-based)
   var srcData = srcSheet.getDataRange().getValues();
+  var sourceRows = srcData.slice(1);
   var props = PropertiesService.getScriptProperties();
-  Logger.log('syncQualifiedLeads start — source rows: ' + (srcData.length - 1));
-  var currentHash = hashData(srcData);
-  var lastHash = props.getProperty('LAST_DATA_HASH') || '';
-  var lastSyncTime = parseInt(props.getProperty('LAST_SYNC_TIME') || '0');
-  var minutesSinceSync = lastSyncTime ? (Date.now() - lastSyncTime) / 60000 : Infinity;
-  if (currentHash === lastHash && minutesSinceSync < 30) {
-    Logger.log('No changes (last sync ' + Math.round(minutesSinceSync) + ' min ago), skipping.');
+  var lastSyncTime = props.getProperty('LAST_SYNC_TIME');
+  var lastSync = lastSyncTime ? new Date(lastSyncTime) : new Date('2026-01-01');
+  Logger.log('Last sync time: ' + lastSync);
+
+  // Filter to only rows updated since last sync
+  // Column R (index 17) is the ChatHero timestamp
+  var rowsToProcess = sourceRows.filter(function(row) {
+    var ts = row[17];
+    if (!ts) return false;
+    var rowTime = new Date(ts);
+    return !isNaN(rowTime) && rowTime > lastSync;
+  });
+
+  Logger.log('Total source rows: ' + sourceRows.length +
+    ' | Rows to process: ' + rowsToProcess.length);
+
+  // If no new rows, exit early
+  if (rowsToProcess.length === 0) {
+    Logger.log('No new or updated rows since last sync. Skipping.');
     return;
-  }
-  if (currentHash === lastHash) {
-    Logger.log('Hash unchanged but ' + Math.round(minutesSinceSync) + ' min since last sync — forcing full sync.');
   }
 
   var destData = dest.getDataRange().getValues();
@@ -377,9 +384,9 @@ function syncQualifiedLeads() {
 
   var newCount = 0, updateCount = 0, skipCount = 0;
 
-  // Process each ChatHero row
-  for (var i = 1; i < srcData.length; i++) {
-    var row = srcData[i];
+  // Process only the filtered rows (updated since last sync)
+  for (var i = 0; i < rowsToProcess.length; i++) {
+    var row = rowsToProcess[i];
     var convId     = String(row[CH.CONV_ID] || '').trim();
     var phone      = String(row[CH.PHONE] || '').trim();
     var address    = String(row[CH.ADDRESS] || '').trim();
@@ -507,13 +514,12 @@ function syncQualifiedLeads() {
     if (i % 50 === 0) Utilities.sleep(100);
   }
 
-  // Save hash and timestamp after successful sync
-  props.setProperty('LAST_DATA_HASH', currentHash);
-  props.setProperty('LAST_SYNC_TIME', String(Date.now()));
+  // Save sync time after successful sync
+  props.setProperty('LAST_SYNC_TIME', new Date().toISOString());
 
   // Log this sync run
   logRun(ss, newCount, updateCount, skipCount);
-  Logger.log('Sync complete: ' + newCount + ' inserted, ' + updateCount + ' updated, ' + skipCount + ' skipped');
+  Logger.log('Sync complete: ' + newCount + ' inserted, ' + updateCount + ' updated, ' + skipCount + ' skipped.');
 
  } catch(e) {
     if (e.message && e.message.indexOf('Service Spreadsheets') !== -1) {
