@@ -126,6 +126,17 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .mc-btn-jump{padding:6px 12px;background:#F3F4F6;color:#374151;border:none;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer}
 .mc-empty{text-align:center;padding:32px 16px;color:#9CA3AF;font-size:12px}
 
+.tf{padding:3px 9px;border-radius:12px;font-size:11px;font-weight:500;cursor:pointer;border:1.5px solid transparent;white-space:nowrap;flex-shrink:0}
+.tf.active{border-color:currentColor}
+.cd-tags{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:5px}
+.cd-tag{font-size:9px;font-weight:500;padding:1px 6px;border-radius:8px}
+.cd.cd-tagged{border-color:#F59E0B;border-width:1.5px}
+.btn-tag{font-size:9px;padding:2px 7px;border-radius:5px;border:0.5px solid #E5E7EB;background:#F9FAFB;color:#6B7280;cursor:pointer}
+.btn-tag:hover{background:#F3F4F6}
+.mc.mc-tagged{border-color:#F59E0B;border-width:1.5px}
+#mob-tag-strip::-webkit-scrollbar{display:none}
+#mob-tabs::-webkit-scrollbar{display:none}
+#tag-filter-strip::-webkit-scrollbar{display:none}
 #mob-view{display:none}
 @media(max-width:700px){
   #pg-kanban .ctrl,#pg-kanban .kb,#bulkBar{display:none!important}
@@ -152,6 +163,15 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <button onclick="bulkMove()" style="padding:5px 14px;background:#1D9E75;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer">Move</button>
   <button onclick="clearSelection()" style="padding:5px 10px;background:rgba(255,255,255,0.1);color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer">Cancel</button>
 </div>
+<div id="tag-filter-strip" style="display:flex;overflow-x:auto;padding:6px 14px;gap:5px;background:#fff;border-bottom:0.5px solid #E5E7EB;align-items:center;scrollbar-width:none">
+  <span style="font-size:11px;color:#6B7280;white-space:nowrap;flex-shrink:0">Tags:</span>
+  <div class="tf" data-tag="Receipt" style="background:#FEF3C7;color:#92400E" onclick="setTagFilter(this,'Receipt')">Receipt</div>
+  <div class="tf" data-tag="Complaint" style="background:#FEE2E2;color:#991B1B" onclick="setTagFilter(this,'Complaint')">Complaint</div>
+  <div class="tf" data-tag="Question" style="background:#EEF2FF;color:#3730A3" onclick="setTagFilter(this,'Question')">Question</div>
+  <div class="tf" data-tag="Price Nego" style="background:#F0FDF4;color:#166534" onclick="setTagFilter(this,'Price Nego')">Price Nego</div>
+  <div class="tf" data-tag="Special Req" style="background:#FAF5FF;color:#6B21A8" onclick="setTagFilter(this,'Special Req')">Special Req</div>
+  <div class="tf active" data-tag="" style="background:#F1F5F9;color:#475569" onclick="setTagFilter(this,'')">All</div>
+</div>
 <div class="kb" id="kB"></div>
 
 <!-- MOBILE VIEW -->
@@ -159,7 +179,16 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <div style="padding:8px 12px;background:#fff;border-bottom:.5px solid #E5E7EB">
     <input type="search" id="mob-search" placeholder="Search name, phone, location..." oninput="renderMobCards()" style="width:100%;padding:6px 10px;border:.5px solid #D1D5DB;border-radius:6px;font-size:12px;font-family:inherit;background:#F9FAFB;color:#111">
   </div>
-  <div id="mob-tabs" style="display:flex;overflow-x:auto;padding:8px 12px;gap:6px;background:#fff;border-bottom:.5px solid #E5E7EB;scrollbar-width:none"></div>
+  <div id="mob-tag-strip" style="display:flex;overflow-x:auto;padding:6px 12px;gap:5px;background:#fff;border-bottom:0.5px solid #E5E7EB;-webkit-overflow-scrolling:touch;scrollbar-width:none;align-items:center">
+    <span style="font-size:11px;color:#6B7280;white-space:nowrap;flex-shrink:0">Tags:</span>
+    <div class="tf" data-tag="Receipt" style="background:#FEF3C7;color:#92400E" onclick="setMobTagFilter(this,'Receipt')">Receipt</div>
+    <div class="tf" data-tag="Complaint" style="background:#FEE2E2;color:#991B1B" onclick="setMobTagFilter(this,'Complaint')">Complaint</div>
+    <div class="tf" data-tag="Question" style="background:#EEF2FF;color:#3730A3" onclick="setMobTagFilter(this,'Question')">Question</div>
+    <div class="tf" data-tag="Price Nego" style="background:#F0FDF4;color:#166534" onclick="setMobTagFilter(this,'Price Nego')">Price Nego</div>
+    <div class="tf" data-tag="Special Req" style="background:#FAF5FF;color:#6B21A8" onclick="setMobTagFilter(this,'Special Req')">Special Req</div>
+    <div class="tf active" data-tag="" style="background:#F1F5F9;color:#475569" onclick="setMobTagFilter(this,'')">All</div>
+  </div>
+  <div id="mob-tabs" style="display:flex;overflow-x:auto;padding:8px 12px;gap:6px;background:#fff;border-bottom:.5px solid #E5E7EB;-webkit-overflow-scrolling:touch;scrollbar-width:none"></div>
   <div id="mob-bulk" style="display:none;background:#2D2A6E;color:#fff;padding:8px 12px;align-items:center;gap:8px">
     <span id="mob-bulk-count" style="font-size:11px;font-weight:500;flex:1"></span>
     <select id="mob-bulk-sel" style="padding:4px 8px;border-radius:6px;font-size:11px;border:none;background:rgba(255,255,255,0.15);color:#fff;font-family:inherit"><option value="">Move to...</option><option>New Lead</option><option>Pending Site Visit</option><option>Site Visit Confirmed</option><option>Pending QT</option><option>Quotation Sent</option><option>Follow Up</option><option>Pending I.Date</option><option>I.Date Confirmed</option><option>Job In Progress</option><option>Job Complete</option><option>Receipt Sent</option><option>Cold Lead</option><option>Lost</option><option>Rejected</option><option>Out of Area</option><option>Human Handoff</option></select>
@@ -233,7 +262,7 @@ async function load(){
       ts:cv(r,0),ph:cv(r,1),nm:cv(r,2),pr:cv(r,3),lo:cv(r,4),ad:cv(r,5),
       sl:cv(r,6),st:cv(r,7),ss:cv(r,8),at:cv(r,9),qt:cv(r,10),jo:cv(r,11),
       no:cv(r,12),ci:cv(r,13),dli:cv(r,18,1),dac:cv(r,19,1),dqi:cv(r,20,1),
-      dc:cv(r,21,1),din:cv(r,22,1),sca:cv(r,23,1)}});
+      dc:cv(r,21,1),din:cv(r,22,1),sca:cv(r,23,1),tags:cv(r,26)}});
     $('ldEl').style.display='none';
     $('upd').textContent='Updated: '+new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit'});
     bAD();if(!$('mS').options.length)iMP();rAll();
@@ -254,6 +283,12 @@ function clearSelection(){selectedCards.clear();document.querySelectorAll('.cd-c
 
 // Move modal state
 var DATE_REQUIRED=['Site Visit Confirmed','I.Date Confirmed'];
+var TAG_COLORS={'Receipt':'background:#FEF3C7;color:#92400E','Complaint':'background:#FEE2E2;color:#991B1B','Question':'background:#EEF2FF;color:#3730A3','Price Nego':'background:#F0FDF4;color:#166534','Special Req':'background:#FAF5FF;color:#6B21A8'};
+var TAG_DEFS=[{name:'Receipt',bg:'#FEF3C7',color:'#92400E'},{name:'Complaint',bg:'#FEE2E2',color:'#991B1B'},{name:'Question',bg:'#EEF2FF',color:'#3730A3'},{name:'Price Nego',bg:'#F0FDF4',color:'#166534'},{name:'Special Req',bg:'#FAF5FF',color:'#6B21A8'}];
+var activeTagFilter='',mobActiveTagFilter='',tagTargetIdx=null,selectedTags=[];
+function setTagFilter(el,tag){activeTagFilter=tag;document.querySelectorAll('#tag-filter-strip .tf').forEach(function(t){t.classList.remove('active')});el.classList.add('active');rK()}
+function setMobTagFilter(el,tag){mobActiveTagFilter=tag;document.querySelectorAll('#mob-tag-strip .tf').forEach(function(t){t.classList.remove('active')});el.classList.add('active');renderMobTabs();renderMobCards()}
+function leadHasTag(l,tag){if(!tag)return true;var tags=(l.tags||'').split(',').map(function(t){return t.trim()});return tags.indexOf(tag)!==-1}
 var DATE_AUTO=['Quotation Sent','Job Complete'];
 var DATE_COL_MAP={'Site Visit Confirmed':19,'Quotation Sent':20,'I.Date Confirmed':21,'Job Complete':22};
 var moveTargetIdx=null,moveTargetStatus=null;
@@ -330,20 +365,25 @@ async function bulkMove(){
 
 function rK(){
   var q=($('kS').value||'').toLowerCase().trim(),af=$('kA').value;
-  var f=D.filter(function(d){if(af&&d.at!==af)return!1;if(q&&!(d.nm+' '+d.ph+' '+d.lo+' '+d.pr+' '+d.ad).toLowerCase().includes(q))return!1;return!0});
+  var f=D.filter(function(d){if(af&&d.at!==af)return!1;if(q&&!(d.nm+' '+d.ph+' '+d.lo+' '+d.pr+' '+d.ad).toLowerCase().includes(q))return!1;if(!leadHasTag(d,activeTagFilter))return!1;return!0});
   $('kB').innerHTML=KC.map(function(col){
     var it=f.filter(function(d){return d.ss===col.s});
     return'<div class="kc"><div class="kh" style="background:'+col.bg+';color:'+col.fg+'">'+col.s+' <span class="kn" style="background:'+col.bb+';color:'+col.bf+'">'+it.length+'</span></div><div class="kb-body" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropCard(event,\''+col.s.replace(/'/g,"\\'")+'\')">'+
     (it.length?it.map(function(d){var i=D.indexOf(d);
       var chk=selectedCards.has(i)?' checked':'';
-      return'<div class="cd" data-idx="'+i+'" draggable="true" ondragstart="dragStart(event,'+i+')" ondragend="dragEnd(event)" onclick="oM('+i+')">'+
+      var tagList=(d.tags||'').split(',').map(function(t){return t.trim()}).filter(Boolean);
+      var tagsHTML=tagList.length?'<div class="cd-tags">'+tagList.map(function(t){var s=TAG_COLORS[t]||'background:#F1F5F9;color:#475569';return'<span class="cd-tag" style="'+s+'">'+t+'</span>'}).join('')+'</div>':'';
+      var cardClass='cd'+(tagList.length?' cd-tagged':'');
+      return'<div class="'+cardClass+'" data-idx="'+i+'" draggable="true" ondragstart="dragStart(event,'+i+')" ondragend="dragEnd(event)" onclick="oM('+i+')">'+
         '<input type="checkbox" class="cd-cb"'+chk+' onclick="event.stopPropagation();toggleSelect('+i+')" style="position:absolute;top:8px;right:8px;width:14px;height:14px;cursor:pointer;accent-color:#3B82F6">'+
         '<div class="cd-n">'+(d.nm||d.ph||'—')+'</div>'+
         (d.pr?'<div class="cd-prob">'+d.pr+'</div>':'')+
         '<div class="cd-loc">'+(d.lo||'—')+(d.sl?' · '+d.sl+' sqft':'')+'</div>'+
         (d.st?'<div class="cd-slot">'+fd(d.st)+'</div>':'')+
+        tagsHTML+
         '<div class="cd-bot">'+
           '<span class="cd-b '+bCls(d.at)+'">'+(d.at||'Unassigned')+'</span>'+
+          '<button class="btn-tag" onclick="event.stopPropagation();openTagModal('+i+')">Tag</button>'+
           (d.ph?'<a class="cd-ph" href="tel:'+d.ph+'" onclick="event.stopPropagation()">'+d.ph+'</a>':'')+
         '</div></div>'
     }).join(''):'<div class="kc-e">No jobs<br><span style="font-size:9px;color:#D1D5DB">drag cards here</span></div>')+'</div></div>';
@@ -452,7 +492,7 @@ function mobBadgeStyle(at){
 function renderMobTabs(){
   var el=$('mob-tabs');if(!el)return;
   el.innerHTML=KC.map(function(st){
-    var count=D.filter(function(l){return l.ss===st.s}).length;
+    var count=D.filter(function(l){return l.ss===st.s&&leadHasTag(l,mobActiveTagFilter)}).length;
     var isAct=st.s===mobActiveStatus;
     return'<div style="white-space:nowrap;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;flex-shrink:0;border:.5px solid '+st.fg+';background:'+(isAct?st.bg:'transparent')+';color:'+st.fg+'" onclick="setMobStatus(\''+st.s.replace(/'/g,"\\'")+'\')">'+st.s+' ('+count+')</div>';
   }).join('');
@@ -466,6 +506,7 @@ function renderMobCards(){
   var filtered=D.filter(function(l){
     if(l.ss!==mobActiveStatus)return false;
     if(q&&![l.nm,l.ph,l.lo,l.pr,l.ad].join(' ').toLowerCase().includes(q))return false;
+    if(!leadHasTag(l,mobActiveTagFilter))return false;
     return true;
   }).sort(function(a,b){return new Date(b.sca||b.ts||0)-new Date(a.sca||a.ts||0)});
 
@@ -477,13 +518,18 @@ function renderMobCards(){
   el.innerHTML=filtered.map(function(l){
     var idx=D.indexOf(l),isExp=mobExpanded.has(idx),isSel=mobSelected.has(idx);
     var nextSt=statusList[statusList.indexOf(l.ss)+1]||null;
-    return'<div class="mc"><div class="mc-head" onclick="mobToggleCard('+idx+')">'+
+    var tagList=(l.tags||'').split(',').map(function(t){return t.trim()}).filter(Boolean);
+    var mcClass='mc'+(tagList.length?' mc-tagged':'');
+    var dot=tagList.length?'<span style="width:7px;height:7px;border-radius:50%;background:#F59E0B;flex-shrink:0;margin-left:2px"></span>':'';
+    var tagsRow=tagList.length?'<div class="mc-row" style="align-items:center"><span class="mc-lbl">Tags</span><div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end">'+tagList.map(function(t){var s=TAG_COLORS[t]||'background:#F1F5F9;color:#475569';return'<span style="font-size:9px;font-weight:500;padding:1px 6px;border-radius:8px;'+s+'">'+t+'</span>'}).join('')+'</div></div>':'';
+    return'<div class="'+mcClass+'"><div class="mc-head" onclick="mobToggleCard('+idx+')">'+
       '<div class="mc-cb'+(isSel?' chk':'')+'" onclick="event.stopPropagation();mobToggleSel('+idx+')"></div>'+
       '<div class="mc-accent" style="background:'+color+'"></div>'+
       '<div class="mc-info"><div class="mc-name">'+(l.nm||l.ph||'—')+'</div><div class="mc-sub">'+(l.pr||'—')+'</div></div>'+
       '<div class="mc-right"><span class="mc-ph">'+(l.ph||'')+'</span><span class="mc-bdg" style="'+mobBadgeStyle(l.at)+'">'+(l.at||'Unassigned')+'</span></div>'+
-      '<span class="mc-chev'+(isExp?' open':'')+'">▼</span></div>'+
+      '<span class="mc-chev'+(isExp?' open':'')+'">▼</span>'+dot+'</div>'+
       '<div class="mc-body'+(isExp?' open':'')+'">'+
+        tagsRow+
         '<div class="mc-row"><span class="mc-lbl">Location</span><span class="mc-val">'+(l.lo||'—')+'</span></div>'+
         '<div class="mc-row" style="align-items:flex-start"><span class="mc-lbl">Address</span><span class="mc-val addr">'+(l.ad||'—')+'</span></div>'+
         (l.st?'<div class="mc-row"><span class="mc-lbl">Slot</span><span class="mc-val" style="color:#92400E">'+fd(l.st)+'</span></div>':'')+
@@ -493,6 +539,7 @@ function renderMobCards(){
         '<div class="mc-acts">'+
           (nextSt?'<button class="mc-btn-next" onclick="event.stopPropagation();initMove('+idx+',\''+nextSt.replace(/'/g,"\\'")+'\')">Next</button>':'')+
           '<button class="mc-btn-jump" onclick="event.stopPropagation();initJump('+idx+')">Jump ▾</button>'+
+          '<button style="padding:6px 10px;background:#FEF3C7;color:#92400E;border:0.5px solid #FDE68A;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer" onclick="event.stopPropagation();openTagModal('+idx+')">Tag</button>'+
         '</div></div></div>';
   }).join('');
 }
@@ -526,7 +573,58 @@ async function mobBulkMove(){
   mobClearSel();renderMobTabs();renderMobCards();
 }
 
+function openTagModal(idx){
+  tagTargetIdx=idx;
+  var d=D[idx];
+  document.getElementById('tagModalTitle').textContent='Tags — '+(d.nm||d.ph||'—');
+  selectedTags=(d.tags||'').split(',').map(function(t){return t.trim()}).filter(Boolean);
+  var opts=document.getElementById('tagOptions');
+  opts.innerHTML=TAG_DEFS.map(function(t){
+    var sel=selectedTags.indexOf(t.name)!==-1;
+    return'<div onclick="toggleTag(this,\''+t.name+'\')" style="padding:5px 10px;border-radius:8px;font-size:11px;font-weight:500;cursor:pointer;border:1.5px solid '+(sel?t.color:'transparent')+';background:'+t.bg+';color:'+t.color+'">'+t.name+'</div>';
+  }).join('');
+  document.getElementById('tagOverlay').style.display='flex';
+}
+function toggleTag(el,tagName){
+  var idx=selectedTags.indexOf(tagName);
+  if(idx===-1){selectedTags.push(tagName);el.style.borderColor=el.style.color}
+  else{selectedTags.splice(idx,1);el.style.borderColor='transparent'}
+}
+function closeTagModal(){
+  document.getElementById('tagOverlay').style.display='none';
+  tagTargetIdx=null;selectedTags=[];
+}
+async function saveTagsToSheet(){
+  if(tagTargetIdx===null)return;
+  var d=D[tagTargetIdx];
+  var tagStr=selectedTags.join(',');
+  var payload={action:'updateTags',phone:d.ph,tags:tagStr};
+  try{
+    var res=await fetch(WEBAPP_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+    var j=await res.json();
+    if(j.status==='ok'){d.tags=tagStr;closeTagModal();rK();renderMobCards()}
+    else{alert('Error: '+(j.message||'Failed'))}
+  }catch(e){alert('Network error. Please try again.')}
+}
+
 load();setInterval(load,60000);
 </script>
+<div id="tagOverlay" style="display:none;background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:300;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:10px;width:100%;max-width:320px;overflow:hidden">
+    <div style="padding:12px 16px;border-bottom:0.5px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center">
+      <span id="tagModalTitle" style="font-size:13px;font-weight:500;color:#111"></span>
+      <button onclick="closeTagModal()" style="background:none;border:none;color:#9CA3AF;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:500;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Select tags</div>
+      <div id="tagOptions" style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px"></div>
+      <div style="font-size:10px;color:#9CA3AF">Multiple tags allowed. Click to toggle.</div>
+    </div>
+    <div style="padding:10px 16px;border-top:0.5px solid #E5E7EB;display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeTagModal()" style="padding:6px 12px;background:#F3F4F6;color:#374151;border:none;border-radius:6px;font-size:12px;cursor:pointer">Cancel</button>
+      <button onclick="saveTagsToSheet()" style="padding:6px 16px;background:#1D9E75;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer">Save</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

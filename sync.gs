@@ -232,6 +232,14 @@ function setupLeakGuardSheet() {
 // Existing leads: only ChatHero fields are updated. User columns (Status,
 // Assigned To, Quotation RM, Job Outcome, Notes) are NEVER overwritten.
 
+function addTagsColumn() {
+  var ss = SpreadsheetApp.openById(
+    '17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE');
+  var sheet = ss.getSheetByName('Leak Guard Leads');
+  sheet.getRange(1, 27).setValue('Tags');
+  Logger.log('Tags column added to col AA');
+}
+
 function resetSyncTime() {
   PropertiesService.getScriptProperties()
     .deleteProperty('LAST_SYNC_TIME');
@@ -270,6 +278,32 @@ function doPost(e) {
 function doPostJobBoard(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+
+    if (data.action === 'updateTags') {
+      var ss2 = SpreadsheetApp.openById(
+        '17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE');
+      var sheet2 = ss2.getSheetByName('Leak Guard Leads');
+      var rows2 = sheet2.getDataRange().getValues();
+      var rowIdx2 = -1;
+      for (var i2 = 1; i2 < rows2.length; i2++) {
+        if (String(rows2[i2][1]).trim() ===
+            String(data.phone).trim()) {
+          rowIdx2 = i2 + 1;
+          break;
+        }
+      }
+      if (rowIdx2 === -1) {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            status:'error',message:'Lead not found'}))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      sheet2.getRange(rowIdx2, 27).setValue(data.tags||'');
+      return ContentService
+        .createTextOutput(JSON.stringify({status:'ok'}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action !== 'updateStatus') throw new Error('Unknown action');
 
     var ss = SpreadsheetApp.openById('17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE');

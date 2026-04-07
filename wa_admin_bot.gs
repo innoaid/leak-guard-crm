@@ -124,7 +124,8 @@ function getSheetData() {
       dateConfirmed:   row[21] ? String(row[21]) : '',
       dateInstalled:   row[22] ? String(row[22]) : '',
       statusChangedAt: row[23] ? String(row[23]) : '',
-      changedBy:       row[24] ? String(row[24]) : ''
+      changedBy:       row[24] ? String(row[24]) : '',
+      tags:            row[26] ? String(row[26]).trim() : ''
     };
   }).filter(function(r){ return r.phone || r.name; });
 }
@@ -149,9 +150,14 @@ function getDataSummary(data) {
     }
   });
 
+  var taggedLeads = data.filter(function(r){
+    return r.tags && r.tags.trim() !== '';
+  });
+
   return {
     total: data.length,
     statusCounts: statusCounts,
+    taggedLeads: taggedLeads,
     todayAppts: data.filter(function(r){
       return isDate(r.dateApptConf, todayStr);
     }),
@@ -248,7 +254,21 @@ function processAdminMessage(senderPhone, msgText) {
     'REMINDER: ACTION:{"type":"sendReminders",' +
     '"phones":["60XX"]}\n' +
     'NEVER include more than one ACTION per reply.\n' +
-    'NEVER perform any action without explicit instruction.\n';
+    'NEVER perform any action without explicit instruction.\n\n' +
+    'TAGGED LEADS (' + summary.taggedLeads.length + '):\n' +
+    (summary.taggedLeads.length ? summary.taggedLeads.map(function(r){
+      return '- ' + (r.name||r.phone) +
+        ' | ' + r.status +
+        ' | Tags: ' + r.tags +
+        ' | ' + r.phone;
+    }).join('\n') : 'None') + '\n\n' +
+    'TAG MANAGEMENT:\n' +
+    'Valid tags: Receipt, Complaint, Question, ' +
+    'Price Nego, Special Req\n' +
+    'Multiple tags separated by comma.\n' +
+    'ACTION to update tags: ACTION:{"type":"updateTags",' +
+    '"phone":"60XX","tags":"Receipt,Question"}\n' +
+    'To clear all tags send empty string: "tags":""\n';
 
   var response = callClaude(systemPrompt, msgText);
 
@@ -334,6 +354,20 @@ function executeAction(action) {
     action.phones.forEach(function(phone){
       sendReminderToClient(phone);
     });
+  } else if (action.type === 'updateTags') {
+    var ss3 = SpreadsheetApp.openById(BOT_CONFIG.SHEET_ID);
+    var sheet3 = ss3.getSheetByName(BOT_CONFIG.SHEET_NAME);
+    var rows3 = sheet3.getDataRange().getValues();
+    for (var i3 = 1; i3 < rows3.length; i3++) {
+      if (String(rows3[i3][1]).trim() ===
+          String(action.phone).trim()) {
+        sheet3.getRange(i3+1, 27).setValue(action.tags||'');
+        return 'Tags updated for ' +
+          (rows3[i3][2]||action.phone) + ': ' +
+          (action.tags||'cleared');
+      }
+    }
+    return 'Lead not found: ' + action.phone;
   }
 }
 
