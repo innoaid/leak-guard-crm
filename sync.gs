@@ -248,6 +248,26 @@ function resetHash() {
 
 function doPost(e) {
   try {
+    var body = JSON.parse(e.postData.contents);
+    if (body.messages || body.statuses || body.contacts) {
+      return doPostWABot(e);
+    }
+    if (body.action) {
+      return doPostJobBoard(e);
+    }
+    return ContentService
+      .createTextOutput('ok')
+      .setMimeType(ContentService.MimeType.TEXT);
+  } catch(err) {
+    Logger.log('doPost router error: ' + err.toString());
+    return ContentService
+      .createTextOutput('ok')
+      .setMimeType(ContentService.MimeType.TEXT);
+  }
+}
+
+function doPostJobBoard(e) {
+  try {
     var data = JSON.parse(e.postData.contents);
     if (data.action !== 'updateStatus') throw new Error('Unknown action');
 

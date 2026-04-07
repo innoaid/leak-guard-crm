@@ -30,7 +30,7 @@ function setupBotKeys() {
   Logger.log('Keys saved successfully.');
 }
 
-function doPost(e) {
+function doPostWABot(e) {
   try {
     var body = JSON.parse(e.postData.contents);
     if (body.statuses) {
