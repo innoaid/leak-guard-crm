@@ -291,11 +291,112 @@ function doPostJobBoard(e) {
       sheet.getRange(rowIdx, data.dateCol + 1).setValue(new Date(data.dateVal));
     }
 
+    if (data.status === 'Site Visit Confirmed' &&
+        data.dateVal) {
+      var lead = rows[rowIdx - 1];
+      createLGCalendarEvent(
+        lead[2],
+        lead[1],
+        lead[4],
+        lead[5],
+        lead[3],
+        lead[6],
+        data.dateVal
+      );
+    }
+
     return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
       .setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
     return ContentService.createTextOutput(JSON.stringify({status:'error',message:err.toString()}))
       .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ================================================================
+// Google Calendar integration — LG Appointments
+// ================================================================
+
+function createLGCalendarEvent(name, phone, location,
+  fullAddress, problemType, slabSize, dateTimeStr) {
+  try {
+    var calendars = CalendarApp
+      .getCalendarsByName('LG Appointments');
+    var cal = calendars.length > 0
+      ? calendars[0]
+      : CalendarApp.createCalendar('LG Appointments', {
+          color: CalendarApp.Color.CYAN
+        });
+
+    var start = new Date(dateTimeStr);
+    var end = new Date(start.getTime() + 60 * 60 * 1000);
+
+    var hour = start.getHours();
+    var validSlots = [9, 11, 13, 15];
+    if (validSlots.indexOf(hour) === -1) {
+      return {
+        success: false,
+        message: 'Invalid slot. Available: 9am, 11am, 1pm, 3pm'
+      };
+    }
+
+    var existing = cal.getEvents(start, end);
+    if (existing.length > 0) {
+      return {
+        success: false,
+        message: 'Slot already taken: ' +
+          existing[0].getTitle() +
+          '. Please choose another slot.'
+      };
+    }
+
+    var title = (location || '') + ' - ' + (name || phone);
+    var desc =
+      'Phone: ' + (phone || '') + '\n' +
+      'Address: ' + (fullAddress || location || '') + '\n' +
+      'Problem: ' + (problemType || '') + '\n' +
+      'Slab Size: ' + (slabSize || '') + '\n';
+
+    var event = cal.createEvent(title, start, end, {
+      description: desc
+    });
+
+    Logger.log('Calendar event created: ' + title +
+      ' at ' + start);
+    return {
+      success: true,
+      eventId: event.getId(),
+      message: 'Event created: ' + title +
+        ' on ' + start.toLocaleDateString('en-MY',{
+          weekday:'short',day:'numeric',
+          month:'short',year:'numeric'
+        }) + ' ' + start.toLocaleTimeString('en-MY',{
+          hour:'2-digit',minute:'2-digit'
+        })
+    };
+  } catch(err) {
+    Logger.log('Calendar error: ' + err.toString());
+    return { success: false, message: err.toString() };
+  }
+}
+
+function getAvailableSlots(dateStr) {
+  try {
+    var calendars = CalendarApp
+      .getCalendarsByName('LG Appointments');
+    if (!calendars.length) return [9, 11, 13, 15];
+    var cal = calendars[0];
+    var date = new Date(dateStr);
+    var allSlots = [9, 11, 13, 15];
+    var available = allSlots.filter(function(hour) {
+      var start = new Date(date);
+      start.setHours(hour, 0, 0, 0);
+      var end = new Date(start.getTime() + 3600000);
+      return cal.getEvents(start, end).length === 0;
+    });
+    return available;
+  } catch(err) {
+    return [9, 11, 13, 15];
   }
 }
 

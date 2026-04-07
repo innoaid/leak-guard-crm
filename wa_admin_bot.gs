@@ -224,13 +224,25 @@ function processAdminMessage(senderPhone, msgText) {
     data.slice(0,200).map(function(r){
       return r.phone+'|'+(r.name||'')+'|'+r.status+'|'+r.location+'|'+(r.assignedTo||'');
     }).join('\n') + '\n\n' +
+    'AVAILABLE SLOTS: 9am-10am, 11am-12pm, 1pm-2pm, 3pm-4pm\n' +
+    'When setting Site Visit Confirmed:\n' +
+    '- Always use one of the 4 exact slot times above\n' +
+    '- morning = suggest 9am or 11am\n' +
+    '- afternoon = suggest 1pm or 3pm\n' +
+    '- Format date as ISO: 2026-04-08T09:00:00\n\n' +
     'ACTIONS - add at end of reply, max ONE per reply:\n' +
-    'STATUS UPDATE: ACTION:{"type":"updateStatus","phone":"60XX","status":"Status","date":"2026-04-08T10:00:00"}\n' +
-    'Date needed for: Site Visit Confirmed, I.Date Confirmed only.\n' +
+    'STATUS UPDATE: ACTION:{"type":"updateStatus",' +
+    '"phone":"60XX","status":"Status",' +
+    '"date":"2026-04-08T09:00:00"}\n' +
+    'Date needed for: Site Visit Confirmed, I.Date Confirmed.\n' +
     'Auto-date: Quotation Sent, Job Complete.\n' +
-    'REMINDER: ACTION:{"type":"sendReminders","phones":["60XX"]}\n' +
+    'CHECK SLOTS: ACTION:{"type":"checkSlots",' +
+    '"date":"2026-04-08"}\n' +
+    'Use when user asks what slots are free on a date.\n' +
+    'REMINDER: ACTION:{"type":"sendReminders",' +
+    '"phones":["60XX"]}\n' +
     'NEVER include more than one ACTION per reply.\n' +
-    'NEVER perform any action without explicit user instruction.';
+    'NEVER perform any action without explicit instruction.\n';
 
   var response = callClaude(systemPrompt, msgText);
 
@@ -283,7 +295,43 @@ function callClaude(systemPrompt, userMessage) {
 
 function executeAction(action) {
   if (action.type === 'updateStatus') {
-    updateLeadStatus(action.phone, action.status, action.date||null);
+    updateLeadStatus(
+      action.phone, action.status, action.date||null);
+    if (action.status === 'Site Visit Confirmed' &&
+        action.date) {
+      var data = getSheetData();
+      var lead = data.find(function(r){
+        return String(r.phone).trim() ===
+          String(action.phone).trim();
+      });
+      if (lead) {
+        var result = createLGCalendarEvent(
+          lead.name,
+          lead.phone,
+          lead.location,
+          lead.fullAddress,
+          lead.problemType,
+          lead.slabSize,
+          action.date
+        );
+        Logger.log('Calendar result: ' +
+          JSON.stringify(result));
+        return result.message || '';
+      }
+    }
+  } else if (action.type === 'checkSlots') {
+    var slots = getAvailableSlots(action.date);
+    var slotNames = {
+      9:'9am-10am',
+      11:'11am-12pm',
+      13:'1pm-2pm',
+      15:'3pm-4pm'
+    };
+    var available = slots.map(function(h){
+      return slotNames[h];
+    }).join(', ');
+    return 'Available slots on ' + action.date +
+      ': ' + (available || 'No slots available');
   } else if (action.type === 'sendReminders') {
     action.phones.forEach(function(phone){
       sendReminderToClient(phone);
