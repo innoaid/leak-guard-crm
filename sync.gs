@@ -481,16 +481,18 @@ function syncQualifiedLeads() {
       if (createDate && new Date(createDate) < lookbackDate) { skipCount++; continue; }
 
       // Only update ChatHero-sourced columns — NEVER touch user columns
-      // (Status, Assigned To, Quotation RM, Job Outcome, Notes are user-managed)
+      // (Status=8, Assigned To=9, Quotation=10, Job Outcome=11, Notes=12 are user-managed)
+      // First value is 0-based destination index; getRange adds +1 for 1-based.
       var updates = [
-        [4, problem],    // Problem Type (col D, 1-based = 5)
-        [5, state],      // Location (col E, 1-based = 6)
-        [6, address],    // Full Address (col F, 1-based = 7)
-        [7, slabSize],   // Slab Size (col G, 1-based = 8)
-        [8, slot],       // Slot Chosen (col H, 1-based = 9) — NOTE: only if from ChatHero
-        [14, chStatus],  // CH Status (col O, 1-based = 15)
-        [15, chatUrl],   // CH Chat URL (col P, 1-based = 16)
-        [17, now],       // Last Synced (col R, 1-based = 18)
+        [3,  problem],   // Problem Type (col D)
+        [4,  state],     // Location (col E)
+        [5,  address],   // Full Address (col F)
+        [6,  slabSize],  // Slab Size (col G)
+        [7,  slot],      // Slot Chosen (col H)
+        [14, chStatus],  // CH Status (col O)
+        [15, chatUrl],   // CH Chat URL (col P)
+        [16, 'ChatHero'],// Source (col Q)
+        [17, now],       // Last Synced (col R)
       ];
       updates.forEach(function(pair) {
         var col = pair[0], val = pair[1];
