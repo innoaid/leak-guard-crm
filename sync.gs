@@ -89,6 +89,7 @@ const HEADERS = [
   'Date Installed',      // W  — Filled when status = "Job Complete"
   'Status Changed At',   // X  — Filled every time status changes
   'Changed By',          // Y  — Filled by Make.com with staff name
+  'Cal Event ID',        // Z  — Google Calendar event ID for sync
 ];
 
 
@@ -291,20 +292,6 @@ function doPostJobBoard(e) {
       sheet.getRange(rowIdx, data.dateCol + 1).setValue(new Date(data.dateVal));
     }
 
-    if (data.status === 'Site Visit Confirmed' &&
-        data.dateVal) {
-      var lead = rows[rowIdx - 1];
-      createLGCalendarEvent(
-        lead[2],
-        lead[1],
-        lead[4],
-        lead[5],
-        lead[3],
-        lead[6],
-        data.dateVal
-      );
-    }
-
     return ContentService.createTextOutput(JSON.stringify({status:'ok'}))
       .setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
@@ -378,6 +365,146 @@ function createLGCalendarEvent(name, phone, location,
     Logger.log('Calendar error: ' + err.toString());
     return { success: false, message: err.toString() };
   }
+}
+
+function syncCalendarFromSheet() {
+  try {
+    var ss = SpreadsheetApp.openById(
+      '17lxgFT5bW-5mcnM-ks2hid1ZI0Icp6ieK7huD3ffWBE');
+    var sheet = ss.getSheetByName('Leak Guard Leads');
+    var data = sheet.getDataRange().getValues();
+
+    var calendars = CalendarApp
+      .getCalendarsByName('LG Appointments');
+    var cal = calendars.length > 0
+      ? calendars[0]
+      : CalendarApp.createCalendar('LG Appointments');
+
+    var VALID_SLOTS = [9, 11, 13, 15];
+
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var status      = String(row[8]  || '').trim();
+      var name        = String(row[2]  || '').trim();
+      var phone       = String(row[1]  || '').trim();
+      var location    = String(row[4]  || '').trim();
+      var fullAddress = String(row[5]  || '').trim();
+      var problemType = String(row[3]  || '').trim();
+      var slabSize    = String(row[6]  || '').trim();
+      var dateAppt    = row[19]; // col T = dateApptConf
+      var eventId     = String(row[25] || '').trim(); // col Z
+
+      // Only process Site Visit Confirmed with a date
+      if (status === 'Site Visit Confirmed' && dateAppt) {
+        var apptDate = new Date(dateAppt);
+        if (isNaN(apptDate)) continue;
+
+        var hr = apptDate.getHours();
+        if (VALID_SLOTS.indexOf(hr) === -1) {
+          Logger.log('Row '+(i+1)+': invalid slot hour '+hr+
+            ' for '+name+' — skipping');
+          continue;
+        }
+
+        var start = new Date(
+          apptDate.getFullYear(),
+          apptDate.getMonth(),
+          apptDate.getDate(),
+          hr, 0, 0
+        );
+        var end = new Date(start.getTime() + 3600000);
+        var title = (location||'') + ' - ' + (name||phone);
+        var desc =
+          'Phone: ' + phone + '\n' +
+          'Address: ' + (fullAddress||location) + '\n' +
+          'Problem: ' + problemType + '\n' +
+          'Slab Size: ' + slabSize;
+
+        if (eventId) {
+          // Event exists — check if time changed
+          try {
+            var existing = cal.getEventById(eventId);
+            if (existing) {
+              var existStart = existing.getStartTime();
+              if (existStart.getTime() !== start.getTime()) {
+                // Time changed — update event
+                existing.setTime(start, end);
+                existing.setTitle(title);
+                existing.setDescription(desc);
+                Logger.log('Updated event: ' + title +
+                  ' to ' + start);
+              } else {
+                Logger.log('No change: ' + title);
+              }
+            } else {
+              // Event ID invalid — create new
+              eventId = '';
+            }
+          } catch(e) {
+            Logger.log('Event not found, creating new: ' + e);
+            eventId = '';
+          }
+        }
+
+        if (!eventId) {
+          // No event yet — create new
+          // Check for slot conflict first
+          var conflicts = cal.getEvents(start, end);
+          var hasConflict = conflicts.some(function(ev) {
+            return ev.getTitle() !== title;
+          });
+          if (hasConflict) {
+            Logger.log('Slot conflict for ' + title +
+              ' at ' + start + ' — skipping');
+            continue;
+          }
+          var newEvent = cal.createEvent(title, start, end, {
+            description: desc
+          });
+          // Save event ID to col Z (index 25, getRange col 26)
+          sheet.getRange(i+1, 26).setValue(newEvent.getId());
+          Logger.log('Created event: ' + title + ' at ' + start);
+        }
+
+      } else if (status !== 'Site Visit Confirmed' && eventId) {
+        // Status changed away — delete calendar event
+        try {
+          var evToDel = cal.getEventById(eventId);
+          if (evToDel) {
+            evToDel.deleteEvent();
+            Logger.log('Deleted event for: ' + name +
+              ' status changed to: ' + status);
+          }
+        } catch(e) {
+          Logger.log('Delete error: ' + e);
+        }
+        // Clear event ID from sheet
+        sheet.getRange(i+1, 26).setValue('');
+      }
+    }
+
+    Logger.log('syncCalendarFromSheet complete.');
+
+  } catch(err) {
+    Logger.log('syncCalendarFromSheet error: ' +
+      err.toString());
+  }
+}
+
+function setupCalendarTrigger() {
+  // Remove existing calendar sync triggers first
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncCalendarFromSheet') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+  // Create new 5-min trigger
+  ScriptApp.newTrigger('syncCalendarFromSheet')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+  Logger.log('Calendar sync trigger created.');
 }
 
 function getAvailableSlots(dateStr) {

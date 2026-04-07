@@ -311,31 +311,6 @@ function executeAction(action) {
     }
     updateLeadStatus(
       action.phone, action.status, calDate||action.date||null);
-    if (action.status === 'Site Visit Confirmed' &&
-        action.date) {
-      Logger.log('Calendar attempt - phone: ' +
-        action.phone + ' date: ' + calDate);
-
-      var data = getSheetData();
-      var lead = data.find(function(r){
-        return String(r.phone).trim() ===
-          String(action.phone).trim();
-      });
-      if (lead) {
-        var result = createLGCalendarEvent(
-          lead.name,
-          lead.phone,
-          lead.location,
-          lead.fullAddress,
-          lead.problemType,
-          lead.slabSize,
-          calDate
-        );
-        Logger.log('Calendar result: ' +
-          JSON.stringify(result));
-        return result.message || '';
-      }
-    }
   } else if (action.type === 'checkSlots') {
     var slots = getAvailableSlots(action.date);
     var slotNames = {
@@ -375,15 +350,14 @@ function updateLeadStatus(phone, status, dateVal) {
       sheet.getRange(i+1, 9).setValue(status);
       sheet.getRange(i+1, 24).setValue(new Date());
       sheet.getRange(i+1, 25).setValue('WA Bot');
-      if (dateVal !== null && dateVal !== undefined &&
-          DATE_COL_MAP[status] !== undefined) {
+      if (dateVal && DATE_COL_MAP[status] !== undefined) {
         var dv = (dateVal instanceof Date)
           ? dateVal : new Date(String(dateVal));
-        Logger.log('Writing date col:' +
-          (DATE_COL_MAP[status]+1) + ' val:' + dv);
         if (!isNaN(dv)) {
           sheet.getRange(i+1, DATE_COL_MAP[status]+1)
             .setValue(dv);
+          Logger.log('Date written: col ' +
+            (DATE_COL_MAP[status]+1) + ' = ' + dv);
         }
       }
       Logger.log('Updated ' + phone + ' to ' + status);
