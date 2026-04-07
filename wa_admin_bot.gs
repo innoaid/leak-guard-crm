@@ -55,7 +55,6 @@ function doPostWABot(e) {
     var props = getProps();
     var lastMsgId = props.getProperty('LAST_MSG_' + senderPhone) || '';
     if (msgId && msgId === lastMsgId) {
-      Logger.log('Duplicate message ignored: ' + msgId);
       return ContentService.createTextOutput('ok')
         .setMimeType(ContentService.MimeType.TEXT);
     }
@@ -170,19 +169,20 @@ function processAdminMessage(senderPhone, msgText) {
   var summary = getDataSummary(data);
 
   var systemPrompt =
-    'You are an admin assistant for Leak Guard, ' +
-    'a waterproofing company in Malaysia. ' +
-    'You help staff query and update the CRM system via WhatsApp. ' +
-    'Always reply in the same language the user writes in ' +
-    '(English or Bahasa Malaysia). ' +
-    'Keep replies concise and WhatsApp-friendly. ' +
-    'Use line breaks for lists. No markdown bold or headers. ' +
-    'Use emojis sparingly for clarity.\n\n' +
-    'Today is ' + summary.todayDate + '.\n' +
-    'Tomorrow is ' + summary.tomorrowDate + '.\n\n' +
-    'CURRENT CRM DATA SUMMARY:\n' +
-    'Total leads: ' + summary.total + '\n' +
-    'New Leads: ' + (summary.statusCounts['New Lead']||0) + '\n' +
+    'You are a CRM assistant for Leak Guard waterproofing company Malaysia.\n' +
+    'STRICT RULES - follow exactly:\n' +
+    '1. Reply with ONE short message only. Never send multiple messages.\n' +
+    '2. Never ask follow-up questions. Never say "How can I help you today?"\n' +
+    '3. Never say "Is there anything else?" or similar.\n' +
+    '4. After completing an action, just confirm it briefly and stop.\n' +
+    '5. Only perform ONE action per reply. Never chain actions.\n' +
+    '6. Reply in same language as user (English or BM).\n' +
+    '7. Keep all replies under 5 lines.\n' +
+    '8. Never repeat yourself.\n\n' +
+    'Today is ' + summary.todayDate + '. Tomorrow is ' + summary.tomorrowDate + '.\n\n' +
+    'CRM SUMMARY:\n' +
+    'Total: ' + summary.total + ' leads\n' +
+    'New Lead: ' + (summary.statusCounts['New Lead']||0) + '\n' +
     'Pending Site Visit: ' + (summary.statusCounts['Pending Site Visit']||0) + '\n' +
     'Site Visit Confirmed: ' + (summary.statusCounts['Site Visit Confirmed']||0) + '\n' +
     'Pending QT: ' + (summary.statusCounts['Pending QT']||0) + '\n' +
@@ -195,64 +195,29 @@ function processAdminMessage(senderPhone, msgText) {
     'Receipt Sent: ' + (summary.statusCounts['Receipt Sent']||0) + '\n' +
     'Cold Lead: ' + (summary.statusCounts['Cold Lead']||0) + '\n' +
     'Lost: ' + (summary.statusCounts['Lost']||0) + '\n\n' +
-    'TODAY APPOINTMENTS (' + summary.todayAppts.length + '):\n' +
+    'TODAY APPTS (' + summary.todayAppts.length + '):\n' +
     (summary.todayAppts.length ? summary.todayAppts.map(function(r){
-      return '- ' + (r.name||r.phone) +
-        ' | ' + r.location +
-        ' | ' + r.dateApptConf +
-        ' | ' + (r.assignedTo||'Unassigned') +
-        ' | ' + r.phone;
+      return r.name + ' | ' + r.location + ' | ' + r.dateApptConf + ' | ' + r.phone;
     }).join('\n') : 'None') + '\n\n' +
-    'TOMORROW APPOINTMENTS (' + summary.tomorrowAppts.length + '):\n' +
+    'TOMORROW APPTS (' + summary.tomorrowAppts.length + '):\n' +
     (summary.tomorrowAppts.length ? summary.tomorrowAppts.map(function(r){
-      return '- ' + (r.name||r.phone) +
-        ' | ' + r.location +
-        ' | ' + r.dateApptConf +
-        ' | ' + (r.assignedTo||'Unassigned') +
-        ' | ' + r.phone;
+      return r.name + ' | ' + r.location + ' | ' + r.dateApptConf + ' | ' + r.phone;
     }).join('\n') : 'None') + '\n\n' +
     'TODAY NEW LEADS (' + summary.todayLeads.length + '):\n' +
     (summary.todayLeads.length ? summary.todayLeads.map(function(r){
-      return '- ' + (r.name||r.phone) +
-        ' | ' + r.location +
-        ' | ' + r.problemType;
+      return r.name + ' | ' + r.location + ' | ' + r.problemType;
     }).join('\n') : 'None') + '\n\n' +
-    'UNASSIGNED ACTIVE LEADS (' + summary.unassigned.length + '):\n' +
-    summary.unassigned.slice(0,10).map(function(r){
-      return '- ' + (r.name||r.phone) +
-        ' | ' + r.status +
-        ' | ' + r.location;
-    }).join('\n') + '\n\n' +
-    'IMPORTANT RULES:\n' +
-    '- Only perform ONE action per message\n' +
-    '- After performing an action, STOP and wait for next instruction\n' +
-    '- Never ask follow-up questions like "Is there anything else?"\n' +
-    '- Never ask "How can I help you today?"\n' +
-    '- Keep replies short — one action confirmation or one answer, then stop\n' +
-    '- Do not send multiple messages or repeat yourself\n' +
-    '- Never chain multiple status updates automatically\n' +
-    '- For status updates, always confirm what you did and ask if anything else needed\n' +
-    '- Never assume what the next action should be\n' +
-    '- If asked to move to next phase, move ONE step only then stop\n\n' +
-    'AVAILABLE ACTIONS:\n' +
-    '1. Answer questions about leads, appointments, counts\n' +
-    '2. To update ONE lead status, add at END of reply:\n' +
-    'ACTION:{"type":"updateStatus","phone":"60XXXXXXXXX",' +
-    '"status":"New Status","date":"2026-04-08T10:00:00"}\n' +
-    'Only include date if status requires it.\n' +
-    'Date-required: Site Visit Confirmed, I.Date Confirmed\n' +
-    'Auto-date: Quotation Sent, Job Complete\n' +
-    '3. To send reminders:\n' +
-    'ACTION:{"type":"sendReminders","phones":["60XXX"]}\n' +
-    'NEVER include more than ONE ACTION per response.\n' +
-    'NEVER perform follow-up actions automatically.\n\n' +
-    'FULL LEAD LIST:\n' +
+    'LEAD LIST:\n' +
     data.slice(0,200).map(function(r){
-      return r.phone + '|' + (r.name||'') +
-        '|' + r.status +
-        '|' + r.location +
-        '|' + (r.assignedTo||'');
-    }).join('\n');
+      return r.phone+'|'+(r.name||'')+'|'+r.status+'|'+r.location+'|'+(r.assignedTo||'');
+    }).join('\n') + '\n\n' +
+    'ACTIONS - add at end of reply, max ONE per reply:\n' +
+    'STATUS UPDATE: ACTION:{"type":"updateStatus","phone":"60XX","status":"Status","date":"2026-04-08T10:00:00"}\n' +
+    'Date needed for: Site Visit Confirmed, I.Date Confirmed only.\n' +
+    'Auto-date: Quotation Sent, Job Complete.\n' +
+    'REMINDER: ACTION:{"type":"sendReminders","phones":["60XX"]}\n' +
+    'NEVER include more than one ACTION per reply.\n' +
+    'NEVER perform any action without explicit user instruction.';
 
   var response = callClaude(systemPrompt, msgText);
 
