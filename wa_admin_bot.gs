@@ -229,7 +229,13 @@ function processAdminMessage(senderPhone, msgText) {
     '- Always use one of the 4 exact slot times above\n' +
     '- morning = suggest 9am or 11am\n' +
     '- afternoon = suggest 1pm or 3pm\n' +
-    '- Format date as ISO with MY timezone: 2026-04-08T09:00:00+08:00\n\n' +
+    '- ALWAYS format date with time as: 2026-04-09T09:00:00\n' +
+    '- NEVER send date without time e.g. 2026-04-09 is WRONG\n' +
+    '- Valid hours only: 09, 11, 13, 15\n' +
+    '- Example: 9am on 9 Apr = 2026-04-09T09:00:00\n' +
+    '- Example: 11am on 9 Apr = 2026-04-09T11:00:00\n' +
+    '- Example: 1pm on 9 Apr = 2026-04-09T13:00:00\n' +
+    '- Example: 3pm on 9 Apr = 2026-04-09T15:00:00\n\n' +
     'ACTIONS - add at end of reply, max ONE per reply:\n' +
     'STATUS UPDATE: ACTION:{"type":"updateStatus",' +
     '"phone":"60XX","status":"Status",' +
@@ -351,13 +357,30 @@ function updateLeadStatus(phone, status, dateVal) {
       sheet.getRange(i+1, 24).setValue(new Date());
       sheet.getRange(i+1, 25).setValue('WA Bot');
       if (dateVal && DATE_COL_MAP[status] !== undefined) {
-        var dv = (dateVal instanceof Date)
-          ? dateVal : new Date(String(dateVal));
-        if (!isNaN(dv)) {
+        var dv;
+        if (dateVal instanceof Date) {
+          dv = dateVal;
+        } else {
+          var raw = String(dateVal);
+          // Extract date and hour from ISO string
+          var m = raw.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})/);
+          if (m) {
+            dv = new Date(
+              parseInt(m[1]),
+              parseInt(m[2]) - 1,
+              parseInt(m[3]),
+              parseInt(m[4]),
+              0, 0
+            );
+          } else {
+            dv = new Date(raw);
+          }
+        }
+        if (dv && !isNaN(dv)) {
           sheet.getRange(i+1, DATE_COL_MAP[status]+1)
             .setValue(dv);
-          Logger.log('Date written: col ' +
-            (DATE_COL_MAP[status]+1) + ' = ' + dv);
+          Logger.log('Date written: ' + dv +
+            ' to col ' + (DATE_COL_MAP[status]+1));
         }
       }
       Logger.log('Updated ' + phone + ' to ' + status);
