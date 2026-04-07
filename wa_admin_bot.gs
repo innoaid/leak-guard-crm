@@ -33,6 +33,13 @@ function setupBotKeys() {
 function doPostWABot(e) {
   try {
     var body = JSON.parse(e.postData.contents);
+    if (body.entry && body.entry[0] &&
+        body.entry[0].changes && body.entry[0].changes[0]) {
+      var value = body.entry[0].changes[0].value;
+      if (value.messages) body.messages = value.messages;
+      if (value.statuses) body.statuses = value.statuses;
+      if (value.contacts) body.contacts = value.contacts;
+    }
     if (body.statuses) {
       return ContentService.createTextOutput('ok')
         .setMimeType(ContentService.MimeType.TEXT);
@@ -43,7 +50,7 @@ function doPostWABot(e) {
         .setMimeType(ContentService.MimeType.TEXT);
     }
     var msg = messages[0];
-    var senderPhone = msg.from;
+    var senderPhone = String(msg.from).trim();
     var msgType = msg.type;
     var msgText = '';
     if (msgType === 'text') {
