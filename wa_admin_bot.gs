@@ -229,7 +229,7 @@ function processAdminMessage(senderPhone, msgText) {
     '- Always use one of the 4 exact slot times above\n' +
     '- morning = suggest 9am or 11am\n' +
     '- afternoon = suggest 1pm or 3pm\n' +
-    '- Format date as ISO: 2026-04-08T09:00:00\n\n' +
+    '- Format date as ISO with MY timezone: 2026-04-08T09:00:00+08:00\n\n' +
     'ACTIONS - add at end of reply, max ONE per reply:\n' +
     'STATUS UPDATE: ACTION:{"type":"updateStatus",' +
     '"phone":"60XX","status":"Status",' +
@@ -299,16 +299,22 @@ function executeAction(action) {
       action.phone, action.status, action.date||null);
     if (action.status === 'Site Visit Confirmed' &&
         action.date) {
-      Logger.log('Calendar attempt - phone: ' +
-        action.phone + ' date: ' + action.date);
-
       var calDate = action.date;
-      // If not ISO format, try to parse naturally
-      if (calDate && calDate.indexOf('T') === -1) {
-        var d = new Date(calDate);
-        if (!isNaN(d)) calDate = d.toISOString();
+      if (calDate) {
+        // If no timezone info, treat as Malaysia time (UTC+8)
+        if (calDate.indexOf('T') !== -1 &&
+            calDate.indexOf('+') === -1 &&
+            calDate.indexOf('Z') === -1) {
+          calDate = calDate + '+08:00';
+        } else if (calDate.indexOf('T') === -1) {
+          var d = new Date(calDate);
+          if (!isNaN(d)) {
+            calDate = d.toISOString().replace('Z','+08:00');
+          }
+        }
       }
-      Logger.log('Normalized date: ' + calDate);
+      Logger.log('Calendar attempt - phone: ' +
+        action.phone + ' date: ' + calDate);
 
       var data = getSheetData();
       var lead = data.find(function(r){
@@ -361,6 +367,9 @@ function updateLeadStatus(phone, status, dateVal) {
     'I.Date Confirmed':     21,  // col V = dateConfirmed
     'Job Complete':         22   // col W = dateInstalled
   };
+  Logger.log('updateLeadStatus - status: ' + status +
+    ' dateVal: ' + dateVal +
+    ' dateCol: ' + DATE_COL_MAP[status]);
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][1]).trim() === String(phone).trim()) {
       sheet.getRange(i+1, 9).setValue(status);
