@@ -448,13 +448,13 @@ function syncQualifiedLeads() {
   var lastSync = lastSyncTime ? new Date(lastSyncTime) : new Date('2026-01-01');
   Logger.log('Last sync time: ' + lastSync);
 
-  // Filter to only rows updated since last sync
-  // Column R (index 17) is the ChatHero timestamp
+  // Filter to only rows newer than last sync
+  // ChatHero has no reliable last-updated timestamp; use
+  // Create Chat Date (index 1) for new lead detection.
   var rowsToProcess = sourceRows.filter(function(row) {
-    var ts = row[17];
-    if (!ts) return false;
-    var rowTime = new Date(ts);
-    return !isNaN(rowTime) && rowTime > lastSync;
+    var rowTimestamp = row[1] ? new Date(row[1]) : null;
+    if (!rowTimestamp || isNaN(rowTimestamp)) return false;
+    return rowTimestamp > lastSync;
   });
 
   Logger.log('Total source rows: ' + sourceRows.length +
@@ -485,40 +485,48 @@ function syncQualifiedLeads() {
 
   var newCount = 0, updateCount = 0, skipCount = 0;
 
-  // Process only the filtered rows (updated since last sync)
+  // Process only the filtered rows (newer than last sync)
   for (var i = 0; i < rowsToProcess.length; i++) {
     var row = rowsToProcess[i];
-    var convId     = String(row[CH.CONV_ID] || '').trim();
-    var phone      = String(row[CH.PHONE] || '').trim();
-    var address    = String(row[CH.ADDRESS] || '').trim();
-    var problem    = String(row[CH.PROBLEMS] || '').trim();
-    var createDate = row[CH.CREATE_DATE];
+
+    // ChatHero source columns (0-based):
+    // 0=User NS, 1=Create Chat Date, 2=Create Chat Time,
+    // 3=Appt Date, 4=Appt Time, 5=Name, 6=Phone, 7=State,
+    // 8=Problems, 9=Slab Size, 10=Full Address,
+    // 11=Quot/SiteVisit, 12=Chat URL, 13=Quot No,
+    // 14=Date Sent, 15=Follow Up, 16=Status, 17=Completion
+    var phone        = String(row[6] || '').trim();
+    var name         = String(row[5] || '').trim();
+    var problemType  = String(row[8] || '').trim();
+    var location     = String(row[7] || '').trim();
+    var fullAddress  = String(row[10] || '').trim();
+    var slabSize     = String(row[9] || '').trim();
+    var slotDate     = row[3] ? String(row[3]).trim() : '';
+    var slotTime     = row[4] ? String(row[4]).trim() : '';
+    var slotChosen   = slotDate && slotTime
+      ? slotDate + ' ' + slotTime
+      : (slotDate || slotTime || '');
+    var chConvId     = String(row[0] || '').trim();
+    var chStatus     = String(row[16] || '').trim();
+    var chChatUrl    = String(row[12] || '').trim();
+    var createDate   = row[1] ? new Date(row[1]) : new Date();
 
     // Skip rows with no conversation ID
-    if (!convId) { skipCount++; continue; }
+    if (!chConvId) { skipCount++; continue; }
 
     // Skip rows older than the effective start date
-    if (createDate && new Date(createDate) < effectiveStart) { skipCount++; continue; }
+    if (createDate && createDate < effectiveStart) { skipCount++; continue; }
 
-    // Qualification check: all 3 fields must be filled
-    var qualified = phone && address && problem;
+    // Qualification: phone + problem + (full address OR location)
+    var qualified = phone && problemType &&
+      (fullAddress || location);
 
     // Skip unqualified rows that aren't already in the destination
-    if (!qualified && !existingMap[convId]) { skipCount++; continue; }
+    if (!qualified && !existingMap[chConvId]) { skipCount++; continue; }
 
-    // Extract remaining fields from ChatHero
-    var name     = row[CH.NAME] || '';
-    var state    = row[CH.STATE] || '';
-    var slabSize = row[CH.SLAB_SIZE] || '';
-    var apptDate = row[CH.APPT_DATE] || row[CH.APPT_DATE2] || '';
-    var apptTime = row[CH.APPT_TIME] || '';
-    var slot     = apptDate ? (apptDate + ' ' + apptTime).trim() : '';
-    var chatUrl  = row[CH.CHAT_URL] || '';
-    var chStatus = row[CH.CH_STATUS] || '';
-    var quotNo   = row[CH.QUOT_NO] || '';
-    var now      = new Date();
+    var now = new Date();
 
-    if (!existingMap[convId]) {
+    if (!existingMap[chConvId]) {
       // ── NEW LEAD ──────────────────────────────────────────────
       if (!qualified) { skipCount++; continue; }
 
@@ -527,15 +535,15 @@ function syncQualifiedLeads() {
         var phoneRow = existingPhones[phone];
         var existingRow = destData[phoneRow - 1] || [];
         // Skip if existing row already has matching ChatHero data
-        if (String(existingRow[3] || '') === String(problem) &&
-            String(existingRow[5] || '') === String(address) &&
-            String(existingRow[13] || '') === String(convId)) {
+        if (String(existingRow[3] || '') === String(problemType) &&
+            String(existingRow[5] || '') === String(fullAddress) &&
+            String(existingRow[13] || '') === String(chConvId)) {
           skipCount++;
           continue;
         }
         // Update ChatHero-sourced cols only — never touch Status, Assigned To, Quotation, Job Outcome, Notes
-        dest.getRange(phoneRow, 2, 1, 7).setValues([[phone, name, problem, state, address, slabSize, slot]]);
-        dest.getRange(phoneRow, 14, 1, 5).setValues([[convId, chStatus, chatUrl, 'ChatHero', now]]);
+        dest.getRange(phoneRow, 2, 1, 7).setValues([[phone, name, problemType, location, fullAddress, slabSize, slotChosen]]);
+        dest.getRange(phoneRow, 14, 1, 5).setValues([[chConvId, chStatus, chChatUrl, 'ChatHero', now]]);
         // Fill name only if blank
         if (!dest.getRange(phoneRow, 3).getValue() && name) dest.getRange(phoneRow, 3).setValue(name);
         updateCount++;
@@ -543,31 +551,25 @@ function syncQualifiedLeads() {
       }
 
       var newRow = new Array(HEADERS.length).fill('');
-      newRow[0]  = now;                                  // Timestamp
-      newRow[1]  = phone;                                // Phone
-      newRow[2]  = name;                                 // Name
-      newRow[3]  = problem;                              // Problem Type
-      newRow[4]  = state;                                // Location
-      newRow[5]  = address;                              // Full Address
-      newRow[6]  = slabSize;                             // Slab Size
-      newRow[7]  = slot;                                 // Slot Chosen
-      newRow[8]  = 'New Lead';                           // Status
-      newRow[9]  = 'Unassigned';                         // Assigned To
-      newRow[10] = '';                                   // Quotation (RM)
-      newRow[11] = 'Pending';                            // Job Outcome
-      newRow[12] = quotNo ? 'QT: ' + quotNo : '';       // Notes
-      newRow[13] = convId;                               // CH Conv ID
-      newRow[14] = chStatus;                             // CH Status
-      newRow[15] = chatUrl;                              // CH Chat URL
-      newRow[16] = 'ChatHero';                           // Source
-      newRow[17] = now;                                  // Last Synced
-      newRow[18] = now;                                  // Date Lead In
-      newRow[19] = '';                                   // Date Appt Confirmed
-      newRow[20] = '';                                   // Date QT Issued
-      newRow[21] = '';                                   // Date Confirmed
-      newRow[22] = '';                                   // Date Installed
-      newRow[23] = now;                                  // Status Changed At
-      newRow[24] = '';                                   // Changed By
+      newRow[0]  = createDate;       // Timestamp
+      newRow[1]  = phone;            // Phone
+      newRow[2]  = name;             // Name
+      newRow[3]  = problemType;      // Problem Type
+      newRow[4]  = location;         // Location
+      newRow[5]  = fullAddress;      // Full Address
+      newRow[6]  = slabSize;         // Slab Size
+      newRow[7]  = slotChosen;       // Slot Chosen
+      newRow[8]  = 'New Lead';       // Status - always New Lead
+      newRow[9]  = '';               // Assigned To - blank
+      newRow[10] = '';               // Quotation - blank
+      newRow[11] = '';               // Job Outcome - blank
+      newRow[12] = '';               // Notes - blank
+      newRow[13] = chConvId;         // CH Conv ID
+      newRow[14] = chStatus;         // CH Status
+      newRow[15] = chChatUrl;        // CH Chat URL
+      newRow[16] = 'ChatHero';       // Source
+      newRow[17] = new Date();       // Last Synced
+      newRow[18] = createDate;       // Date Lead In
 
       dest.appendRow(newRow);
       // Track new row for same-batch phone dedup
@@ -576,24 +578,24 @@ function syncQualifiedLeads() {
 
     } else {
       // ── UPDATE EXISTING LEAD ──────────────────────────────────
-      var rowNum = existingMap[convId];
+      var rowNum = existingMap[chConvId];
 
       // Skip if outside lookback window
-      if (createDate && new Date(createDate) < lookbackDate) { skipCount++; continue; }
+      if (createDate && createDate < lookbackDate) { skipCount++; continue; }
 
       // Only update ChatHero-sourced columns — NEVER touch user columns
-      // (Status=8, Assigned To=9, Quotation=10, Job Outcome=11, Notes=12 are user-managed)
+      // (Status=8, Assigned To=9, Quotation=10, Job Outcome=11,
+      //  Notes=12, or any date columns 18-24)
       // First value is 0-based destination index; getRange adds +1 for 1-based.
       var updates = [
-        [3,  problem],   // Problem Type (col D)
-        [4,  state],     // Location (col E)
-        [5,  address],   // Full Address (col F)
-        [6,  slabSize],  // Slab Size (col G)
-        [7,  slot],      // Slot Chosen (col H)
-        [14, chStatus],  // CH Status (col O)
-        [15, chatUrl],   // CH Chat URL (col P)
-        [16, 'ChatHero'],// Source (col Q)
-        [17, now],       // Last Synced (col R)
+        [3,  problemType],   // Problem Type (col D)
+        [4,  location],      // Location (col E)
+        [5,  fullAddress],   // Full Address (col F)
+        [6,  slabSize],      // Slab Size (col G)
+        [7,  slotChosen],    // Slot Chosen (col H)
+        [14, chStatus],      // CH Status (col O)
+        [15, chChatUrl],     // CH Chat URL (col P)
+        [17, new Date()],    // Last Synced (col R)
       ];
       updates.forEach(function(pair) {
         var col = pair[0], val = pair[1];
