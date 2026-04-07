@@ -295,24 +295,24 @@ function callClaude(systemPrompt, userMessage) {
 
 function executeAction(action) {
   if (action.type === 'updateStatus') {
+    var calDate = null;
+    if (action.date) {
+      var raw = String(action.date);
+      var m = raw.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})/);
+      if (m) {
+        var yr = parseInt(m[1]);
+        var mo = parseInt(m[2]) - 1;
+        var dy = parseInt(m[3]);
+        var hr = parseInt(m[4]);
+        calDate = new Date(yr, mo, dy, hr, 0, 0);
+        Logger.log('Parsed: ' + yr+'-'+mo+'-'+dy+
+          ' hr:'+hr+' => '+calDate);
+      }
+    }
     updateLeadStatus(
-      action.phone, action.status, action.date||null);
+      action.phone, action.status, calDate||action.date||null);
     if (action.status === 'Site Visit Confirmed' &&
         action.date) {
-      var calDate = action.date;
-      if (calDate) {
-        // If no timezone info, treat as Malaysia time (UTC+8)
-        if (calDate.indexOf('T') !== -1 &&
-            calDate.indexOf('+') === -1 &&
-            calDate.indexOf('Z') === -1) {
-          calDate = calDate + '+08:00';
-        } else if (calDate.indexOf('T') === -1) {
-          var d = new Date(calDate);
-          if (!isNaN(d)) {
-            calDate = d.toISOString().replace('Z','+08:00');
-          }
-        }
-      }
       Logger.log('Calendar attempt - phone: ' +
         action.phone + ' date: ' + calDate);
 
@@ -375,9 +375,16 @@ function updateLeadStatus(phone, status, dateVal) {
       sheet.getRange(i+1, 9).setValue(status);
       sheet.getRange(i+1, 24).setValue(new Date());
       sheet.getRange(i+1, 25).setValue('WA Bot');
-      if (dateVal && DATE_COL_MAP[status] !== undefined) {
-        sheet.getRange(i+1, DATE_COL_MAP[status] + 1)
-          .setValue(new Date(dateVal));
+      if (dateVal !== null && dateVal !== undefined &&
+          DATE_COL_MAP[status] !== undefined) {
+        var dv = (dateVal instanceof Date)
+          ? dateVal : new Date(String(dateVal));
+        Logger.log('Writing date col:' +
+          (DATE_COL_MAP[status]+1) + ' val:' + dv);
+        if (!isNaN(dv)) {
+          sheet.getRange(i+1, DATE_COL_MAP[status]+1)
+            .setValue(dv);
+        }
       }
       Logger.log('Updated ' + phone + ' to ' + status);
       return;
