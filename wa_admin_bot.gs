@@ -418,22 +418,72 @@ function executeAction(action, senderPhone) {
 
   // ── SINGLE STATUS UPDATE ──────────────────────
   if (action.type === 'updateStatus') {
-    updateLeadStatus(
-      action.phone, action.status, action.date||null);
-    if (action.status === 'Site Visit Confirmed' &&
-        action.date) {
-      var lead = data.find(function(r){
+
+    // Site Visit Confirmed — calendar first
+    if (action.status === 'Site Visit Confirmed') {
+      if (!action.date) {
+        return '❌ Cannot set Site Visit Confirmed ' +
+          'without a date and time.\n' +
+          'Please specify: date + slot ' +
+          '(9am, 11am, 1pm or 3pm)';
+      }
+
+      // Build calDate from action.date
+      var calDate2 = null;
+      var raw2 = String(action.date);
+      var m2 = raw2.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})/);
+      if (m2) {
+        calDate2 = new Date(
+          parseInt(m2[1]),
+          parseInt(m2[2]) - 1,
+          parseInt(m2[3]),
+          parseInt(m2[4]), 0, 0
+        );
+      } else {
+        return '❌ Invalid date format. ' +
+          'Please use: 2026-04-09T09:00:00';
+      }
+
+      // Find lead
+      var svLead = data.find(function(r){
         return String(r.phone).trim() ===
           String(action.phone).trim();
       });
-      if (lead) {
-        var result = createLGCalendarEvent(
-          lead.name, lead.phone, lead.location,
-          lead.fullAddress, lead.problemType,
-          lead.slabSize, action.date);
-        Logger.log('Calendar: ' + JSON.stringify(result));
+      if (!svLead) {
+        return '❌ Lead not found: ' + action.phone;
       }
+
+      // Try calendar FIRST
+      var calRes = createLGCalendarEvent(
+        svLead.name, svLead.phone, svLead.location,
+        svLead.fullAddress, svLead.problemType,
+        svLead.slabSize, calDate2
+      );
+      Logger.log('Calendar result: ' +
+        JSON.stringify(calRes));
+
+      if (!calRes || !calRes.success) {
+        return '❌ Site visit NOT confirmed.\n' +
+          'Calendar error: ' +
+          (calRes ? calRes.message :
+            'Unknown error') + '\n' +
+          'Status NOT changed. Please fix the ' +
+          'slot and try again.';
+      }
+
+      // Calendar success → now update status
+      updateLeadStatus(
+        action.phone, 'Site Visit Confirmed',
+        action.date);
+
+      return '✅ ' + (svLead.name||svLead.phone) +
+        ' confirmed for site visit.\n' +
+        calRes.message;
     }
+
+    // All other statuses — update directly
+    updateLeadStatus(
+      action.phone, action.status, action.date||null);
     return '';
   }
 
