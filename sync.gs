@@ -361,13 +361,39 @@ function createLGCalendarEvent(name, phone, location,
       };
     }
 
-    var existing = cal.getEvents(start, end);
-    if (existing.length > 0) {
+    // Delete any existing LG Appointments events
+    // for this lead using phone number in description
+    var searchStart = new Date(start);
+    searchStart.setDate(searchStart.getDate() - 60);
+    var searchEnd = new Date(start);
+    searchEnd.setDate(searchEnd.getDate() + 60);
+    var allEvents = cal.getEvents(searchStart, searchEnd);
+    var deleted = 0;
+    allEvents.forEach(function(ev) {
+      var desc = ev.getDescription() || '';
+      var evPhone = String(phone).trim();
+      if (desc.indexOf('Phone: ' + evPhone) !== -1) {
+        Logger.log('Deleting existing event for phone: ' +
+          evPhone + ' title: ' + ev.getTitle());
+        ev.deleteEvent();
+        deleted++;
+      }
+    });
+    Logger.log('Deleted ' + deleted +
+      ' existing events for ' + phone);
+
+    // Check conflict — ignore if same phone
+    var conflicts = cal.getEvents(start, end);
+    var hasConflict = conflicts.some(function(ev){
+      var desc = ev.getDescription() || '';
+      return desc.indexOf('Phone: ' +
+        String(phone).trim()) === -1;
+    });
+    if (hasConflict) {
       return {
         success: false,
-        message: 'Slot already taken: ' +
-          existing[0].getTitle() +
-          '. Please choose another slot.'
+        message: 'Slot already taken by another lead. ' +
+          'Please choose a different time.'
       };
     }
 
