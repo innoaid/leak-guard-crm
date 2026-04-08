@@ -341,14 +341,36 @@ function processAdminMessage(senderPhone, msgText) {
 
   var response = callClaude(systemPrompt, msgText);
 
-  var actionMatch = response.match(/ACTION:(\{.*\})/);
+  var actionStr = '';
+  var actionIdx = response.indexOf('ACTION:');
+  if (actionIdx !== -1) {
+    actionStr = response.substring(actionIdx + 7).trim();
+    // Find the matching closing brace
+    var depth = 0;
+    var endIdx = -1;
+    for (var ci = 0; ci < actionStr.length; ci++) {
+      if (actionStr[ci] === '{' || actionStr[ci] === '[')
+        depth++;
+      if (actionStr[ci] === '}' || actionStr[ci] === ']')
+        depth--;
+      if (depth === 0 && ci > 0) { endIdx = ci; break; }
+    }
+    if (endIdx !== -1) {
+      actionStr = actionStr.substring(0, endIdx + 1);
+    }
+  }
+
+  var actionMatch = actionStr ? [null, actionStr] : null;
   if (actionMatch) {
     try {
       var action = JSON.parse(actionMatch[1]);
       var actionResult = executeAction(action, senderPhone);
-      response = response.replace(/ACTION:\{.*\}/, '').trim();
-      if (actionResult) {
-        response = (response ? response + '\n' : '') + actionResult;
+      response = response
+        .substring(0, response.indexOf('ACTION:') !== -1
+          ? response.indexOf('ACTION:') : response.length)
+        .trim();
+      if (actionResult && actionResult.trim()) {
+        response = actionResult.trim();
       }
     } catch(err) {
       Logger.log('Action parse error: ' + err);
