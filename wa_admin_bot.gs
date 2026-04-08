@@ -5,8 +5,48 @@ var BOT_CONFIG = {
   API_URL: 'https://waba-v2.360dialog.io/messages'
 };
 
+var DATE_REQUIRED = ['Site Visit Confirmed', 'I.Date Confirmed'];
+
 function getProps() {
   return PropertiesService.getScriptProperties();
+}
+
+function getPendingConfirmation(senderPhone) {
+  var raw = getProps().getProperty('PENDING_' + senderPhone);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch(e) { return null; }
+}
+
+function setPendingConfirmation(senderPhone, payload) {
+  getProps().setProperty('PENDING_' + senderPhone,
+    JSON.stringify(payload));
+}
+
+function clearPendingConfirmation(senderPhone) {
+  getProps().deleteProperty('PENDING_' + senderPhone);
+}
+
+function findLeadByIdentifier(identifier, data) {
+  var id = String(identifier).trim().toLowerCase();
+  // Try exact name match first
+  var byName = data.filter(function(r) {
+    return r.name &&
+      r.name.toLowerCase().indexOf(id) !== -1;
+  });
+  if (byName.length === 1) return byName[0];
+  if (byName.length > 1) return byName[0];
+
+  // Try last 5-7 digits of phone
+  var digits = id.replace(/\D/g, '');
+  if (digits.length >= 5) {
+    var byPhone = data.filter(function(r) {
+      return r.phone &&
+        String(r.phone).slice(-digits.length) === digits;
+    });
+    if (byPhone.length === 1) return byPhone[0];
+    if (byPhone.length > 1) return byPhone[0];
+  }
+  return null;
 }
 
 function getApiKey() {
@@ -184,6 +224,21 @@ function getDataSummary(data) {
 }
 
 function processAdminMessage(senderPhone, msgText) {
+  var upperMsg = msgText.trim().toUpperCase();
+
+  // Handle YES/NO confirmation for pending bulk moves
+  var pending = getPendingConfirmation(senderPhone);
+  if (pending && Date.now() <= pending.expires) {
+    if (upperMsg === 'YES' || upperMsg === 'YA' ||
+        upperMsg === 'OK' || upperMsg === 'CONFIRM') {
+      return executeAction({type:'confirmPending'}, senderPhone);
+    }
+    if (upperMsg === 'NO' || upperMsg === 'CANCEL' ||
+        upperMsg === 'BATAL') {
+      return executeAction({type:'cancelPending'}, senderPhone);
+    }
+  }
+
   var data = getSheetData();
   var summary = getDataSummary(data);
 
@@ -243,11 +298,25 @@ function processAdminMessage(senderPhone, msgText) {
     '- Example: 1pm on 9 Apr = 2026-04-09T13:00:00\n' +
     '- Example: 3pm on 9 Apr = 2026-04-09T15:00:00\n\n' +
     'ACTIONS - add at end of reply, max ONE per reply:\n' +
-    'STATUS UPDATE: ACTION:{"type":"updateStatus",' +
-    '"phone":"60XX","status":"Status",' +
-    '"date":"2026-04-08T09:00:00"}\n' +
-    'Date needed for: Site Visit Confirmed, I.Date Confirmed.\n' +
-    'Auto-date: Quotation Sent, Job Complete.\n' +
+    'SINGLE MOVE (1 lead, executes immediately):\n' +
+    'ACTION:{"type":"updateStatus","phone":"60XX",' +
+    '"status":"Status","date":"2026-04-08T09:00:00"}\n\n' +
+    'BULK MOVE (2-10 leads, asks for confirmation):\n' +
+    'ACTION:{"type":"bulkUpdateStatus","moves":[\n' +
+    '  {"identifier":"name or last 5-7 digits","status":"Status"},\n' +
+    '  {"identifier":"name or last 5-7 digits","status":"Status"}\n' +
+    ']}\n' +
+    'Rules:\n' +
+    '- Use bulkUpdateStatus when user mentions 2+ leads\n' +
+    '- identifier can be name or last 5-7 phone digits\n' +
+    '- Max 10 leads, reject with reason if more\n' +
+    '- Date-required statuses in bulk: skip that lead,\n' +
+    '  move others, report skip with reason\n' +
+    '- Date-required: Site Visit Confirmed, I.Date Confirmed\n' +
+    '- Auto-date: Quotation Sent, Job Complete\n\n' +
+    'CONFIRMATION: When user replies YES/YA/OK —\n' +
+    'do NOT use any ACTION, just reply normally.\n' +
+    'System handles YES/NO automatically.\n\n' +
     'CHECK SLOTS: ACTION:{"type":"checkSlots",' +
     '"date":"2026-04-08"}\n' +
     'Use when user asks what slots are free on a date.\n' +
@@ -276,8 +345,11 @@ function processAdminMessage(senderPhone, msgText) {
   if (actionMatch) {
     try {
       var action = JSON.parse(actionMatch[1]);
-      executeAction(action);
+      var actionResult = executeAction(action, senderPhone);
       response = response.replace(/ACTION:\{.*\}/, '').trim();
+      if (actionResult) {
+        response = (response ? response + '\n' : '') + actionResult;
+      }
     } catch(err) {
       Logger.log('Action parse error: ' + err);
     }
@@ -319,56 +391,199 @@ function callClaude(systemPrompt, userMessage) {
   return 'Sorry, I could not process your request.';
 }
 
-function executeAction(action) {
+function executeAction(action, senderPhone) {
+  var data = getSheetData();
+
+  // ── SINGLE STATUS UPDATE ──────────────────────
   if (action.type === 'updateStatus') {
-    var calDate = null;
-    if (action.date) {
-      var raw = String(action.date);
-      var m = raw.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})/);
-      if (m) {
-        var yr = parseInt(m[1]);
-        var mo = parseInt(m[2]) - 1;
-        var dy = parseInt(m[3]);
-        var hr = parseInt(m[4]);
-        calDate = new Date(yr, mo, dy, hr, 0, 0);
-        Logger.log('Parsed: ' + yr+'-'+mo+'-'+dy+
-          ' hr:'+hr+' => '+calDate);
+    updateLeadStatus(
+      action.phone, action.status, action.date||null);
+    if (action.status === 'Site Visit Confirmed' &&
+        action.date) {
+      var lead = data.find(function(r){
+        return String(r.phone).trim() ===
+          String(action.phone).trim();
+      });
+      if (lead) {
+        var result = createLGCalendarEvent(
+          lead.name, lead.phone, lead.location,
+          lead.fullAddress, lead.problemType,
+          lead.slabSize, action.date);
+        Logger.log('Calendar: ' + JSON.stringify(result));
       }
     }
-    updateLeadStatus(
-      action.phone, action.status, calDate||action.date||null);
-  } else if (action.type === 'checkSlots') {
-    var slots = getAvailableSlots(action.date);
-    var slotNames = {
-      9:'9am-10am',
-      11:'11am-12pm',
-      13:'1pm-2pm',
-      15:'3pm-4pm'
-    };
-    var available = slots.map(function(h){
-      return slotNames[h];
-    }).join(', ');
-    return 'Available slots on ' + action.date +
-      ': ' + (available || 'No slots available');
-  } else if (action.type === 'sendReminders') {
+    return '';
+  }
+
+  // ── BULK STATUS UPDATE ───────────────────────
+  if (action.type === 'bulkUpdateStatus') {
+    var moves = action.moves || [];
+
+    // Reject if more than 10
+    if (moves.length > 10) {
+      return 'Too many leads (' + moves.length + '). ' +
+        'Max 10 per bulk move. Please split into batches.';
+    }
+
+    // Resolve each identifier to a lead
+    var resolved = [];
+    var notFound = [];
+    moves.forEach(function(m) {
+      var lead = findLeadByIdentifier(m.identifier, data);
+      if (lead) {
+        resolved.push({
+          lead: lead,
+          status: m.status,
+          date: m.date || null
+        });
+      } else {
+        notFound.push(m.identifier);
+      }
+    });
+
+    if (resolved.length === 0) {
+      return 'No leads found. Please check the names ' +
+        'or phone numbers and try again.';
+    }
+
+    // Single move — execute immediately, no confirmation
+    if (resolved.length === 1 && notFound.length === 0) {
+      var single = resolved[0];
+      var dateRequiredSingle = DATE_REQUIRED.indexOf(single.status) !== -1;
+      if (dateRequiredSingle && !single.date) {
+        return 'Cannot move ' + (single.lead.name||single.lead.phone) +
+          ' to ' + single.status +
+          ' — this status requires a date. ' +
+          'Please specify the date and time.';
+      }
+      updateLeadStatus(single.lead.phone, single.status, single.date||null);
+      return (single.lead.name||single.lead.phone) +
+        ' moved to ' + single.status + ' ✅';
+    }
+
+    // Multiple moves — store and ask for confirmation
+    var confirmLines = [];
+    var skipped = [];
+    var toConfirm = [];
+
+    resolved.forEach(function(mv) {
+      var dateReq = DATE_REQUIRED.indexOf(mv.status) !== -1;
+      if (dateReq && !mv.date) {
+        skipped.push((mv.lead.name||mv.lead.phone) +
+          ' → ' + mv.status +
+          ' (requires date — skipped)');
+      } else {
+        toConfirm.push(mv);
+        confirmLines.push(
+          (toConfirm.length) + '. ' +
+          (mv.lead.name||mv.lead.phone) +
+          ' (' + mv.lead.phone + ')' +
+          ' → ' + mv.status
+        );
+      }
+    });
+
+    if (toConfirm.length === 0) {
+      return 'All leads require dates. ' +
+        'Please move them individually:\n' +
+        skipped.join('\n');
+    }
+
+    // Store pending confirmation
+    setPendingConfirmation(senderPhone, {
+      moves: toConfirm.map(function(mv) {
+        return {
+          phone: mv.lead.phone,
+          status: mv.status,
+          date: mv.date || null
+        };
+      }),
+      expires: Date.now() + 300000 // 5 min
+    });
+
+    var reply = 'Confirm ' + toConfirm.length +
+      ' moves?\n\n' + confirmLines.join('\n');
+    if (skipped.length > 0) {
+      reply += '\n\n⚠️ Skipped (' + skipped.length + '):\n' +
+        skipped.join('\n');
+    }
+    if (notFound.length > 0) {
+      reply += '\n\n❌ Not found: ' + notFound.join(', ');
+    }
+    reply += '\n\nReply YES to confirm or NO to cancel.';
+    return reply;
+  }
+
+  // ── CONFIRM PENDING ───────────────────────────
+  if (action.type === 'confirmPending') {
+    var pending = getPendingConfirmation(senderPhone);
+    if (!pending || Date.now() > pending.expires) {
+      clearPendingConfirmation(senderPhone);
+      return 'No pending confirmation found or it expired.';
+    }
+    var done = 0, failed = 0, failMsg = '';
+    pending.moves.forEach(function(mv) {
+      try {
+        updateLeadStatus(mv.phone, mv.status, mv.date||null);
+        done++;
+      } catch(e) {
+        failed++;
+        failMsg = e.toString();
+      }
+    });
+    clearPendingConfirmation(senderPhone);
+    var res = 'Done ✅ ' + done + ' leads updated.';
+    if (failed > 0) res += '\n❌ ' + failed +
+      ' failed: ' + failMsg;
+    return res;
+  }
+
+  // ── CANCEL PENDING ────────────────────────────
+  if (action.type === 'cancelPending') {
+    clearPendingConfirmation(senderPhone);
+    return 'Cancelled. No changes made.';
+  }
+
+  // ── SEND REMINDERS ────────────────────────────
+  if (action.type === 'sendReminders') {
     action.phones.forEach(function(phone){
       sendReminderToClient(phone);
     });
-  } else if (action.type === 'updateTags') {
-    var ss3 = SpreadsheetApp.openById(BOT_CONFIG.SHEET_ID);
-    var sheet3 = ss3.getSheetByName(BOT_CONFIG.SHEET_NAME);
-    var rows3 = sheet3.getDataRange().getValues();
-    for (var i3 = 1; i3 < rows3.length; i3++) {
-      if (String(rows3[i3][1]).trim() ===
+    return '';
+  }
+
+  // ── UPDATE TAGS ───────────────────────────────
+  if (action.type === 'updateTags') {
+    var ss = SpreadsheetApp.openById(BOT_CONFIG.SHEET_ID);
+    var sheet = ss.getSheetByName(BOT_CONFIG.SHEET_NAME);
+    var rows = sheet.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][1]).trim() ===
           String(action.phone).trim()) {
-        sheet3.getRange(i3+1, 27).setValue(action.tags||'');
+        sheet.getRange(i+1, 27).setValue(action.tags||'');
         return 'Tags updated for ' +
-          (rows3[i3][2]||action.phone) + ': ' +
+          (rows[i][2]||action.phone) + ': ' +
           (action.tags||'cleared');
       }
     }
     return 'Lead not found: ' + action.phone;
   }
+
+  // ── CHECK SLOTS ───────────────────────────────
+  if (action.type === 'checkSlots') {
+    var slots = getAvailableSlots(action.date);
+    var slotNames = {
+      9:'9am-10am', 11:'11am-12pm',
+      13:'1pm-2pm', 15:'3pm-4pm'
+    };
+    var available = slots.map(function(h){
+      return slotNames[h];
+    }).join(', ');
+    return 'Available slots on ' + action.date +
+      ': ' + (available||'No slots available');
+  }
+
+  return '';
 }
 
 function updateLeadStatus(phone, status, dateVal) {
