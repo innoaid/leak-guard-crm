@@ -227,7 +227,7 @@ function processAdminMessage(senderPhone, msgText) {
       return r.name + ' | ' + r.location + ' | ' + r.problemType;
     }).join('\n') : 'None') + '\n\n' +
     'LEAD LIST:\n' +
-    data.slice(0,200).map(function(r){
+    data.map(function(r){
       return r.phone+'|'+(r.name||'')+'|'+r.status+'|'+r.location+'|'+(r.assignedTo||'');
     }).join('\n') + '\n\n' +
     'AVAILABLE SLOTS: 9am-10am, 11am-12pm, 1pm-2pm, 3pm-4pm\n' +
@@ -291,7 +291,7 @@ function callClaude(systemPrompt, userMessage) {
 
   var payload = {
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 1024,
+    max_tokens: 2048,
     system: systemPrompt,
     messages: [
       { role: 'user', content: userMessage }
