@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leak Guard — Book Site Visit</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--pri:#2D2A6E;--acc:#1D9E75;--bg:#f7f6f2;--card:#fff;--bdr:#e5e3dc;--ink:#1a1a1a;--muted:#6b6960}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+</style>
+</head>
+<body>
+<div id="app" style="max-width:420px;margin:0 auto;padding-bottom:2rem">
+
+  <!-- Header -->
+  <div style="background:var(--pri);padding:18px 20px 20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div>
+        <div style="color:rgba(255,255,255,0.6);font-size:10px;letter-spacing:0.5px;text-transform:uppercase">Leak Guard</div>
+        <div style="color:#fff;font-size:14px;font-weight:500">Schedule Site Visit</div>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,0.1);border-radius:9px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:2px">Booking for</div>
+        <div style="color:#fff;font-size:14px;font-weight:500" id="hdrName">—</div>
+      </div>
+      <div style="text-align:right">
+        <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:2px">Reference</div>
+        <div style="color:rgba(255,255,255,0.85);font-size:12px;font-weight:500" id="hdrGroup">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" style="text-align:center;padding:48px 20px">
+    <div style="width:32px;height:32px;border:3px solid #e5e3dc;border-top-color:#1D9E75;border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto 12px"></div>
+    <div style="font-size:13px;color:#6b6960">Loading available slots...</div>
+  </div>
+
+  <!-- Error -->
+  <div id="loadError" style="display:none;padding:20px;text-align:center">
+    <div style="font-size:32px;margin-bottom:10px">😕</div>
+    <div style="font-size:15px;font-weight:500;margin-bottom:6px">Unable to load slots</div>
+    <div style="font-size:13px;color:#6b6960;margin-bottom:16px">Please try again or contact us directly.</div>
+    <button onclick="loadAvailability()" style="background:var(--acc);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Try again</button>
+  </div>
+
+  <!-- Step 1: Calendar -->
+  <div id="s1" style="display:none;padding:16px 20px 0">
+    <div style="background:#fff;border-radius:14px;border:1px solid #e5e3dc;overflow:hidden;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px">
+        <button id="btnPrev" style="background:none;border:1px solid #e5e3dc;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b6960;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style="font-size:15px;font-weight:500" id="monthLabel">—</div>
+        <button id="btnNext" style="background:none;border:1px solid #e5e3dc;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b6960;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+      <div id="dayHeaders" style="display:grid;grid-template-columns:repeat(7,1fr);padding:0 10px;gap:2px"></div>
+      <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr);padding:4px 10px 12px;gap:2px"></div>
+      <div style="display:flex;gap:12px;padding:10px 16px;border-top:1px solid #e5e3dc;background:#fafaf8">
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6b6960">
+          <div style="width:8px;height:8px;border-radius:50%;background:#1D9E75"></div>Available
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6b6960">
+          <div style="width:8px;height:8px;border-radius:50%;background:#fde8e8;border:1px solid #f5c6c6"></div>Fully booked
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6b6960">
+          <div style="width:8px;height:8px;border-radius:50%;background:#eee"></div>Unavailable
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#6b6960;text-align:center">Tap an available date to see time slots</div>
+  </div>
+
+  <!-- Step 2: Time slots -->
+  <div id="s2" style="display:none;padding:16px 20px 0">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button id="btnBack2" style="background:none;border:1px solid #e5e3dc;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b6960;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div>
+        <div style="font-size:10px;color:#6b6960;text-transform:uppercase;letter-spacing:0.4px">Selected date</div>
+        <div style="font-size:15px;font-weight:500" id="selDateLabel">—</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#6b6960;margin-bottom:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.4px">Available time slots</div>
+    <div id="slotGrid" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+
+  <!-- Step 3: Confirm -->
+  <div id="s3" style="display:none;padding:16px 20px 0">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button id="btnBack3" style="background:none;border:1px solid #e5e3dc;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b6960;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div style="font-size:15px;font-weight:500">Confirm booking</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;border:1px solid #e5e3dc;overflow:hidden;margin-bottom:14px">
+      <div style="background:var(--pri);padding:18px 20px">
+        <div style="color:rgba(255,255,255,0.6);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Site visit appointment</div>
+        <div style="color:#fff;font-size:18px;font-weight:600;margin-bottom:2px" id="c3date">—</div>
+        <div style="color:rgba(255,255,255,0.75);font-size:13px" id="c3time">—</div>
+      </div>
+      <div style="padding:14px 20px">
+        <div style="display:flex;flex-direction:column;gap:9px;font-size:13px">
+          <div style="display:flex;justify-content:space-between;border-bottom:1px solid #f0efe9;padding-bottom:9px">
+            <span style="color:#6b6960">Customer</span><span style="font-weight:500" id="c3name">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:#6b6960">Service</span><span style="font-weight:500">Site visit & inspection</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="confirmError" style="display:none;background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+    <button id="btnConfirm" style="width:100%;background:var(--acc);color:#fff;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:500;font-family:inherit;cursor:pointer;margin-bottom:8px">Confirm appointment</button>
+    <button id="btnChange" style="width:100%;background:none;color:#6b6960;border:none;padding:10px;font-size:13px;font-family:inherit;cursor:pointer">Change time</button>
+  </div>
+
+  <!-- Step 4: Success -->
+  <div id="s4" style="display:none;text-align:center;padding:32px 20px">
+    <div style="width:64px;height:64px;border-radius:50%;background:#e1f5ee;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div style="font-size:20px;font-weight:600;margin-bottom:8px">Booking confirmed!</div>
+    <div style="color:#6b6960;font-size:13px;line-height:1.6;margin-bottom:20px">Your site visit has been scheduled.<br>Our team will see you then!</div>
+    <div style="background:#fff;border-radius:12px;border:1px solid #e5e3dc;padding:14px 16px;text-align:left;margin-bottom:16px">
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+        <div style="display:flex;justify-content:space-between"><span style="color:#6b6960">Date</span><span id="s4d" style="font-weight:500">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#6b6960">Time</span><span id="s4t" style="font-weight:500">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#6b6960">Ref</span><span id="s4ref" style="font-weight:500;color:#1D9E75">—</span></div>
+      </div>
+    </div>
+    <button id="btnReschedule" style="width:100%;background:none;color:#6b6960;border:1px solid #e5e3dc;border-radius:10px;padding:10px;font-size:13px;font-family:inherit;cursor:pointer">Reschedule appointment</button>
+    <div style="margin-top:14px;font-size:12px;color:#6b6960">You may close this page after booking.</div>
+  </div>
+
+</div>
+
+<style>
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-loading{opacity:0.7;pointer-events:none}
+</style>
+
+<script>
+var AVAILABILITY_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-availability';
+var BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
+
+var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+var FULL_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+var SLOT_LABELS = {
+  1: {label:'9:00 AM', full:'9:00 AM - 10:00 AM'},
+  2: {label:'10:30 AM', full:'10:30 AM - 11:30 AM'},
+  3: {label:'12:00 PM', full:'12:00 PM - 1:00 PM'},
+  4: {label:'2:00 PM', full:'2:00 PM - 3:00 PM'},
+  5: {label:'3:30 PM', full:'3:30 PM - 4:30 PM'}
+};
+
+// Parse URL params
+var params = new URLSearchParams(window.location.search);
+var PHONE = params.get('phone') || '';
+var NAME = params.get('name') || '';
+var GROUP = params.get('group') || '';
+var ACTION = params.get('action') || 'new';
+var OLD_DATE = params.get('oldDate') || '';
+var OLD_SLOT = parseInt(params.get('oldSlot')) || 0;
+var OLD_EVENT_ID = params.get('oldEventId') || '';
+
+// State
+var availability = {};
+var viewYear = new Date().getFullYear();
+var viewMonth = new Date().getMonth();
+var selDate = null;
+var selSlot = null;
+var confirmedDate = null;
+var confirmedSlot = null;
+var confirmedEventId = null;
+
+// Init header
+document.getElementById('hdrName').textContent = NAME || 'Customer';
+document.getElementById('hdrGroup').textContent = GROUP || '—';
+
+function show(id) {
+  ['loading','loadError','s1','s2','s3','s4'].forEach(function(s){
+    document.getElementById(s).style.display = s === id ? (id === 's1' || id === 's2' || id === 's3' || id === 's4' ? 'block' : 'block') : 'none';
+  });
+}
+
+function loadAvailability() {
+  show('loading');
+  var url = AVAILABILITY_URL + '?phone=' + encodeURIComponent(PHONE) + '&group=' + encodeURIComponent(GROUP);
+  fetch(url)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      availability = data.availability || {};
+      // Set view to first available month
+      var keys = Object.keys(availability).filter(function(k){ return availability[k] && availability[k].length > 0; });
+      if (keys.length > 0) {
+        var first = new Date(keys[0] + 'T12:00:00');
+        viewYear = first.getFullYear();
+        viewMonth = first.getMonth();
+      }
+      renderCal();
+      show('s1');
+    })
+    .catch(function(){
+      show('loadError');
+    });
+}
+
+function toKey(y, m, d) {
+  return y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+}
+
+function renderCal() {
+  document.getElementById('monthLabel').textContent = MONTHS[viewMonth] + ' ' + viewYear;
+
+  // Day headers
+  var headers = document.getElementById('dayHeaders');
+  headers.innerHTML = '';
+  ['S','M','T','W','T','F','S'].forEach(function(d){
+    var el = document.createElement('div');
+    el.style.cssText = 'text-align:center;font-size:11px;color:#6b6960;font-weight:500;padding:4px 0';
+    el.textContent = d;
+    headers.appendChild(el);
+  });
+
+  var grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  var today = new Date();
+  today.setHours(0,0,0,0);
+  var firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  var daysInMonth = new Date(viewYear, viewMonth+1, 0).getDate();
+
+  for (var i = 0; i < firstDay; i++) {
+    var blank = document.createElement('div');
+    blank.style.height = '36px';
+    grid.appendChild(blank);
+  }
+
+  for (var d = 1; d <= daysInMonth; d++) {
+    var key = toKey(viewYear, viewMonth, d);
+    var cellDate = new Date(viewYear, viewMonth, d);
+    var isPast = cellDate < today;
+    var avail = availability[key];
+    var isFullyBooked = avail && avail.length === 0;
+    var hasSlots = avail && avail.length > 0;
+    // Block original slot on reschedule
+    var isOriginal = ACTION === 'reschedule' && key === OLD_DATE;
+    if (isOriginal) { isFullyBooked = true; hasSlots = false; }
+    var isSel = selDate === key;
+
+    var el = document.createElement('div');
+    el.style.cssText = 'height:36px;width:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;position:relative;margin:1px auto;';
+
+    if (isSel) {
+      el.style.background = '#2D2A6E'; el.style.color = '#fff'; el.style.fontWeight = '500';
+      el.textContent = d;
+    } else if (isPast || !avail) {
+      el.style.color = '#ccc'; el.textContent = d;
+    } else if (isFullyBooked) {
+      el.style.background = '#fde8e8'; el.style.color = '#c0392b'; el.textContent = d;
+      if (isOriginal) el.title = 'Your current appointment';
+    } else if (hasSlots) {
+      el.style.cursor = 'pointer'; el.style.fontWeight = '500';
+      var span = document.createElement('span'); span.textContent = d; el.appendChild(span);
+      var dot = document.createElement('span');
+      dot.style.cssText = 'position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:#1D9E75';
+      el.appendChild(dot);
+      (function(k, day, elem){
+        elem.onmouseenter = function(){ if(selDate!==k) elem.style.background='#e1f5ee'; };
+        elem.onmouseleave = function(){ if(selDate!==k) elem.style.background='transparent'; };
+        elem.onclick = function(){ pickDate(k, day); };
+      })(key, d, el);
+    } else {
+      el.style.color = '#ccc'; el.textContent = d;
+    }
+    grid.appendChild(el);
+  }
+}
+
+function pickDate(key, d) {
+  selDate = key; selSlot = null;
+  renderCal();
+  var dt = new Date(key + 'T12:00:00');
+  document.getElementById('selDateLabel').textContent = DAYS[dt.getDay()] + ', ' + d + ' ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
+  var grid = document.getElementById('slotGrid');
+  grid.innerHTML = '';
+  var slots = availability[key] || [];
+  slots.forEach(function(sid){
+    var slot = SLOT_LABELS[sid];
+    if (!slot) return;
+    var el = document.createElement('div');
+    el.style.cssText = 'background:#fff;border:1.5px solid #e5e3dc;border-radius:12px;padding:13px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:border-color 0.15s';
+    var info = document.createElement('div');
+    var lbl = document.createElement('div'); lbl.style.cssText='font-size:15px;font-weight:500'; lbl.textContent=slot.label;
+    var sub = document.createElement('div'); sub.style.cssText='font-size:11px;color:#6b6960;margin-top:1px'; sub.textContent=slot.full;
+    info.appendChild(lbl); info.appendChild(sub);
+    var dot = document.createElement('div');
+    dot.style.cssText = 'width:20px;height:20px;border-radius:50%;border:2px solid #e5e3dc;flex-shrink:0;transition:all 0.15s';
+    el.appendChild(info); el.appendChild(dot);
+    (function(s, elem, dotEl){
+      elem.onmouseenter = function(){ elem.style.borderColor='#1D9E75'; };
+      elem.onmouseleave = function(){ if(selSlot!==s){ elem.style.borderColor='#e5e3dc'; } };
+      elem.onclick = function(){ pickSlot(s, elem, dotEl); };
+    })(sid, el, dot);
+    grid.appendChild(el);
+  });
+  show('s2');
+}
+
+function pickSlot(sid, el, dot) {
+  selSlot = sid;
+  document.querySelectorAll('#slotGrid>div').forEach(function(d){
+    d.style.borderColor='#e5e3dc';
+    var dd=d.querySelector('div:last-child');
+    if(dd){ dd.style.background='transparent'; dd.style.borderColor='#e5e3dc'; }
+  });
+  el.style.borderColor = '#1D9E75';
+  dot.style.background = '#1D9E75'; dot.style.borderColor = '#1D9E75';
+  setTimeout(function(){ showConfirm(); }, 180);
+}
+
+function showConfirm() {
+  var dt = new Date(selDate + 'T12:00:00');
+  var slot = SLOT_LABELS[selSlot];
+  document.getElementById('c3date').textContent = FULL_DAYS[dt.getDay()] + ', ' + dt.getDate() + ' ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
+  document.getElementById('c3time').textContent = slot.full;
+  document.getElementById('c3name').textContent = NAME || 'Customer';
+  document.getElementById('confirmError').style.display = 'none';
+  show('s3');
+}
+
+function confirmBooking() {
+  var btn = document.getElementById('btnConfirm');
+  btn.textContent = 'Confirming...';
+  btn.classList.add('btn-loading');
+  document.getElementById('confirmError').style.display = 'none';
+
+  var body = {
+    phone: PHONE,
+    group: GROUP,
+    name: NAME,
+    date: selDate,
+    slot: selSlot,
+    action: ACTION
+  };
+  if (ACTION === 'reschedule') {
+    body.oldDate = OLD_DATE;
+    body.oldSlot = OLD_SLOT;
+    body.oldCalEventId = OLD_EVENT_ID;
+  }
+
+  fetch(BOOKING_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    btn.textContent = 'Confirm appointment';
+    btn.classList.remove('btn-loading');
+    if (data.success) {
+      confirmedDate = selDate;
+      confirmedSlot = selSlot;
+      confirmedEventId = data.calEventId || '';
+      var dt = new Date(selDate + 'T12:00:00');
+      var slot = SLOT_LABELS[selSlot];
+      document.getElementById('s4d').textContent = FULL_DAYS[dt.getDay()] + ', ' + dt.getDate() + ' ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
+      document.getElementById('s4t').textContent = slot.full;
+      document.getElementById('s4ref').textContent = GROUP || '—';
+      show('s4');
+    } else if (data.error === 'slot_taken') {
+      // Refresh availability and show error
+      document.getElementById('confirmError').textContent = 'Sorry, that slot was just taken. Please pick another time.';
+      document.getElementById('confirmError').style.display = 'block';
+      // Reload availability
+      fetch(AVAILABILITY_URL + '?phone=' + encodeURIComponent(PHONE) + '&group=' + encodeURIComponent(GROUP))
+        .then(function(r){ return r.json(); })
+        .then(function(d){ availability = d.availability || {}; });
+    } else if (data.error === 'same_slot') {
+      document.getElementById('confirmError').textContent = data.message || 'Please pick a different date or time.';
+      document.getElementById('confirmError').style.display = 'block';
+    } else {
+      document.getElementById('confirmError').textContent = data.message || 'Booking failed. Please try again.';
+      document.getElementById('confirmError').style.display = 'block';
+    }
+  })
+  .catch(function(){
+    btn.textContent = 'Confirm appointment';
+    btn.classList.remove('btn-loading');
+    document.getElementById('confirmError').textContent = 'Network error. Please try again.';
+    document.getElementById('confirmError').style.display = 'block';
+  });
+}
+
+// Reschedule from success screen
+document.getElementById('btnReschedule').onclick = function() {
+  ACTION = 'reschedule';
+  OLD_DATE = confirmedDate;
+  OLD_SLOT = confirmedSlot;
+  OLD_EVENT_ID = confirmedEventId;
+  selDate = null; selSlot = null;
+  loadAvailability();
+};
+
+// Wire buttons
+document.getElementById('btnPrev').onclick = function(){
+  viewMonth--; if(viewMonth<0){viewMonth=11;viewYear--;} renderCal();
+};
+document.getElementById('btnNext').onclick = function(){
+  viewMonth++; if(viewMonth>11){viewMonth=0;viewYear++;} renderCal();
+};
+document.getElementById('btnBack2').onclick = function(){ show('s1'); };
+document.getElementById('btnBack3').onclick = function(){ show('s2'); };
+document.getElementById('btnConfirm').onclick = confirmBooking;
+document.getElementById('btnChange').onclick = function(){ show('s2'); };
+
+// Start
+loadAvailability();
+</script>
+</body>
+</html>
