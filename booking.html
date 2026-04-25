@@ -51,6 +51,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
     <button onclick="loadAvailability()" style="background:var(--acc);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Try again</button>
   </div>
 
+  <!-- Step 0: Existing appointment -->
+  <div id="s0" style="display:none;padding:20px">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:32px;margin-bottom:8px">📅</div>
+      <div style="font-size:17px;font-weight:600;margin-bottom:6px">You have an existing appointment</div>
+      <div style="font-size:13px;color:#6b6960">Would you like to keep it or reschedule?</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;border:1px solid #e5e3dc;overflow:hidden;margin-bottom:16px">
+      <div style="background:#2D2A6E;padding:16px 20px">
+        <div style="color:rgba(255,255,255,0.6);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Current appointment</div>
+        <div style="color:#fff;font-size:16px;font-weight:600" id="existDate">—</div>
+        <div style="color:rgba(255,255,255,0.75);font-size:13px" id="existTime">—</div>
+      </div>
+    </div>
+    <button id="btnKeep" style="width:100%;background:#1D9E75;color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:500;font-family:inherit;cursor:pointer;margin-bottom:8px">Keep this appointment</button>
+    <button id="btnGoReschedule" style="width:100%;background:none;color:#2D2A6E;border:1.5px solid #2D2A6E;border-radius:12px;padding:14px;font-size:14px;font-weight:500;font-family:inherit;cursor:pointer">Reschedule to a new time</button>
+  </div>
+
   <!-- Step 1: Calendar -->
   <div id="s1" style="display:none;padding:16px 20px 0">
     <div style="background:#fff;border-radius:14px;border:1px solid #e5e3dc;overflow:hidden;margin-bottom:10px">
@@ -186,24 +204,48 @@ var selSlot = null;
 var confirmedDate = null;
 var confirmedSlot = null;
 var confirmedEventId = null;
+var existingApptData = null;
 
 // Init header
 document.getElementById('hdrName').textContent = NAME || 'Customer';
 document.getElementById('hdrGroup').textContent = GROUP || '—';
 
 function show(id) {
-  ['loading','loadError','s1','s2','s3','s4'].forEach(function(s){
-    document.getElementById(s).style.display = s === id ? (id === 's1' || id === 's2' || id === 's3' || id === 's4' ? 'block' : 'block') : 'none';
+  ['loading','loadError','s0','s1','s2','s3','s4'].forEach(function(s){
+    document.getElementById(s).style.display = s === id ? 'block' : 'none';
   });
+}
+
+function splitSlotChosen(slotChosen) {
+  // Format like "Sunday, 3 May 2026, 9:00 AM - 10:00 AM"
+  var parts = String(slotChosen || '').split(', ');
+  if (parts.length >= 3) {
+    return { date: parts.slice(0, parts.length - 1).join(', '), time: parts[parts.length - 1] };
+  }
+  return { date: slotChosen || '', time: '' };
+}
+
+function showExistingAppt(appt) {
+  existingApptData = appt;
+  var parsed = splitSlotChosen(appt.slotChosen);
+  document.getElementById('existDate').textContent = parsed.date || '—';
+  document.getElementById('existTime').textContent = parsed.time || '';
+  show('s0');
 }
 
 function loadAvailability() {
   show('loading');
   var url = AVAILABILITY_URL + '?phone=' + encodeURIComponent(PHONE) + '&group=' + encodeURIComponent(GROUP);
+  if (OLD_EVENT_ID) url += '&oldEventId=' + encodeURIComponent(OLD_EVENT_ID);
   fetch(url)
     .then(function(r){ return r.json(); })
     .then(function(data){
       availability = data.availability || {};
+      // TC1: show existing-appt screen if lead already has a confirmed appt AND user didn't already click reschedule
+      if (data.existingAppt && ACTION !== 'reschedule') {
+        showExistingAppt(data.existingAppt);
+        return;
+      }
       // Set view to first available month
       var keys = Object.keys(availability).filter(function(k){ return availability[k] && availability[k].length > 0; });
       if (keys.length > 0) {
@@ -422,8 +464,44 @@ document.getElementById('btnPrev').onclick = function(){
 document.getElementById('btnNext').onclick = function(){
   viewMonth++; if(viewMonth>11){viewMonth=0;viewYear++;} renderCal();
 };
-document.getElementById('btnBack2').onclick = function(){ show('s1'); };
-document.getElementById('btnBack3').onclick = function(){ show('s2'); };
+document.getElementById('btnBack2').onclick = function(){
+  selDate = null;      // TC6: reset so same date is re-clickable
+  renderCal();
+  show('s1');
+};
+document.getElementById('btnBack3').onclick = function(){
+  selSlot = null;      // TC5: keep selDate, just let user pick a different slot
+  show('s2');
+};
+
+// TC1: existing-appt Keep / Reschedule handlers
+document.getElementById('btnKeep').onclick = function(){
+  if (!existingApptData) return;
+  var parsed = splitSlotChosen(existingApptData.slotChosen);
+  document.getElementById('s4d').textContent = parsed.date || '—';
+  document.getElementById('s4t').textContent = parsed.time || '—';
+  document.getElementById('s4ref').textContent = GROUP || '—';
+  confirmedDate = existingApptData.dateApptConfirmed || '';
+  confirmedEventId = existingApptData.calEventId || '';
+  // best-effort: derive confirmedSlot from slotChosen so Reschedule from success screen works
+  var slotMap = {'9:00 AM':1,'10:30 AM':2,'12:00 PM':3,'2:00 PM':4,'3:30 PM':5};
+  for (var label in slotMap) {
+    if ((existingApptData.slotChosen || '').indexOf(label) !== -1) { confirmedSlot = slotMap[label]; break; }
+  }
+  show('s4');
+};
+document.getElementById('btnGoReschedule').onclick = function(){
+  if (!existingApptData) return;
+  ACTION = 'reschedule';
+  OLD_DATE = existingApptData.dateApptConfirmed || '';
+  OLD_EVENT_ID = existingApptData.calEventId || '';
+  var slotMap = {'9:00 AM':1,'10:30 AM':2,'12:00 PM':3,'2:00 PM':4,'3:30 PM':5};
+  for (var label in slotMap) {
+    if ((existingApptData.slotChosen || '').indexOf(label) !== -1) { OLD_SLOT = slotMap[label]; break; }
+  }
+  selDate = null; selSlot = null;
+  loadAvailability();
+};
 document.getElementById('btnConfirm').onclick = confirmBooking;
 document.getElementById('btnChange').onclick = function(){ show('s2'); };
 
