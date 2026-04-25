@@ -298,9 +298,6 @@ function renderCal() {
     var avail = availability[key];
     var isFullyBooked = avail && avail.length === 0;
     var hasSlots = avail && avail.length > 0;
-    // Block original slot on reschedule
-    var isOriginal = ACTION === 'reschedule' && key === OLD_DATE;
-    if (isOriginal) { isFullyBooked = true; hasSlots = false; }
     var isSel = selDate === key;
 
     var el = document.createElement('div');
@@ -313,7 +310,6 @@ function renderCal() {
       el.style.color = '#ccc'; el.textContent = d;
     } else if (isFullyBooked) {
       el.style.background = '#fde8e8'; el.style.color = '#c0392b'; el.textContent = d;
-      if (isOriginal) el.title = 'Your current appointment';
     } else if (hasSlots) {
       el.style.cursor = 'pointer'; el.style.fontWeight = '500';
       var span = document.createElement('span'); span.textContent = d; el.appendChild(span);
