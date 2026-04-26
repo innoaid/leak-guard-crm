@@ -162,10 +162,9 @@ const SHEET_NAME = 'Leak Guard Leads';
 const GVIZ_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
   '/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent(SHEET_NAME);
 
-// IMPORTANT: paste the deployed Apps Script Web App URL here after first deploy.
-// Format: https://script.google.com/macros/s/AKfycb.../exec
-const WEBAPP_URL = '';
-const SHARED_SECRET = 'lg-kanban-2026-CHANGE-ME'; // must match kanban_code.gs
+// Apps Script Web App URL — must match deployed Code.gs's SHARED_SECRET
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SHARED_SECRET = 'ABC';
 
 // 9 active columns (left → right)
 const ACTIVE_STATUSES = [

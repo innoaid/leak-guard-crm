@@ -21,7 +21,7 @@
 
 const LIVE_SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
 const SHEET_NAME    = 'Leak Guard Leads';
-const SHARED_SECRET = 'lg-kanban-2026-CHANGE-ME'; // change before deploy
+const SHARED_SECRET = 'ABC'; // matches team_kanban.html
 const N8N_BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
 const N8N_WAGROUP_URL = 'https://gate.whapi.cloud/messages/text';
 const WHAPI_TOKEN     = 'tjJeSotqcmnYBfQulcRxcFHHQ8QtDcC5';
