@@ -217,17 +217,8 @@ function handleSendReschedule(body) {
   if (groupName) params.push('group=' + encodeURIComponent(groupName));
   const longUrl = 'https://innoaid.github.io/leak-guard-crm/booking.html?' + params.join('&');
 
-  // Shorten via TinyURL (best-effort)
-  let shortUrl = longUrl;
-  try {
-    const r = UrlFetchApp.fetch('https://tinyurl.com/api-create.php?url=' +
-      encodeURIComponent(longUrl), {muteHttpExceptions: true});
-    const s = String(r.getContentText()).trim();
-    if (s.indexOf('http') === 0) shortUrl = s;
-  } catch (_e) {}
-
   const msg = 'Click the link below to manage your appointment — only takes 2 mins.\n\n' +
-    '🚀 Express Booking: ' + shortUrl;
+    '🚀 Express Booking: ' + longUrl;
 
   try {
     UrlFetchApp.fetch(N8N_WAGROUP_URL, {
@@ -237,7 +228,7 @@ function handleSendReschedule(body) {
       payload: JSON.stringify({to: groupId, body: msg, typing_time: 2}),
       muteHttpExceptions: true
     });
-    return jsonResponse({status: 'ok', shortUrl: shortUrl});
+    return jsonResponse({status: 'ok', url: longUrl});
   } catch (err) {
     return jsonResponse({status: 'error', message: 'whapi: ' + err.toString()});
   }
