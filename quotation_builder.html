@@ -6,6 +6,7 @@
 <title>Leak Guard — Quotation Builder</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626}
@@ -103,6 +104,33 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .pv-zone-info b{font-weight:700}
 .pv-grand{margin-top:24px;padding:14px 18px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;font-size:18px;font-weight:800;color:#065F46;text-align:center}
 
+/* Quotation view — used for QT page PDF capture */
+.qv-page{width:794px;min-height:1123px;padding:50px;background:#fff;page-break-after:always;font-family:'Inter',sans-serif;color:#111}
+.qv-page:last-child{page-break-after:auto}
+.qv-hdr{display:flex;justify-content:space-between;padding-bottom:14px;border-bottom:2px solid #2D2A6E;margin-bottom:18px}
+.qv-co-name{font-size:18px;font-weight:800;color:#2D2A6E}
+.qv-co-detail{font-size:9.5px;color:#444;line-height:1.6;margin-top:6px;max-width:340px}
+.qv-doc-title{font-size:24px;font-weight:800;color:#2D2A6E;text-align:right;letter-spacing:1px}
+.qv-doc-meta{font-size:11px;text-align:right;line-height:1.7;margin-top:6px;color:#333}
+.qv-doc-meta b{color:#111}
+.qv-cust-block{margin-bottom:14px;font-size:11px;line-height:1.6;color:#333}
+.qv-cust-label{color:#6b7280;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.qv-cust-name{font-weight:700;font-size:13px;color:#111}
+.qv-thank{font-size:11px;margin:14px 0;color:#333}
+.qv-svc-hdr{font-size:13px;font-weight:700;margin:12px 0 8px;color:#111}
+.qv-tbl{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:4px}
+.qv-tbl th{background:#f3f4f6;padding:7px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;font-weight:700;color:#444;border-bottom:1px solid #d1d5db}
+.qv-tbl td{padding:8px;vertical-align:top;border-bottom:1px solid #f3f4f6}
+.qv-tbl .num{text-align:right}
+.qv-tbl .further{color:#6b7280;font-size:9.5px;margin-top:3px;display:block}
+.qv-tot-wrap{display:flex;justify-content:flex-end;margin-top:10px}
+.qv-tot-tbl{font-size:11px;border-collapse:collapse}
+.qv-tot-tbl td{padding:5px 14px}
+.qv-tot-tbl tr.final td{font-weight:800;font-size:13px;color:#2D2A6E;border-top:1px solid #2D2A6E;padding-top:8px}
+.qv-foot{margin-top:24px;font-size:10px;line-height:1.7;color:#333}
+.qv-foot b{color:#111}
+.qv-foot-section{margin-top:12px}
+
 @media (max-width: 600px){
   .wrap{padding:8px}
   .zone-row{grid-template-columns:1fr}
@@ -172,12 +200,13 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 
   <div class="actions">
     <button class="btn btn-secondary" id="btnZonePdf">📄 Zone Summary PDF</button>
-    <button class="btn btn-primary" id="btnGenerate" disabled title="Phase 2/3 coming soon">🚀 Generate &amp; Send</button>
+    <button class="btn btn-primary" id="btnGenerate" title="Create AutoCount QT + send combined PDF to customer">🚀 Generate &amp; Send</button>
   </div>
 </div>
 
-<!-- Hidden print view used by html2pdf for zone summary capture -->
+<!-- Hidden print views used by html2pdf for capture -->
 <div id="printView"></div>
+<div id="quotationView" style="position:absolute;left:-9999px;top:0;width:794px;background:#fff"></div>
 
 <!-- Toasts -->
 <div class="toast-container" id="toastContainer"></div>
@@ -194,6 +223,26 @@ const GVIZ_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
 const DEFAULT_RATE = 8.50;       // RM/sqft for membrane
 const MIN_SQFT = 650;             // minimum chargeable sqft
 const PLUMBER_DEFAULT = 650;      // optional plumber lump sum
+
+// Phase 3 — AutoCount + Send endpoints
+const QT_CREATE_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-create';
+const QT_SEND_URL   = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-send';
+
+// Boilerplate PDF — fetched at merge time. Commit boilerplate.pdf into repo
+// at innoaid/leak-guard-crm root. Same origin = no CORS hassle.
+const BOILERPLATE_URL = './boilerplate.pdf';
+
+// Company details for the quotation page header. Edit before going live.
+const COMPANY = {
+  name:    'Innovation AID Sdn Bhd',
+  coReg:   '(202401012345) — replace with real Co Reg',
+  klAddr:  'KL Branch: ____',
+  jbAddr:  'JB Branch: ____',
+  phone:   '+60 14-693 8657',
+  email:   'info@innoaid.com',
+  bankName:'Maybank',
+  bankAcc: '____ replace with real account ____'
+};
 
 // ================================================================
 // STATE
@@ -574,6 +623,22 @@ function buildPrintView() {
   return html;
 }
 
+function pdfOptions(filename) {
+  return {
+    margin: 0,
+    filename: filename || 'output.pdf',
+    image: { type: 'jpeg', quality: 0.92 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
+  };
+}
+
+// Render an element to a PDF and return raw bytes (Uint8Array). No download.
+async function htmlElToPdfBytes(el) {
+  const buf = await html2pdf().set(pdfOptions()).from(el).outputPdf('arraybuffer');
+  return new Uint8Array(buf);
+}
+
 async function generateZonePdf() {
   if (zones.length === 0) {
     toast('Add at least one zone first', 'warn');
@@ -585,13 +650,7 @@ async function generateZonePdf() {
 
   try {
     document.getElementById('printView').innerHTML = buildPrintView();
-    const opt = {
-      margin: 0,
-      filename: qtNumber + '-zone-summary.pdf',
-      image: { type: 'jpeg', quality: 0.92 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
-    };
+    const opt = pdfOptions(qtNumber + '-zone-summary.pdf');
     await html2pdf().set(opt).from(document.getElementById('printView')).save();
     toast('Zone summary PDF downloaded', 'success');
   } catch (e) {
@@ -599,6 +658,235 @@ async function generateZonePdf() {
   } finally {
     btn.disabled = false;
     btn.textContent = '📄 Zone Summary PDF';
+  }
+}
+
+// ================================================================
+// QUOTATION PAGE (Phase 3)
+// ================================================================
+function buildQuotationView(acData) {
+  // acData = { docNo, debtorCode, master, details } from /webhook/lg-quotation-create
+  const m = acData.master || {};
+  const d = acData.details || [];
+  const subtotal = d.reduce((s, item) => s + (Number(item.qty || 0) * Number(item.unitPrice || 0)), 0);
+  const dateStr = new Date().toLocaleDateString('en-MY', { day:'numeric', month:'long', year:'numeric' });
+  const phone = (lead && lead['Phone']) || '';
+
+  const rowsHtml = d.map((item, i) =>
+    '<tr>' +
+      '<td class="num">' + (i+1) + '</td>' +
+      '<td>' + escapeHtml(item.description || '') +
+        (item.furtherDescription ? '<span class="further">' + escapeHtml(item.furtherDescription) + '</span>' : '') +
+      '</td>' +
+      '<td class="num">' + (Number(item.qty || 0).toLocaleString('en-MY', { maximumFractionDigits: 2 })) + '</td>' +
+      '<td>' + escapeHtml(item.uom || '') + '</td>' +
+      '<td class="num">' + Number(item.unitPrice || 0).toFixed(2) + '</td>' +
+      '<td class="num">' + (Number(item.qty || 0) * Number(item.unitPrice || 0)).toFixed(2) + '</td>' +
+    '</tr>'
+  ).join('');
+
+  return (
+    '<div class="qv-page">' +
+      '<div class="qv-hdr">' +
+        '<div>' +
+          '<div class="qv-co-name">' + escapeHtml(COMPANY.name) + '</div>' +
+          '<div class="qv-co-detail">' +
+            'Co Reg: ' + escapeHtml(COMPANY.coReg) + '<br>' +
+            escapeHtml(COMPANY.klAddr) + '<br>' +
+            escapeHtml(COMPANY.jbAddr) + '<br>' +
+            'Phone: ' + escapeHtml(COMPANY.phone) + ' · Email: ' + escapeHtml(COMPANY.email) +
+          '</div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="qv-doc-title">QUOTATION</div>' +
+          '<div class="qv-doc-meta">' +
+            '<b>No:</b> ' + escapeHtml(acData.docNo) + '<br>' +
+            '<b>Date:</b> ' + dateStr + '<br>' +
+            '<b>Acc:</b> ' + escapeHtml(acData.debtorCode || '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="qv-cust-block">' +
+        '<div class="qv-cust-label">Bill To</div>' +
+        '<div class="qv-cust-name">' + escapeHtml(m.debtorName || '') + '</div>' +
+        '<div>' + escapeHtml(m.address || '').replace(/\n/g, '<br>') + '</div>' +
+        '<div>Tel: ' + escapeHtml(phone) + '</div>' +
+      '</div>' +
+
+      '<div class="qv-thank">Thank you for your inquiry. We are pleased to submit our quotation as below:</div>' +
+
+      '<div class="qv-svc-hdr">' + escapeHtml(m.description || 'Torch-On Membrane Waterproofing Services') + '</div>' +
+
+      '<table class="qv-tbl">' +
+        '<thead><tr>' +
+          '<th style="width:6%">Seq</th>' +
+          '<th style="width:48%">Description</th>' +
+          '<th style="width:10%" class="num">Qty</th>' +
+          '<th style="width:10%">Unit</th>' +
+          '<th style="width:13%" class="num">Unit Price (RM)</th>' +
+          '<th style="width:13%" class="num">Total (RM)</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rowsHtml + '</tbody>' +
+      '</table>' +
+
+      '<div class="qv-tot-wrap"><table class="qv-tot-tbl">' +
+        '<tr><td>Sub-total</td><td style="text-align:right">RM ' + subtotal.toFixed(2) + '</td></tr>' +
+        '<tr><td>Tax (0%)</td><td style="text-align:right">RM 0.00</td></tr>' +
+        '<tr class="final"><td>TOTAL</td><td style="text-align:right">RM ' + subtotal.toFixed(2) + '</td></tr>' +
+      '</table></div>' +
+
+      '<div class="qv-foot">' +
+        '<div class="qv-foot-section"><b>Payment Terms:</b><br>' +
+          '50% deposit upon order confirmation<br>' +
+          '50% balance upon work completion' +
+        '</div>' +
+        '<div class="qv-foot-section"><b>Bank Details:</b><br>' +
+          escapeHtml(COMPANY.name) + '<br>' +
+          escapeHtml(COMPANY.bankName) + ': ' + escapeHtml(COMPANY.bankAcc) +
+        '</div>' +
+        '<div class="qv-foot-section" style="font-size:9px;color:#6b7280">' +
+          'This quotation is valid for 30 days from the date issued.' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+// ================================================================
+// PDF MERGE (Phase 3) — pdf-lib
+// ================================================================
+async function mergePdfBytes(pdfBytesArr) {
+  const { PDFDocument } = window.PDFLib;
+  const merged = await PDFDocument.create();
+  for (const bytes of pdfBytesArr) {
+    if (!bytes) continue;
+    const doc = await PDFDocument.load(bytes);
+    const pages = await merged.copyPages(doc, doc.getPageIndices());
+    pages.forEach(p => merged.addPage(p));
+  }
+  return await merged.save(); // Uint8Array
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function fetchBoilerplateBytes() {
+  try {
+    const r = await fetch(BOILERPLATE_URL, { cache: 'force-cache' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const buf = await r.arrayBuffer();
+    return new Uint8Array(buf);
+  } catch (e) {
+    toast('Boilerplate fetch failed: ' + e.message + ' — sending without it', 'warn');
+    return null;
+  }
+}
+
+// ================================================================
+// GENERATE & SEND (Phase 3)
+// ================================================================
+async function generateAndSend() {
+  if (!lead) {
+    toast('Customer not loaded', 'error');
+    return;
+  }
+  if (zones.length === 0) {
+    toast('Add at least one zone', 'warn');
+    return;
+  }
+  const billableLines = lines.filter(l => !l.isHeader && (Number(l.qty)||0) > 0 && (Number(l.price)||0) > 0);
+  if (billableLines.length === 0) {
+    toast('Add at least one line item with qty + price', 'warn');
+    return;
+  }
+
+  const btn = document.getElementById('btnGenerate');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+
+  try {
+    // ── 1. POST to /webhook/lg-quotation-create ────────────────
+    btn.textContent = '1/5 Creating in AutoCount…';
+    const phone = String(lead['Phone'] || '').trim();
+    const total = billableLines.reduce((s, l) => s + (Number(l.qty) * Number(l.price)), 0);
+
+    const lineItemsForApi = billableLines.map(l => ({
+      desc:  l.desc,
+      qty:   Number(l.qty),
+      unit:  l.unit || '',
+      price: Number(l.price),
+      furtherDescription: ''
+    }));
+
+    const createPayload = {
+      phone:         phone,
+      name:          lead['Name'] || '',
+      address:       lead['Full Address'] || lead['Location'] || '',
+      serviceHeader: 'Torch-On Membrane Waterproofing Services',
+      lineItems:     lineItemsForApi
+    };
+
+    const createRes = await fetch(QT_CREATE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(createPayload)
+    });
+    if (!createRes.ok) throw new Error('Create webhook ' + createRes.status);
+    const acData = await createRes.json();
+    if (!acData.success || !acData.docNo) {
+      throw new Error('AutoCount create failed: ' + (acData.error || JSON.stringify(acData).slice(0, 200)));
+    }
+
+    // ── 2. Render zone summary PDF ────────────────────────────
+    btn.textContent = '2/5 Rendering zones…';
+    document.getElementById('printView').innerHTML = buildPrintView();
+    const zoneBytes = await htmlElToPdfBytes(document.getElementById('printView'));
+
+    // ── 3. Render QT page PDF ─────────────────────────────────
+    btn.textContent = '3/5 Rendering QT page…';
+    document.getElementById('quotationView').innerHTML = buildQuotationView(acData);
+    const qtBytes = await htmlElToPdfBytes(document.getElementById('quotationView'));
+
+    // ── 4. Fetch boilerplate + merge ─────────────────────────
+    btn.textContent = '4/5 Merging PDFs…';
+    const boilerBytes = await fetchBoilerplateBytes();
+    const mergedBytes = await mergePdfBytes([zoneBytes, qtBytes, boilerBytes].filter(Boolean));
+
+    // ── 5. POST to /webhook/lg-quotation-send ────────────────
+    btn.textContent = '5/5 Sending to customer…';
+    const sendPayload = {
+      phone:    phone,
+      name:     lead['Name'] || '',
+      docNo:    acData.docNo,
+      total:    total,
+      filename: acData.docNo + '.pdf',
+      pdfBase64: bytesToBase64(mergedBytes)
+    };
+
+    const sendRes = await fetch(QT_SEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sendPayload)
+    });
+    if (!sendRes.ok) throw new Error('Send webhook ' + sendRes.status);
+    const sendData = await sendRes.json().catch(() => ({}));
+    if (sendData.error) throw new Error(sendData.error);
+
+    toast(acData.docNo + ' sent to ' + (lead['Name'] || 'customer'), 'success');
+    // Disable button for the rest of the session — admin can refresh to send again
+    btn.textContent = '✅ Sent — ' + acData.docNo;
+  } catch (e) {
+    console.error(e);
+    toast('Failed: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = originalLabel;
   }
 }
 
@@ -631,6 +919,7 @@ function toast(msg, type) {
 document.getElementById('btnAddZone').onclick = function() { addZone(); };
 document.getElementById('btnAddLine').onclick = addLine;
 document.getElementById('btnZonePdf').onclick = generateZonePdf;
+document.getElementById('btnGenerate').onclick = generateAndSend;
 
 // Boot
 init();
