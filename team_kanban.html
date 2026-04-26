@@ -132,6 +132,26 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd.drag-ghost{opacity:.4}
 .kb-body.drag-over{background:#EEF2FF;outline:2px dashed #6366F1;outline-offset:-2px;border-radius:6px}
 
+/* Appointment modal */
+.appt-info{background:#F9FAFB;border-radius:8px;padding:10px 12px;margin-bottom:13px;font-size:12px}
+.appt-info-row{display:flex;justify-content:space-between;margin-bottom:3px}
+.appt-info-row:last-child{margin-bottom:0}
+.appt-info-label{color:var(--mt);font-weight:500}
+.appt-info-val{color:var(--ink);font-weight:600}
+.appt-current{background:#FEF3C7;border-left:3px solid #F59E0B;padding:8px 11px;border-radius:5px;margin-bottom:13px;font-size:12px;color:#92400E}
+.appt-section{margin-bottom:13px}
+.appt-section-h{font-size:11px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.appt-date-picker{width:100%;padding:9px 12px;border:.5px solid #D1D5DB;border-radius:6px;font-size:14px;font-family:inherit;background:#FAFAFA}
+.appt-date-picker:focus{outline:none;border-color:var(--acc);background:#fff}
+.appt-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:9px}
+.appt-slot{padding:9px 10px;border:.5px solid #D1D5DB;background:#fff;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s;color:var(--ink)}
+.appt-slot:hover:not(:disabled){border-color:var(--acc);background:#F0FDF4}
+.appt-slot.selected{background:var(--acc);color:#fff;border-color:var(--acc)}
+.appt-slot:disabled{opacity:.4;cursor:not-allowed;background:#F3F4F6;text-decoration:line-through}
+.appt-loading{padding:14px;text-align:center;color:var(--mt);font-size:13px}
+.appt-error{background:#FEE2E2;color:#991B1B;padding:9px 12px;border-radius:6px;font-size:12px;font-weight:500;margin-bottom:11px;display:none}
+.appt-error.on{display:block}
+
 /* Mobile */
 @media (max-width: 768px){
   .hdr{padding:10px 14px}
@@ -205,6 +225,38 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 <!-- Toast notifications -->
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- Appointment edit modal -->
+<div class="modal-overlay" id="apptModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title" id="apptTitle">Set Site Visit Date</div>
+        <div class="modal-sub" id="apptSub">—</div>
+      </div>
+      <button class="modal-close" id="btnApptClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="appt-info" id="apptInfo"></div>
+      <div class="appt-current" id="apptCurrent" style="display:none"></div>
+      <div class="appt-error" id="apptError"></div>
+      <div class="appt-section">
+        <div class="appt-section-h">Pick date</div>
+        <input type="date" class="appt-date-picker" id="apptDate">
+      </div>
+      <div class="appt-section">
+        <div class="appt-section-h">Pick slot</div>
+        <div id="apptSlotsArea">
+          <div class="appt-loading">Pick a date to see available slots…</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-secondary" id="btnApptCancel">Cancel</button>
+      <button class="modal-btn modal-btn-primary" id="btnApptConfirm" disabled>Confirm Booking</button>
+    </div>
+  </div>
+</div>
+
 <!-- Lead detail modal -->
 <div class="modal-overlay" id="leadModal">
   <div class="modal">
@@ -217,6 +269,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     </div>
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-actions">
+      <button class="modal-btn modal-btn-info" id="btnEditAppt" style="display:none">Edit appointment</button>
       <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
       <button class="modal-btn modal-btn-secondary" id="btnModalCancel">Close</button>
       <button class="modal-btn modal-btn-primary" id="btnModalSave">Save</button>
@@ -236,6 +289,19 @@ const GVIZ_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
 // Apps Script Web App URL — must match deployed Code.gs's SHARED_SECRET
 const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
 const SHARED_SECRET = 'ABC';
+
+// n8n webhooks (used by appointment modal)
+const N8N_AVAIL_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-availability';
+const N8N_BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
+
+// Slot times (matches booking page + lg-booking webhook)
+const SLOT_TIMES = {
+  1: '9:00 AM - 10:00 AM',
+  2: '10:30 AM - 11:30 AM',
+  3: '12:00 PM - 1:00 PM',
+  4: '2:00 PM - 3:00 PM',
+  5: '3:30 PM - 4:30 PM'
+};
 
 // 9 active columns (left → right)
 const ACTIVE_STATUSES = [
@@ -587,14 +653,34 @@ async function handleDragAdd(evt) {
 
   if (newStatus === oldStatus) return;
 
-  // Find lead in memory + update optimistically
   const lead = allLeads.find(l => String(l['Phone']) === phone);
 
-  // Warn for appointment-stage drops (S3 will gate properly)
-  if (newStatus === 'Site Visit Confirmed' || newStatus === 'Pending I.Date') {
-    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus) + ' — remember to set the appointment date (modal in next phase)', 'warn');
+  // GATED: drag onto Site Visit Confirmed → must set appointment first
+  if (newStatus === 'Site Visit Confirmed') {
+    const result = await openApptModal(lead);
+    if (!result.confirmed) {
+      // Revert card
+      evt.from.appendChild(card);
+      return;
+    }
+    // lg-booking already updated CRM (status, date, slot, calEventId, sent WA notification)
+    if (lead) {
+      lead['Status'] = 'Site Visit Confirmed';
+      lead['Status Changed At'] = new Date().toISOString();
+      lead['Slot Chosen'] = result.slotChosen;
+      lead['Date Appt Confirmed'] = result.date;
+      lead['Cal Event ID (AH)'] = result.calEventId;
+    }
+    toast('Appointment set: ' + result.displayDate + ', ' + result.displayTime, 'success');
+    return;
   }
 
+  // Pending I.Date — proper installation booking flow not built yet (S4 backlog)
+  if (newStatus === 'Pending I.Date') {
+    toast('Moved to Pending Installation Date — installation date booking flow coming later', 'warn');
+  }
+
+  // Standard status change
   const r = await apiCall('updateStatus', {
     phone: phone,
     status: newStatus,
@@ -608,10 +694,251 @@ async function handleDragAdd(evt) {
       lead['Status Changed At'] = new Date().toISOString();
     }
   } else {
-    // Revert: move card back
     evt.from.appendChild(card);
     toast('Move failed: ' + (r.message || 'unknown'), 'error');
   }
+}
+
+// ================================================================
+// APPOINTMENT MODAL
+// ================================================================
+
+let apptModalState = null; // {lead, isReschedule, availability, selectedDate, selectedSlot, resolveFn}
+
+function openApptModal(lead) {
+  return new Promise(function(resolve) {
+    const isReschedule = String(lead['Status'] || '') === 'Site Visit Confirmed';
+    apptModalState = {
+      lead: lead,
+      isReschedule: isReschedule,
+      availability: {},
+      existingAppt: null,
+      selectedDate: null,
+      selectedSlot: null,
+      resolveFn: resolve
+    };
+
+    // Populate header
+    document.getElementById('apptTitle').textContent =
+      isReschedule ? 'Reschedule Appointment' : 'Set Site Visit Date';
+    document.getElementById('apptSub').textContent =
+      (lead['Name'] || '(no name)') + ' · ' + lead['Phone'];
+
+    // Lead info block
+    document.getElementById('apptInfo').innerHTML =
+      '<div class="appt-info-row"><span class="appt-info-label">Group</span>' +
+      '<span class="appt-info-val">' + escapeHtml(lead['Group Name (AE)'] || '—') + '</span></div>' +
+      '<div class="appt-info-row"><span class="appt-info-label">Location</span>' +
+      '<span class="appt-info-val">' + escapeHtml(lead['Location'] || '—') + '</span></div>';
+
+    // Existing appointment banner
+    if (isReschedule && lead['Slot Chosen']) {
+      document.getElementById('apptCurrent').textContent = 'Current: ' + lead['Slot Chosen'];
+      document.getElementById('apptCurrent').style.display = 'block';
+    } else {
+      document.getElementById('apptCurrent').style.display = 'none';
+    }
+
+    // Reset error
+    document.getElementById('apptError').classList.remove('on');
+
+    // Set date min = tomorrow, max = +60 days
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const min = new Date(today.getTime() + 86400000);
+    const max = new Date(today.getTime() + 60*86400000);
+    const dateInput = document.getElementById('apptDate');
+    dateInput.min = isoDate(min);
+    dateInput.max = isoDate(max);
+    dateInput.value = '';
+
+    // Reset slots
+    document.getElementById('apptSlotsArea').innerHTML =
+      '<div class="appt-loading">Pick a date to see available slots…</div>';
+
+    // Reset confirm button
+    document.getElementById('btnApptConfirm').disabled = true;
+
+    // Show modal
+    document.getElementById('apptModal').classList.add('open');
+
+    // Fetch availability in background
+    loadApptAvailability();
+  });
+}
+
+function isoDate(d) {
+  return d.getFullYear() + '-' +
+    String(d.getMonth()+1).padStart(2,'0') + '-' +
+    String(d.getDate()).padStart(2,'0');
+}
+
+async function loadApptAvailability() {
+  if (!apptModalState) return;
+  const lead = apptModalState.lead;
+  const phone = lead['Phone'] || '';
+  const groupName = lead['Group Name (AE)'] || '';
+  const oldEventId = lead['Cal Event ID (AH)'] || '';
+
+  const params = [];
+  if (phone) params.push('phone=' + encodeURIComponent(phone));
+  if (groupName) params.push('group=' + encodeURIComponent(groupName));
+  if (oldEventId && apptModalState.isReschedule) params.push('oldEventId=' + encodeURIComponent(oldEventId));
+
+  try {
+    const r = await fetch(N8N_AVAIL_URL + '?' + params.join('&'));
+    const data = await r.json();
+    apptModalState.availability = data.availability || {};
+    apptModalState.existingAppt = data.existingAppt || null;
+  } catch (e) {
+    showApptError('Failed to load availability: ' + e.message);
+  }
+}
+
+function onApptDateChange() {
+  if (!apptModalState) return;
+  const date = document.getElementById('apptDate').value;
+  apptModalState.selectedDate = date;
+  apptModalState.selectedSlot = null;
+  document.getElementById('btnApptConfirm').disabled = true;
+
+  const freeSlots = apptModalState.availability[date] || [];
+  const slotsArea = document.getElementById('apptSlotsArea');
+  slotsArea.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'appt-slots';
+  for (let s = 1; s <= 5; s++) {
+    const btn = document.createElement('button');
+    btn.className = 'appt-slot';
+    btn.textContent = SLOT_TIMES[s];
+    btn.dataset.slot = s;
+    if (!freeSlots.includes(s)) {
+      btn.disabled = true;
+      btn.title = 'Slot taken';
+    }
+    btn.onclick = function() { onApptSlotPick(s, btn); };
+    grid.appendChild(btn);
+  }
+  slotsArea.appendChild(grid);
+
+  if (freeSlots.length === 0) {
+    showApptError('No slots available on this date — pick another');
+  } else {
+    document.getElementById('apptError').classList.remove('on');
+  }
+}
+
+function onApptSlotPick(slot, btn) {
+  apptModalState.selectedSlot = slot;
+  document.querySelectorAll('.appt-slot').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  document.getElementById('btnApptConfirm').disabled = false;
+  document.getElementById('apptError').classList.remove('on');
+}
+
+function showApptError(msg) {
+  const el = document.getElementById('apptError');
+  el.textContent = msg;
+  el.classList.add('on');
+}
+
+async function confirmApptModal() {
+  if (!apptModalState) return;
+  const s = apptModalState;
+  if (!s.selectedDate || !s.selectedSlot) {
+    showApptError('Pick a date and slot first');
+    return;
+  }
+
+  // Same-slot guard (server enforces too, but UI sanity)
+  if (s.isReschedule && s.lead['Date Appt Confirmed']) {
+    const oldDate = String(s.lead['Date Appt Confirmed']).slice(0,10);
+    const oldSlot = parseSlotFromChosen(s.lead['Slot Chosen']);
+    if (oldDate === s.selectedDate && oldSlot === s.selectedSlot) {
+      showApptError('Same date and slot as current — pick a different one');
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btnApptConfirm');
+  btn.disabled = true;
+  btn.textContent = 'Booking...';
+
+  const lead = s.lead;
+  const payload = {
+    phone: lead['Phone'] || '',
+    group: lead['Group Name (AE)'] || '',
+    name: lead['Name'] || '',
+    date: s.selectedDate,
+    slot: s.selectedSlot,
+    action: s.isReschedule ? 'reschedule' : 'new'
+  };
+  if (s.isReschedule) {
+    payload.oldDate = String(lead['Date Appt Confirmed'] || '').slice(0,10);
+    payload.oldSlot = parseSlotFromChosen(lead['Slot Chosen']);
+    payload.oldCalEventId = lead['Cal Event ID (AH)'] || '';
+  }
+
+  try {
+    const r = await fetch(N8N_BOOKING_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await r.json();
+
+    btn.disabled = false;
+    btn.textContent = 'Confirm Booking';
+
+    if (result.success) {
+      const slotLabel = SLOT_TIMES[s.selectedSlot];
+      // Build slotChosen string the same way lg-booking does
+      const dt = new Date(s.selectedDate + 'T12:00:00+08:00');
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const slotChosen = days[dt.getDay()] + ', ' + dt.getDate() + ' ' + months[dt.getMonth()] + ' ' + dt.getFullYear() + ', ' + slotLabel;
+
+      document.getElementById('apptModal').classList.remove('open');
+      apptModalState.resolveFn({
+        confirmed: true,
+        date: s.selectedDate,
+        slot: s.selectedSlot,
+        slotChosen: slotChosen,
+        displayDate: result.displayDate || dt.toDateString(),
+        displayTime: result.displayTime || slotLabel,
+        calEventId: result.calEventId || ''
+      });
+      apptModalState = null;
+    } else {
+      const errMap = {
+        'slot_taken': 'That slot was just taken — pick another',
+        'same_slot': 'Same date and slot as current — pick a different one',
+      };
+      showApptError(errMap[result.error] || (result.message || 'Booking failed'));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Confirm Booking';
+    showApptError('Booking failed: ' + e.message);
+  }
+}
+
+function cancelApptModal() {
+  if (!apptModalState) {
+    document.getElementById('apptModal').classList.remove('open');
+    return;
+  }
+  document.getElementById('apptModal').classList.remove('open');
+  const r = apptModalState.resolveFn;
+  apptModalState = null;
+  r({ confirmed: false });
+}
+
+function parseSlotFromChosen(slotChosen) {
+  if (!slotChosen) return 0;
+  const map = {'9:00 AM':1,'10:30 AM':2,'12:00 PM':3,'2:00 PM':4,'3:30 PM':5};
+  for (const k in map) if (slotChosen.indexOf(k) !== -1) return map[k];
+  return 0;
 }
 
 // ================================================================
@@ -661,7 +988,28 @@ function openLeadDetail(lead) {
     rowEdit('Notes', '<textarea class="modal-textarea" id="modalNotes" placeholder="Add notes...">' +
       escapeHtml(lead['Notes'] || '') + '</textarea>');
 
+  // Show "Edit appointment" only if lead has a confirmed booking
+  const showEditAppt = (status === 'Site Visit Confirmed');
+  document.getElementById('btnEditAppt').style.display = showEditAppt ? '' : 'none';
+
   document.getElementById('leadModal').classList.add('open');
+}
+
+async function editApptFromDetail() {
+  if (!currentModalLead) return;
+  const lead = currentModalLead;
+  // Close detail modal first; appt modal opens on top
+  closeLeadDetail();
+  const result = await openApptModal(lead);
+  if (result.confirmed) {
+    // Update in-memory
+    lead['Slot Chosen'] = result.slotChosen;
+    lead['Date Appt Confirmed'] = result.date;
+    lead['Cal Event ID (AH)'] = result.calEventId;
+    lead['Status Changed At'] = new Date().toISOString();
+    toast('Appointment rescheduled: ' + result.displayDate + ', ' + result.displayTime, 'success');
+    render();
+  }
 }
 
 function rowDisplay(label, valHtml) {
@@ -822,11 +1170,24 @@ document.getElementById('btnModalClose').onclick = closeLeadDetail;
 document.getElementById('btnModalCancel').onclick = closeLeadDetail;
 document.getElementById('btnModalSave').onclick = saveLeadDetail;
 document.getElementById('btnSendReschedule').onclick = sendRescheduleFromModal;
+document.getElementById('btnEditAppt').onclick = editApptFromDetail;
 document.getElementById('leadModal').addEventListener('click', function(e){
   if (e.target.id === 'leadModal') closeLeadDetail();
 });
 document.addEventListener('keydown', function(e){
-  if (e.key === 'Escape') closeLeadDetail();
+  if (e.key === 'Escape') {
+    if (document.getElementById('apptModal').classList.contains('open')) cancelApptModal();
+    else closeLeadDetail();
+  }
+});
+
+// Appointment modal events
+document.getElementById('btnApptClose').onclick = cancelApptModal;
+document.getElementById('btnApptCancel').onclick = cancelApptModal;
+document.getElementById('btnApptConfirm').onclick = confirmApptModal;
+document.getElementById('apptDate').onchange = onApptDateChange;
+document.getElementById('apptModal').addEventListener('click', function(e){
+  if (e.target.id === 'apptModal') cancelApptModal();
 });
 
 // ================================================================
