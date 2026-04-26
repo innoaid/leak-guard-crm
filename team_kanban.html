@@ -139,6 +139,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd.drag-ghost{opacity:.4}
 .kb-body.drag-over{background:#EEF2FF;outline:2px dashed #6366F1;outline-offset:-2px;border-radius:6px}
 
+/* Expired site visit signal */
+.cd.expired{border-left:3px solid #DC2626}
+.cd-expired-badge{display:inline-block;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;background:#FEE2E2;color:#991B1B;margin-bottom:5px;letter-spacing:.3px}
+.kh-expired{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#FEE2E2;color:#991B1B;margin-left:4px}
+
 /* Appointment modal */
 .appt-info{background:#F9FAFB;border-radius:8px;padding:10px 12px;margin-bottom:13px;font-size:12px}
 .appt-info-row{display:flex;justify-content:space-between;margin-bottom:3px}
@@ -363,6 +368,15 @@ const collapsedCols = new Set();  // status names that are currently collapsed (
 
 function isMobile() { return window.innerWidth < 768; }
 
+function isVisitExpired(lead) {
+  if (String(lead['Status']||'') !== 'Site Visit Confirmed') return false;
+  const da = String(lead['Date Appt Confirmed']||'').slice(0,10);
+  if (!da) return false;
+  // Expired if appointment date end (23:59 MYT) is before now
+  const apptEnd = new Date(da + 'T23:59:59+08:00');
+  return apptEnd < new Date();
+}
+
 // ================================================================
 // gviz READ
 // ================================================================
@@ -453,6 +467,19 @@ function renderKanban(leads) {
     if (byStatus[s]) byStatus[s].push(l);
   });
 
+  // Sort Site Visit Confirmed: expired leads first (oldest expired on top)
+  if (byStatus['Site Visit Confirmed']) {
+    byStatus['Site Visit Confirmed'].sort((a, b) => {
+      const aExp = isVisitExpired(a), bExp = isVisitExpired(b);
+      if (aExp && !bExp) return -1;
+      if (bExp && !aExp) return 1;
+      // Both expired or both not — sort by date asc (oldest first)
+      const aDate = String(a['Date Appt Confirmed']||'').slice(0,10);
+      const bDate = String(b['Date Appt Confirmed']||'').slice(0,10);
+      return aDate.localeCompare(bDate);
+    });
+  }
+
   ACTIVE_STATUSES.forEach(status => {
     const col = document.createElement('div');
     col.className = 'kc' + (collapsedCols.has(status) ? ' collapsed' : '');
@@ -461,10 +488,14 @@ function renderKanban(leads) {
     const head = document.createElement('div');
     head.className = 'kh';
     const isCollapsed = collapsedCols.has(status);
+    // Count expired leads in this column (only for Site Visit Confirmed)
+    const expiredCount = (status === 'Site Visit Confirmed')
+      ? byStatus[status].filter(isVisitExpired).length : 0;
     head.innerHTML =
       '<span class="kh-name" data-toggle="' + status + '">' + (STATUS_LABELS[status] || status) + '</span>' +
       '<span class="kh-right">' +
         '<span class="kh-count">' + byStatus[status].length + '</span>' +
+        (expiredCount > 0 ? '<span class="kh-expired">⚠️ ' + expiredCount + '</span>' : '') +
         '<button class="kh-toggle" data-toggle="' + status + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + '">' +
           (isCollapsed ? '▶' : '▼') +
         '</button>' +
@@ -510,6 +541,9 @@ function renderCard(lead) {
   const assignee = lead['Assigned To'] || '';
   const status = String(lead['Status'] || '');
   const inviteLink = lead['Group Invite Link (AJ)'] || '';
+  const expired = isVisitExpired(lead);
+
+  if (expired) c.classList.add('expired');
 
   // Days in stage
   const changedAt = lead['Status Changed At'];
@@ -522,6 +556,7 @@ function renderCard(lead) {
     .join('');
 
   c.innerHTML =
+    (expired ? '<span class="cd-expired-badge">⚠️ VISIT DONE — DECIDE</span>' : '') +
     '<div class="cd-name">' + escapeHtml(name) + '</div>' +
     '<a class="cd-phone" href="tel:' + phone + '" onclick="event.stopPropagation()">📞 ' + phone + '</a>' +
     (loc ? '<div class="cd-loc">📍 ' + escapeHtml(loc) + '</div>' : '') +
