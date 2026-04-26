@@ -25,6 +25,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .toolbar select{min-width:130px;cursor:pointer}
 .toolbar .refresh{padding:7px 11px;background:#F3F4F6;border:.5px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink);font-family:inherit}
 .toolbar .refresh:hover{background:#E5E7EB}
+.toolbar .quickfilter.active{background:#FEF3C7;border-color:#F59E0B;color:#92400E}
+.toolbar .quickfilter.active:hover{background:#FDE68A}
 .last-sync{font-size:11px;color:var(--mt);margin-left:auto}
 
 .err{background:#FEE2E2;color:#991B1B;padding:9px 16px;font-size:13px;font-weight:600;text-align:center;display:none}
@@ -51,12 +53,19 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd{background:#fff;border:.5px solid #E5E7EB;border-radius:6px;padding:9px 10px;margin-bottom:5px;cursor:pointer;transition:border-color .15s,transform .1s}
 .cd:hover{border-color:#D1D5DB}
 .cd.dragging{opacity:.5}
+.cd-svid{font-family:'SF Mono',Consolas,Monaco,monospace;font-size:9.5px;color:#6B7280;background:#F3F4F6;padding:1px 6px;border-radius:4px;letter-spacing:.3px;display:inline-block;margin-bottom:4px}
 .cd-name{font-size:13px;font-weight:600;color:#111827;margin-bottom:2px}
-.cd-phone{font-size:11px;color:#0F6E56;text-decoration:none;display:block;margin-bottom:4px}
+.cd-phone{font-size:11px;color:#0F6E56;text-decoration:none;display:block;margin-bottom:4px;cursor:copy}
+.cd-phone:hover{text-decoration:underline}
+.cd-apptdate{font-size:10px;font-weight:600;color:#065F46;background:#D1FAE5;padding:1px 7px;border-radius:9px;display:inline-block;margin-bottom:4px}
 .cd-loc{font-size:11px;color:#6B7280;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-lastmsg{font-size:10.5px;color:#4B5563;font-style:italic;background:#FFFBEB;border-left:2px solid #F59E0B;padding:3px 6px;margin-bottom:5px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd-row{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}
 .cd-tags{display:flex;gap:3px;flex-wrap:wrap}
-.cd-tag{padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.cd-tag{padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;display:inline-flex;align-items:center;gap:3px}
+.cd-tag:hover{filter:brightness(.95)}
+.cd-tag-x{font-size:11px;line-height:1;font-weight:700;opacity:.55;margin-left:1px}
+.cd-tag:hover .cd-tag-x{opacity:1}
 .tag-needs_reply{background:#FEF3C7;color:#92400E}
 .tag-complaint{background:#FEE2E2;color:#991B1B}
 .tag-cancel_request{background:#FCE7F3;color:#9D174D}
@@ -67,7 +76,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-days.err{background:#FEE2E2;color:#991B1B}
 .cd-days.green{background:#D1FAE5;color:#065F46}
 .cd-assignee{padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;background:#EEF2FF;color:#3730A3}
-.cd-wa{font-size:14px;color:#25D366;text-decoration:none}
+.cd-wa{font-size:14px;color:#25D366;text-decoration:none;padding:1px 6px;border-radius:8px;background:#DCFCE7;display:inline-flex;align-items:center;gap:3px;font-weight:600}
+.cd-wa:hover{background:#BBF7D0}
+.cd-wa.disabled{color:#9CA3AF;background:#F3F4F6;cursor:not-allowed;pointer-events:none}
 .kc-empty{text-align:center;padding:18px 8px;color:var(--mt);font-size:11px;font-style:italic}
 
 /* Archive view */
@@ -205,6 +216,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <option value="cancel_request">cancel_request</option>
     <option value="cold_lead">cold_lead</option>
   </select>
+  <button class="refresh quickfilter" id="btnRepliesNeeded" title="Show only cards tagged needs_reply (combines with staff filter)">🔔 Replies needed</button>
   <button class="refresh" id="btnRefresh">🔄 Refresh</button>
   <span class="last-sync" id="lastSync">—</span>
 </div>
@@ -424,6 +436,7 @@ function render() {
   const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
   const staff = document.getElementById('staffFilter').value;
   const tagFilter = document.getElementById('tagFilter').value;
+  const repliesOnly = document.getElementById('btnRepliesNeeded').classList.contains('active');
 
   function passesFilters(lead) {
     if (search) {
@@ -439,6 +452,10 @@ function render() {
     if (tagFilter) {
       const tags = String(lead['Tags'] || '').toLowerCase();
       if (!tags.includes(tagFilter.toLowerCase())) return false;
+    }
+    if (repliesOnly) {
+      const tags = String(lead['Tags'] || '').toLowerCase();
+      if (!tags.includes('needs_reply')) return false;
     }
     return true;
   }
@@ -536,13 +553,22 @@ function renderCard(lead) {
   c.dataset.phone = lead['Phone'];
 
   const name = lead['Name'] || '(no name)';
-  const phone = lead['Phone'] || '';
+  const phone = String(lead['Phone'] || '');
   const loc = lead['Location'] || '';
   const tags = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
   const assignee = lead['Assigned To'] || '';
   const status = String(lead['Status'] || '');
   const inviteLink = lead['Group Invite Link (AJ)'] || '';
   const expired = isVisitExpired(lead);
+  const groupName = String(lead['Group Name (AE)'] || '');
+  const svMatch = groupName.match(/^(SV-\d{4}-\d{3})/);
+  const svId = svMatch ? svMatch[1] : '';
+  const apptDateStr = String(lead['Date Appt Confirmed'] || '').slice(0, 10);
+  const apptShort = (status === 'Site Visit Confirmed' && apptDateStr) ? formatApptShort(apptDateStr) : '';
+  const lastMsgRaw = String(lead['Last Customer Msg (AM)'] || '').trim();
+  const lastMsg = (status === 'Pending Site Visit' && lastMsgRaw)
+    ? (lastMsgRaw.length > 60 ? lastMsgRaw.slice(0, 60) + '…' : lastMsgRaw)
+    : '';
 
   if (expired) c.classList.add('expired');
 
@@ -558,17 +584,27 @@ function renderCard(lead) {
 
   c.innerHTML =
     (expired ? '<span class="cd-expired-badge">⚠️ VISIT DONE — DECIDE</span>' : '') +
+    (svId ? '<div class="cd-svid">' + svId + '</div>' : '') +
     '<div class="cd-name">' + escapeHtml(name) + '</div>' +
-    '<a class="cd-phone" href="tel:' + phone + '" onclick="event.stopPropagation()">📞 ' + phone + '</a>' +
+    '<span class="cd-phone" data-copy-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();copyPhone(this);">📞 ' + escapeHtml(phone) + '</span>' +
+    (apptShort ? '<div class="cd-apptdate">📅 ' + apptShort + '</div>' : '') +
     (loc ? '<div class="cd-loc">📍 ' + escapeHtml(loc) + '</div>' : '') +
+    (lastMsg ? '<div class="cd-lastmsg" title="' + escapeHtml(lastMsgRaw) + '">💬 ' + escapeHtml(lastMsg) + '</div>' : '') +
     '<div class="cd-row">' +
       '<div class="cd-tags">' +
-        tags.map(t => '<span class="cd-tag tag-' + t + '">' + t.replace(/_/g,' ') + '</span>').join('') +
+        tags.map(t =>
+          '<span class="cd-tag tag-' + t + '" data-clear-tag="' + escapeHtml(t) + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();clearTagFromCard(this);" title="Click × to clear this tag">' +
+            t.replace(/_/g,' ') +
+            '<span class="cd-tag-x">×</span>' +
+          '</span>'
+        ).join('') +
       '</div>' +
       '<div class="cd-meta">' +
         (daysInfo ? '<span class="cd-days ' + daysInfo.cls + '">' + daysInfo.label + '</span>' : '') +
         (assignee ? '<span class="cd-assignee">' + escapeHtml(assignee) + '</span>' : '') +
-        (inviteLink ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()">💬</a>' : '') +
+        (inviteLink
+          ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
+          : '<span class="cd-wa disabled" title="No invite link saved for this lead">💬 WA</span>') +
       '</div>' +
     '</div>' +
     '<select class="cd-move" data-phone="' + escapeHtml(String(phone)) + '" data-current="' + escapeHtml(status) + '" onclick="event.stopPropagation()">' +
@@ -707,6 +743,65 @@ function toast(message, type) {
     el.classList.add('fade');
     setTimeout(function(){ el.remove(); }, 300);
   }, 3500);
+}
+
+// ================================================================
+// CARD HELPERS — date formatter, phone copy
+// ================================================================
+
+const SHORT_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function formatApptShort(yyyymmdd) {
+  // "2026-04-30" → "Thu 30 Apr"
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(yyyymmdd)) return '';
+  const dt = new Date(yyyymmdd + 'T12:00:00+08:00');
+  if (isNaN(dt.getTime())) return '';
+  return SHORT_DAYS[dt.getDay()] + ' ' + dt.getDate() + ' ' + SHORT_MONTHS[dt.getMonth()];
+}
+
+function copyPhone(el) {
+  const phone = el.dataset.copyPhone || '';
+  if (!phone) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(phone).then(
+      () => toast('Copied ' + phone, 'success'),
+      () => toast('Copy failed — long-press to select', 'warn')
+    );
+  } else {
+    // Fallback: temporary input + execCommand
+    const ta = document.createElement('textarea');
+    ta.value = phone; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('Copied ' + phone, 'success'); }
+    catch (_e) { toast('Copy failed', 'error'); }
+    document.body.removeChild(ta);
+  }
+}
+
+async function clearTagFromCard(el) {
+  const tagToRemove = el.dataset.clearTag || '';
+  const phone = el.dataset.phone || '';
+  if (!tagToRemove || !phone) return;
+  // Find the lead in current state to get the existing tag list
+  const lead = (allLeads || []).find(l => String(l['Phone'] || '') === phone);
+  if (!lead) { toast('Lead not found in cache — refresh', 'error'); return; }
+  const current = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+  const next = current.filter(t => t !== tagToRemove);
+  // Optimistic UI: remove the chip immediately
+  el.style.transition = 'opacity .15s';
+  el.style.opacity = '0';
+  setTimeout(() => { try { el.remove(); } catch(_e){} }, 150);
+  const r = await apiCall('updateTag', { phone: phone, tags: next.join(',') });
+  if (r && r.status === 'ok') {
+    lead['Tags'] = next.join(',');
+    toast('Cleared "' + tagToRemove.replace(/_/g,' ') + '"', 'success');
+  } else {
+    toast('Failed to clear tag — refresh', 'error');
+    // Re-render to restore the chip
+    if (typeof render === 'function') render();
+  }
 }
 
 // ================================================================
@@ -1008,9 +1103,9 @@ async function confirmApptModal() {
 
   const lead = s.lead;
   const payload = {
-    phone: lead['Phone'] || '',
-    group: lead['Group Name (AE)'] || '',
-    name: lead['Name'] || '',
+    phone: String(lead['Phone'] || ''),
+    group: String(lead['Group Name (AE)'] || ''),
+    name: String(lead['Name'] || ''),
     date: s.selectedDate,
     slot: s.selectedSlot,
     action: s.isReschedule ? 'reschedule' : 'new'
@@ -1018,7 +1113,7 @@ async function confirmApptModal() {
   if (s.isReschedule) {
     payload.oldDate = String(lead['Date Appt Confirmed'] || '').slice(0,10);
     payload.oldSlot = parseSlotFromChosen(lead['Slot Chosen']);
-    payload.oldCalEventId = lead['Cal Event ID (AH)'] || '';
+    payload.oldCalEventId = String(lead['Cal Event ID (AH)'] || '');
   }
 
   try {
@@ -1277,6 +1372,10 @@ document.getElementById('btnRefresh').onclick = loadLeads;
 document.getElementById('searchInput').oninput = debounce(render, 200);
 document.getElementById('staffFilter').onchange = render;
 document.getElementById('tagFilter').onchange = render;
+document.getElementById('btnRepliesNeeded').onclick = function() {
+  this.classList.toggle('active');
+  render();
+};
 document.getElementById('archStatusFilter').onchange = render;
 document.getElementById('archSearch').oninput = debounce(render, 200);
 
