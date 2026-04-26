@@ -36,10 +36,17 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .kb::-webkit-scrollbar{height:6px}
 .kb::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px}
 .kc{min-width:230px;max-width:250px;flex-shrink:0;display:flex;flex-direction:column;background:#fff;border:.5px solid rgba(0,0,0,.07);border-radius:8px;overflow:hidden}
-.kh{padding:9px 11px;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;background:#F9FAFB;border-bottom:.5px solid var(--bdr)}
-.kh-name{color:var(--ink)}
+.kh{padding:9px 11px;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;background:#F9FAFB;border-bottom:.5px solid var(--bdr);gap:6px}
+.kh-name{color:var(--ink);flex:1;cursor:pointer}
+.kh-right{display:flex;align-items:center;gap:6px}
 .kh-count{padding:1px 7px;border-radius:14px;font-size:10px;font-weight:700;background:#E5E7EB;color:#374151}
+.kh-toggle{background:none;border:none;color:var(--mt);font-size:11px;cursor:pointer;padding:2px 4px;line-height:1;font-family:inherit;border-radius:4px;transition:.15s}
+.kh-toggle:hover{background:#E5E7EB;color:var(--ink)}
 .kb-body{flex:1;background:#FAFAFA;padding:6px;overflow-y:auto;max-height:calc(100vh - 200px);min-height:80px}
+.kc.collapsed .kb-body{display:none}
+.kc.collapsed{min-width:200px;max-width:200px}
+.cd-move{display:none;width:100%;margin-top:6px;padding:5px 8px;border:.5px solid #D1D5DB;border-radius:5px;font-size:11px;font-family:inherit;background:#F9FAFB;color:var(--ink);cursor:pointer}
+.cd-move:focus{outline:none;border-color:var(--acc);background:#fff}
 
 .cd{background:#fff;border:.5px solid #E5E7EB;border-radius:6px;padding:9px 10px;margin-bottom:5px;cursor:pointer;transition:border-color .15s,transform .1s}
 .cd:hover{border-color:#D1D5DB}
@@ -162,7 +169,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   .last-sync{display:none}
   .kb{flex-direction:column;overflow-x:visible;padding:6px}
   .kc{min-width:100%;max-width:100%}
+  .kc.collapsed{min-width:100%;max-width:100%}
   .kb-body{max-height:none}
+  .cd-move{display:block}                       /* show move-to on mobile */
+  .kh-name{font-size:13px}
+  .kh-toggle{font-size:13px;padding:4px 8px}    /* bigger tap target */
 }
 </style>
 </head>
@@ -348,6 +359,9 @@ let headers = [];            // sheet header names in order
 let viewMode = 'kanban';     // 'kanban' | 'archive'
 let refreshTimer = null;
 const REFRESH_MS = 60000;
+const collapsedCols = new Set();  // status names that are currently collapsed (mobile UX)
+
+function isMobile() { return window.innerWidth < 768; }
 
 // ================================================================
 // gviz READ
@@ -441,13 +455,20 @@ function renderKanban(leads) {
 
   ACTIVE_STATUSES.forEach(status => {
     const col = document.createElement('div');
-    col.className = 'kc';
+    col.className = 'kc' + (collapsedCols.has(status) ? ' collapsed' : '');
     col.dataset.status = status;
 
     const head = document.createElement('div');
     head.className = 'kh';
-    head.innerHTML = '<span class="kh-name">' + (STATUS_LABELS[status] || status) + '</span>' +
-      '<span class="kh-count">' + byStatus[status].length + '</span>';
+    const isCollapsed = collapsedCols.has(status);
+    head.innerHTML =
+      '<span class="kh-name" data-toggle="' + status + '">' + (STATUS_LABELS[status] || status) + '</span>' +
+      '<span class="kh-right">' +
+        '<span class="kh-count">' + byStatus[status].length + '</span>' +
+        '<button class="kh-toggle" data-toggle="' + status + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + '">' +
+          (isCollapsed ? '▶' : '▼') +
+        '</button>' +
+      '</span>';
     col.appendChild(head);
 
     const body = document.createElement('div');
@@ -462,6 +483,19 @@ function renderKanban(leads) {
     board.appendChild(col);
   });
   wireSortable();
+  wireColumnToggles();
+}
+
+function wireColumnToggles() {
+  document.querySelectorAll('.kh-toggle, .kh-name').forEach(el => {
+    el.onclick = function() {
+      const status = el.dataset.toggle;
+      if (!status) return;
+      if (collapsedCols.has(status)) collapsedCols.delete(status);
+      else collapsedCols.add(status);
+      render();
+    };
+  });
 }
 
 function renderCard(lead) {
@@ -481,6 +515,12 @@ function renderCard(lead) {
   const changedAt = lead['Status Changed At'];
   const daysInfo = computeDaysInStage(changedAt, status);
 
+  // Build move-to select options (excludes current status)
+  const moveOptions = ACTIVE_STATUSES
+    .filter(s => s !== status)
+    .map(s => '<option value="' + s + '">' + (STATUS_LABELS[s] || s) + '</option>')
+    .join('');
+
   c.innerHTML =
     '<div class="cd-name">' + escapeHtml(name) + '</div>' +
     '<a class="cd-phone" href="tel:' + phone + '" onclick="event.stopPropagation()">📞 ' + phone + '</a>' +
@@ -494,9 +534,30 @@ function renderCard(lead) {
         (assignee ? '<span class="cd-assignee">' + escapeHtml(assignee) + '</span>' : '') +
         (inviteLink ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()">💬</a>' : '') +
       '</div>' +
-    '</div>';
+    '</div>' +
+    '<select class="cd-move" data-phone="' + escapeHtml(String(phone)) + '" data-current="' + escapeHtml(status) + '" onclick="event.stopPropagation()">' +
+      '<option value="">Move to ▾</option>' +
+      moveOptions +
+    '</select>';
 
-  c.onclick = () => openLeadDetail(lead);
+  // Card click → detail modal (but not when interacting with the select)
+  c.onclick = (e) => {
+    if (e.target.classList && e.target.classList.contains('cd-move')) return;
+    openLeadDetail(lead);
+  };
+
+  // Wire the select
+  const sel = c.querySelector('.cd-move');
+  sel.onchange = function(e) {
+    e.stopPropagation();
+    const newStatus = sel.value;
+    if (!newStatus) return;
+    const phoneVal = sel.dataset.phone;
+    const currentStatus = sel.dataset.current;
+    sel.value = ''; // reset
+    moveCardFromButton(phoneVal, newStatus, currentStatus);
+  };
+
   return c;
 }
 
@@ -623,6 +684,9 @@ function wireSortable() {
   sortableInstances.forEach(s => { try { s.destroy(); } catch(_e){} });
   sortableInstances = [];
 
+  // Mobile uses the move-to select instead of drag-and-drop
+  const dragDisabled = isMobile();
+
   document.querySelectorAll('#kanbanBoard .kc').forEach(col => {
     const body = col.querySelector('.kb-body');
     if (!body) return;
@@ -632,6 +696,7 @@ function wireSortable() {
       ghostClass: 'drag-ghost',
       delay: 150,
       delayOnTouchOnly: true,
+      disabled: dragDisabled,
       onAdd: handleDragAdd,
       onEnd: function(evt) {
         // onAdd handles cross-column. onEnd handles same-column reorder (no-op for us).
@@ -639,6 +704,47 @@ function wireSortable() {
     });
     sortableInstances.push(inst);
   });
+}
+
+// Mobile move-to handler (mirrors handleDragAdd; no SortableJS event)
+async function moveCardFromButton(phone, newStatus, currentStatus) {
+  if (newStatus === currentStatus) return;
+  const lead = allLeads.find(l => String(l['Phone']) === phone);
+
+  // GATED: moving to Site Visit Confirmed → must set appointment first
+  if (newStatus === 'Site Visit Confirmed') {
+    if (!lead) return;
+    const result = await openApptModal(lead);
+    if (!result.confirmed) return;
+    lead['Status'] = 'Site Visit Confirmed';
+    lead['Status Changed At'] = new Date().toISOString();
+    lead['Slot Chosen'] = result.slotChosen;
+    lead['Date Appt Confirmed'] = result.date;
+    lead['Cal Event ID (AH)'] = result.calEventId;
+    toast('Appointment set: ' + result.displayDate + ', ' + result.displayTime, 'success');
+    render();
+    return;
+  }
+
+  if (newStatus === 'Pending I.Date') {
+    toast('Moved to Pending Installation Date — installation booking flow coming later', 'warn');
+  }
+
+  const r = await apiCall('updateStatus', {
+    phone: phone,
+    status: newStatus,
+    changedBy: 'Kanban'
+  });
+  if (r.status === 'ok') {
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus), 'success');
+    if (lead) {
+      lead['Status'] = newStatus;
+      lead['Status Changed At'] = new Date().toISOString();
+    }
+    render();
+  } else {
+    toast('Move failed: ' + (r.message || 'unknown'), 'error');
+  }
 }
 
 async function handleDragAdd(evt) {
