@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leak Guard — Team Kanban</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626;--sh:0 1px 3px rgba(0,0,0,.08)}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;min-height:100vh}
+
+.hdr{background:var(--pri);color:#fff;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.hdr-l{display:flex;align-items:center;gap:14px}
+.hdr-t{font-size:17px;font-weight:800}
+.hdr-r{display:flex;gap:8px;align-items:center}
+.hdr-btn{background:rgba(255,255,255,.15);color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.hdr-btn:hover{background:rgba(255,255,255,.25)}
+.hdr-btn .badge{display:inline-block;background:#fff;color:var(--pri);border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:4px}
+
+.toolbar{display:flex;gap:8px;padding:10px 14px;background:#fff;border-bottom:.5px solid #E5E7EB;flex-wrap:wrap;align-items:center}
+.toolbar input,.toolbar select{padding:7px 11px;background:#F9FAFB;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;color:var(--ink)}
+.toolbar input{flex:1;min-width:160px}
+.toolbar select{min-width:130px;cursor:pointer}
+.toolbar .refresh{padding:7px 11px;background:#F3F4F6;border:.5px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink);font-family:inherit}
+.toolbar .refresh:hover{background:#E5E7EB}
+.last-sync{font-size:11px;color:var(--mt);margin-left:auto}
+
+.err{background:#FEE2E2;color:#991B1B;padding:9px 16px;font-size:13px;font-weight:600;text-align:center;display:none}
+.ld{text-align:center;padding:48px;color:var(--mt)}
+.sp{width:26px;height:26px;border:3px solid var(--bdr);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.kb{display:flex;gap:8px;overflow-x:auto;padding:10px 14px;background:#fff}
+.kb::-webkit-scrollbar{height:6px}
+.kb::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px}
+.kc{min-width:230px;max-width:250px;flex-shrink:0;display:flex;flex-direction:column;background:#fff;border:.5px solid rgba(0,0,0,.07);border-radius:8px;overflow:hidden}
+.kh{padding:9px 11px;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;background:#F9FAFB;border-bottom:.5px solid var(--bdr)}
+.kh-name{color:var(--ink)}
+.kh-count{padding:1px 7px;border-radius:14px;font-size:10px;font-weight:700;background:#E5E7EB;color:#374151}
+.kb-body{flex:1;background:#FAFAFA;padding:6px;overflow-y:auto;max-height:calc(100vh - 200px);min-height:80px}
+
+.cd{background:#fff;border:.5px solid #E5E7EB;border-radius:6px;padding:9px 10px;margin-bottom:5px;cursor:pointer;transition:border-color .15s,transform .1s}
+.cd:hover{border-color:#D1D5DB}
+.cd.dragging{opacity:.5}
+.cd-name{font-size:13px;font-weight:600;color:#111827;margin-bottom:2px}
+.cd-phone{font-size:11px;color:#0F6E56;text-decoration:none;display:block;margin-bottom:4px}
+.cd-loc{font-size:11px;color:#6B7280;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-row{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}
+.cd-tags{display:flex;gap:3px;flex-wrap:wrap}
+.cd-tag{padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.tag-needs_reply{background:#FEF3C7;color:#92400E}
+.tag-complaint{background:#FEE2E2;color:#991B1B}
+.tag-cancel_request{background:#FCE7F3;color:#9D174D}
+.tag-cold_lead{background:#E0F2FE;color:#075985}
+.cd-meta{display:flex;gap:5px;align-items:center}
+.cd-days{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#6B7280}
+.cd-days.warn{background:#FEF3C7;color:#92400E}
+.cd-days.err{background:#FEE2E2;color:#991B1B}
+.cd-days.green{background:#D1FAE5;color:#065F46}
+.cd-assignee{padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;background:#EEF2FF;color:#3730A3}
+.cd-wa{font-size:14px;color:#25D366;text-decoration:none}
+.kc-empty{text-align:center;padding:18px 8px;color:var(--mt);font-size:11px;font-style:italic}
+
+/* Archive view */
+.archive-view{display:none;padding:12px 16px;background:#fff;min-height:calc(100vh - 100px)}
+.archive-view.on{display:block}
+.archive-view h2{font-size:16px;font-weight:700;margin-bottom:12px;color:var(--ink)}
+.archive-toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.archive-list{display:flex;flex-direction:column;gap:6px}
+.arch-row{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#fff;border:.5px solid var(--bdr);border-radius:7px}
+.arch-row-l{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.arch-row-name{font-size:13px;font-weight:600}
+.arch-row-meta{font-size:11px;color:var(--mt)}
+.arch-status-badge{padding:2px 7px;border-radius:9px;font-size:10px;font-weight:600;align-self:flex-start;margin-bottom:3px}
+.arch-status-Job-Complete{background:#D1FAE5;color:#065F46}
+.arch-status-Receipt-Sent{background:#A7F3D0;color:#064E3B}
+.arch-status-Lost{background:#FEE2E2;color:#991B1B}
+.arch-status-Cold-Lead{background:#E0F2FE;color:#075985}
+.arch-status-Rejected{background:#FECACA;color:#7F1D1D}
+.arch-status-Out-of-Area{background:#F3F4F6;color:#374151}
+.arch-status-Human-Handoff{background:#FED7AA;color:#9A3412}
+.arch-row-r{display:flex;gap:6px}
+
+/* Mobile */
+@media (max-width: 768px){
+  .hdr{padding:10px 14px}
+  .hdr-t{font-size:15px}
+  .hdr-btn{padding:6px 10px;font-size:11px}
+  .toolbar input{flex-basis:100%;order:1}
+  .toolbar select{flex:1}
+  .last-sync{display:none}
+  .kb{flex-direction:column;overflow-x:visible;padding:6px}
+  .kc{min-width:100%;max-width:100%}
+  .kb-body{max-height:none}
+}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-l">
+    <div class="hdr-t">📋 Team Kanban</div>
+  </div>
+  <div class="hdr-r">
+    <button class="hdr-btn" id="btnArchive">📦 Archive <span class="badge" id="archCount">0</span></button>
+  </div>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="searchInput" placeholder="🔍 Search name / phone / location...">
+  <select id="staffFilter">
+    <option value="">All staff</option>
+  </select>
+  <select id="tagFilter">
+    <option value="">All tags</option>
+    <option value="needs_reply">needs_reply</option>
+    <option value="complaint">complaint</option>
+    <option value="cancel_request">cancel_request</option>
+    <option value="cold_lead">cold_lead</option>
+  </select>
+  <button class="refresh" id="btnRefresh">🔄 Refresh</button>
+  <span class="last-sync" id="lastSync">—</span>
+</div>
+
+<div class="err" id="err"></div>
+
+<div id="kanbanView">
+  <div class="kb" id="kanbanBoard">
+    <div class="ld" id="loading">
+      <div class="sp"></div>
+      <div>Loading leads...</div>
+    </div>
+  </div>
+</div>
+
+<div class="archive-view" id="archiveView">
+  <h2>📦 Archive</h2>
+  <div class="archive-toolbar">
+    <select id="archStatusFilter">
+      <option value="">All archived</option>
+      <option value="Job Complete">Job Complete</option>
+      <option value="Receipt Sent">Receipt Sent</option>
+      <option value="Lost">Lost</option>
+      <option value="Cold Lead">Cold Lead</option>
+      <option value="Rejected">Rejected</option>
+      <option value="Out of Area">Out of Area</option>
+      <option value="Human Handoff">Human Handoff</option>
+    </select>
+    <input type="text" id="archSearch" placeholder="🔍 Search archive...">
+  </div>
+  <div class="archive-list" id="archiveList"></div>
+</div>
+
+<script>
+// ================================================================
+// CONFIG
+// ================================================================
+const SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+const SHEET_NAME = 'Leak Guard Leads';
+const GVIZ_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+  '/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent(SHEET_NAME);
+
+// IMPORTANT: paste the deployed Apps Script Web App URL here after first deploy.
+// Format: https://script.google.com/macros/s/AKfycb.../exec
+const WEBAPP_URL = '';
+const SHARED_SECRET = 'lg-kanban-2026-CHANGE-ME'; // must match kanban_code.gs
+
+// 9 active columns (left → right)
+const ACTIVE_STATUSES = [
+  'Pending Invitation',
+  'Pending Site Visit',
+  'Site Visit Confirmed',
+  'Pending QT',
+  'Quotation Sent',
+  'Pending I.Date',          // UI label below relabels this
+  'Pending Downpayment',
+  'Pending Balance',
+  'Completed with Complaint'
+];
+
+const STATUS_LABELS = {
+  'Pending I.Date': 'Pending Installation Date'
+  // others fall through to status name
+};
+
+// Statuses considered archived (not shown in main kanban)
+const ARCHIVED_STATUSES = [
+  'Job Complete', 'Receipt Sent',
+  'Lost', 'Cold Lead', 'Rejected', 'Out of Area', 'Human Handoff'
+];
+
+// Per-stage days-in-stage thresholds (yellow / red) in days
+const DAYS_THRESHOLDS = {
+  'Pending Invitation':         {yellow: 1, red: 3},
+  'Pending Site Visit':         {yellow: 2, red: 5},
+  'Site Visit Confirmed':       {yellow: 999, red: 999}, // green
+  'Pending QT':                 {yellow: 1, red: 3},
+  'Quotation Sent':             {yellow: 3, red: 7},
+  'Pending I.Date':             {yellow: 2, red: 7},
+  'Pending Downpayment':        {yellow: 2, red: 7},
+  'Pending Balance':            {yellow: 2, red: 7},
+  'Completed with Complaint':   {yellow: 1, red: 3}
+};
+
+// ================================================================
+// STATE
+// ================================================================
+let allLeads = [];           // parsed lead objects
+let headers = [];            // sheet header names in order
+let viewMode = 'kanban';     // 'kanban' | 'archive'
+let refreshTimer = null;
+const REFRESH_MS = 60000;
+
+// ================================================================
+// gviz READ
+// ================================================================
+
+async function loadLeads() {
+  try {
+    const r = await fetch(GVIZ_URL + '&nocache=' + Date.now());
+    const t = await r.text();
+    const m = t.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+    if (!m) throw new Error('gviz parse failed');
+    const j = JSON.parse(m[1]);
+    parseGvizResponse(j);
+    render();
+  } catch (e) {
+    showError('Load failed: ' + e.message);
+  }
+}
+
+function parseGvizResponse(j) {
+  const cols = j.table.cols.map(c => (c.label || '').trim());
+  const rows = j.table.rows || [];
+  headers = cols;
+
+  allLeads = rows.map(r => {
+    const obj = {};
+    (r.c || []).forEach((cell, i) => {
+      const key = cols[i];
+      if (!key) return;
+      obj[key] = cell ? (cell.v != null ? cell.v : (cell.f || '')) : '';
+    });
+    return obj;
+  }).filter(l => l['Phone']); // skip empty rows
+}
+
+// ================================================================
+// RENDER
+// ================================================================
+
+function render() {
+  document.getElementById('lastSync').textContent =
+    'Updated ' + new Date().toLocaleTimeString('en-MY', {hour:'2-digit', minute:'2-digit'});
+
+  // Apply filters
+  const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  const staff = document.getElementById('staffFilter').value;
+  const tagFilter = document.getElementById('tagFilter').value;
+
+  function passesFilters(lead) {
+    if (search) {
+      const blob = (
+        (lead['Name'] || '') + ' ' +
+        (lead['Phone'] || '') + ' ' +
+        (lead['Location'] || '') + ' ' +
+        (lead['Group Name (AE)'] || '')
+      ).toLowerCase();
+      if (!blob.includes(search)) return false;
+    }
+    if (staff && (lead['Assigned To'] || '') !== staff) return false;
+    if (tagFilter) {
+      const tags = String(lead['Tags'] || '').toLowerCase();
+      if (!tags.includes(tagFilter.toLowerCase())) return false;
+    }
+    return true;
+  }
+
+  // Update staff filter dropdown options dynamically
+  populateStaffFilter();
+
+  // Update archive count
+  const archCount = allLeads.filter(l => ARCHIVED_STATUSES.includes(String(l['Status'] || ''))).length;
+  document.getElementById('archCount').textContent = archCount;
+
+  if (viewMode === 'kanban') {
+    renderKanban(allLeads.filter(passesFilters));
+  } else {
+    renderArchive(allLeads.filter(passesFilters));
+  }
+}
+
+function renderKanban(leads) {
+  const board = document.getElementById('kanbanBoard');
+  board.innerHTML = '';
+
+  const byStatus = {};
+  ACTIVE_STATUSES.forEach(s => byStatus[s] = []);
+  leads.forEach(l => {
+    const s = String(l['Status'] || '').trim();
+    if (byStatus[s]) byStatus[s].push(l);
+  });
+
+  ACTIVE_STATUSES.forEach(status => {
+    const col = document.createElement('div');
+    col.className = 'kc';
+    col.dataset.status = status;
+
+    const head = document.createElement('div');
+    head.className = 'kh';
+    head.innerHTML = '<span class="kh-name">' + (STATUS_LABELS[status] || status) + '</span>' +
+      '<span class="kh-count">' + byStatus[status].length + '</span>';
+    col.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'kb-body';
+
+    if (byStatus[status].length === 0) {
+      body.innerHTML = '<div class="kc-empty">No leads</div>';
+    } else {
+      byStatus[status].forEach(l => body.appendChild(renderCard(l)));
+    }
+    col.appendChild(body);
+    board.appendChild(col);
+  });
+}
+
+function renderCard(lead) {
+  const c = document.createElement('div');
+  c.className = 'cd';
+  c.dataset.phone = lead['Phone'];
+
+  const name = lead['Name'] || '(no name)';
+  const phone = lead['Phone'] || '';
+  const loc = lead['Location'] || '';
+  const tags = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+  const assignee = lead['Assigned To'] || '';
+  const status = String(lead['Status'] || '');
+  const inviteLink = lead['Group Invite Link (AJ)'] || '';
+
+  // Days in stage
+  const changedAt = lead['Status Changed At'];
+  const daysInfo = computeDaysInStage(changedAt, status);
+
+  c.innerHTML =
+    '<div class="cd-name">' + escapeHtml(name) + '</div>' +
+    '<a class="cd-phone" href="tel:' + phone + '" onclick="event.stopPropagation()">📞 ' + phone + '</a>' +
+    (loc ? '<div class="cd-loc">📍 ' + escapeHtml(loc) + '</div>' : '') +
+    '<div class="cd-row">' +
+      '<div class="cd-tags">' +
+        tags.map(t => '<span class="cd-tag tag-' + t + '">' + t.replace(/_/g,' ') + '</span>').join('') +
+      '</div>' +
+      '<div class="cd-meta">' +
+        (daysInfo ? '<span class="cd-days ' + daysInfo.cls + '">' + daysInfo.label + '</span>' : '') +
+        (assignee ? '<span class="cd-assignee">' + escapeHtml(assignee) + '</span>' : '') +
+        (inviteLink ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()">💬</a>' : '') +
+      '</div>' +
+    '</div>';
+
+  c.onclick = () => openLeadDetail(lead);
+  return c;
+}
+
+function computeDaysInStage(changedAtStr, status) {
+  if (!changedAtStr) return null;
+  let changedDate;
+  try {
+    changedDate = new Date(changedAtStr);
+    if (isNaN(changedDate.getTime())) return null;
+  } catch (_e) { return null; }
+  const days = Math.floor((Date.now() - changedDate.getTime()) / 86400000);
+
+  const t = DAYS_THRESHOLDS[status];
+  let cls = 'green';
+  if (t) {
+    if (days >= t.red) cls = 'err';
+    else if (days >= t.yellow) cls = 'warn';
+  }
+  if (status === 'Site Visit Confirmed') cls = 'green';
+  return {label: days + 'd', cls: cls};
+}
+
+function populateStaffFilter() {
+  const select = document.getElementById('staffFilter');
+  const current = select.value;
+  const staff = new Set();
+  allLeads.forEach(l => {
+    const a = (l['Assigned To'] || '').trim();
+    if (a) staff.add(a);
+  });
+  const sorted = Array.from(staff).sort();
+  // rebuild only if changed
+  const existing = Array.from(select.options).slice(1).map(o => o.value);
+  if (JSON.stringify(existing) !== JSON.stringify(sorted)) {
+    select.innerHTML = '<option value="">All staff</option>' +
+      sorted.map(s => '<option value="' + s + '"' + (s === current ? ' selected' : '') + '>' + s + '</option>').join('');
+  }
+}
+
+function renderArchive(leads) {
+  const archived = leads.filter(l => ARCHIVED_STATUSES.includes(String(l['Status'] || '').trim()));
+
+  const statusFilter = document.getElementById('archStatusFilter').value;
+  const archSearch = (document.getElementById('archSearch').value || '').toLowerCase().trim();
+  const filtered = archived.filter(l => {
+    if (statusFilter && String(l['Status'] || '').trim() !== statusFilter) return false;
+    if (archSearch) {
+      const blob = ((l['Name']||'') + ' ' + (l['Phone']||'') + ' ' + (l['Location']||'')).toLowerCase();
+      if (!blob.includes(archSearch)) return false;
+    }
+    return true;
+  });
+
+  const list = document.getElementById('archiveList');
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="kc-empty">No archived leads match your filter.</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(l => {
+    const status = String(l['Status'] || '');
+    const statusClass = 'arch-status-' + status.replace(/\s+/g, '-');
+    return '<div class="arch-row">' +
+      '<div class="arch-row-l">' +
+        '<span class="arch-status-badge ' + statusClass + '">' + status + '</span>' +
+        '<span class="arch-row-name">' + escapeHtml(l['Name'] || '(no name)') + ' · ' + escapeHtml(l['Phone'] || '') + '</span>' +
+        '<span class="arch-row-meta">' + escapeHtml(l['Location'] || '') + (l['Group Name (AE)'] ? ' · ' + escapeHtml(l['Group Name (AE)']) : '') + '</span>' +
+      '</div>' +
+      '<div class="arch-row-r">' +
+        (l['Group Invite Link (AJ)'] ? '<a class="cd-wa" href="' + l['Group Invite Link (AJ)'] + '" target="_blank">💬</a>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ================================================================
+// MODAL — placeholder for S2/S3
+// ================================================================
+
+function openLeadDetail(lead) {
+  // TODO S2: full detail modal with edit-in-place + appointment edit
+  alert('Lead: ' + (lead['Name'] || lead['Phone']) + '\nStatus: ' + lead['Status'] +
+    '\n\n(Detail modal coming in next phase)');
+}
+
+// ================================================================
+// HELPERS
+// ================================================================
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function showError(msg) {
+  const el = document.getElementById('err');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+// ================================================================
+// EVENT WIRING
+// ================================================================
+
+document.getElementById('btnRefresh').onclick = loadLeads;
+document.getElementById('searchInput').oninput = debounce(render, 200);
+document.getElementById('staffFilter').onchange = render;
+document.getElementById('tagFilter').onchange = render;
+document.getElementById('archStatusFilter').onchange = render;
+document.getElementById('archSearch').oninput = debounce(render, 200);
+
+document.getElementById('btnArchive').onclick = () => {
+  viewMode = (viewMode === 'kanban') ? 'archive' : 'kanban';
+  document.getElementById('kanbanView').style.display = (viewMode === 'kanban') ? 'block' : 'none';
+  document.getElementById('archiveView').classList.toggle('on', viewMode === 'archive');
+  document.getElementById('btnArchive').innerHTML = viewMode === 'archive'
+    ? '← Back to Kanban'
+    : '📦 Archive <span class="badge" id="archCount">' + document.getElementById('archCount').textContent + '</span>';
+  render();
+};
+
+function debounce(fn, ms) {
+  let t;
+  return function(){ clearTimeout(t); t = setTimeout(fn, ms); };
+}
+
+// ================================================================
+// AUTO-REFRESH (60s, paused when tab hidden)
+// ================================================================
+
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    if (!document.hidden) loadLeads();
+  }, REFRESH_MS);
+}
+
+// ================================================================
+// BOOT
+// ================================================================
+
+loadLeads();
+startAutoRefresh();
+</script>
+</body>
+</html>
