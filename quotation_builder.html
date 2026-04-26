@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leak Guard — Quotation Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;min-height:100vh}
+
+.wrap{max-width:880px;margin:0 auto;padding:14px}
+
+.hdr{background:var(--pri);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.hdr-l{display:flex;flex-direction:column;gap:2px}
+.hdr-t{font-size:17px;font-weight:800}
+.hdr-s{font-size:11px;opacity:.75}
+.hdr-r{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.qt-num{background:rgba(255,255,255,.15);padding:5px 11px;border-radius:6px;font-size:13px;font-weight:700;letter-spacing:.5px}
+
+.section{background:#fff;border-radius:10px;padding:16px 18px;margin-bottom:12px;border:.5px solid var(--bdr)}
+.section-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mt);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.section-h-action{font-size:11px;font-weight:600;color:var(--acc);background:none;border:.5px solid var(--acc);border-radius:5px;padding:4px 9px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0}
+.section-h-action:hover{background:#F0FDF4}
+
+.cust-line{font-size:14px;font-weight:600;line-height:1.5}
+.cust-meta{font-size:12px;color:var(--mt);margin-top:2px}
+
+.zone{background:#FAFAFA;border:.5px solid var(--bdr);border-radius:8px;padding:12px;margin-bottom:9px}
+.zone-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.zone-name-input{flex:1;padding:6px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;font-weight:600;font-family:inherit;background:#fff}
+.zone-remove{margin-left:8px;padding:5px 10px;background:#FEE2E2;color:#991B1B;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.zone-remove:hover{background:#FECACA}
+
+.zone-photo{width:100%;min-height:120px;border:1.5px dashed #D1D5DB;border-radius:6px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--mt);font-size:12px;margin-bottom:9px;overflow:hidden;position:relative}
+.zone-photo:hover{border-color:var(--acc);background:#F0FDF4}
+.zone-photo img{max-width:100%;max-height:280px;object-fit:contain}
+.zone-photo input[type="file"]{display:none}
+.zone-photo-text{padding:18px}
+
+.zone-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.zone-input-wrap{display:flex;flex-direction:column;gap:3px}
+.zone-input-label{font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.zone-input{padding:7px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;font-family:inherit;background:#fff}
+.zone-input:focus{outline:none;border-color:var(--acc)}
+
+.zone-total{display:flex;justify-content:flex-end;font-size:12px;font-weight:600;color:var(--acc);margin-top:5px}
+
+.grand-total{background:#F0FDF4;border:.5px solid #BBF7D0;padding:10px 14px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;color:#065F46;margin-top:6px}
+
+.li-table{width:100%;border-collapse:collapse;font-size:12px}
+.li-table th{text-align:left;padding:6px 5px;font-size:10px;font-weight:600;color:var(--mt);text-transform:uppercase;letter-spacing:.3px;border-bottom:.5px solid var(--bdr)}
+.li-table td{padding:6px 5px;border-bottom:.5px solid #F3F4F6;vertical-align:top}
+.li-table input{padding:5px 8px;border:.5px solid #D1D5DB;border-radius:4px;font-size:12px;font-family:inherit;width:100%;background:#FAFAFA}
+.li-table input:focus{outline:none;border-color:var(--acc);background:#fff}
+.li-table input.li-num{text-align:right}
+.li-remove{padding:3px 7px;background:none;border:.5px solid #E5E7EB;border-radius:4px;color:var(--mt);font-size:11px;cursor:pointer;font-family:inherit}
+.li-remove:hover{background:#FEE2E2;border-color:#FCA5A5;color:#991B1B}
+
+.li-totals{margin-top:11px;display:flex;flex-direction:column;gap:4px}
+.li-row{display:flex;justify-content:space-between;font-size:13px}
+.li-row.final{font-weight:800;font-size:15px;color:var(--ink);padding-top:6px;border-top:1px solid var(--bdr);margin-top:5px}
+
+.actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px}
+.btn{padding:10px 18px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-primary{background:var(--acc);color:#fff}
+.btn-primary:hover:not(:disabled){background:#0F6E56}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-secondary{background:#F3F4F6;color:var(--ink);border:.5px solid var(--bdr)}
+.btn-secondary:hover{background:#E5E7EB}
+
+.toast-container{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;z-index:1000;max-width:340px;pointer-events:none}
+.toast{padding:11px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);pointer-events:auto;animation:slideIn .25s ease-out}
+.toast.success{background:#10B981}
+.toast.error{background:#DC2626}
+.toast.info{background:#3B82F6}
+.toast.warn{background:#F59E0B}
+@keyframes slideIn{from{transform:translateX(380px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+.loading{text-align:center;padding:40px;color:var(--mt)}
+.sp{width:26px;height:26px;border:3px solid var(--bdr);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Print view — used for PDF capture, hidden in normal view */
+#printView{position:absolute;left:-9999px;top:0;width:794px;background:#fff;font-family:'Inter',sans-serif}
+.pv-page{width:794px;min-height:1123px;padding:50px;background:#fff;page-break-after:always;display:flex;flex-direction:column}
+.pv-page:last-child{page-break-after:auto}
+.pv-h{font-size:22px;font-weight:800;color:#2D2A6E;margin-bottom:6px}
+.pv-sub{font-size:12px;color:#6b7280;margin-bottom:24px}
+.pv-zone{margin-bottom:30px;page-break-inside:avoid}
+.pv-zone-img{width:100%;max-width:694px;max-height:380px;object-fit:contain;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:14px;display:block}
+.pv-zone-info{font-size:14px;line-height:1.7}
+.pv-zone-info b{font-weight:700}
+.pv-grand{margin-top:24px;padding:14px 18px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;font-size:18px;font-weight:800;color:#065F46;text-align:center}
+
+@media (max-width: 600px){
+  .wrap{padding:8px}
+  .zone-row{grid-template-columns:1fr}
+  .li-table{font-size:11px}
+  .li-table input{font-size:11px;padding:4px 6px}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="hdr">
+    <div class="hdr-l">
+      <div class="hdr-t">📋 Quotation Builder</div>
+      <div class="hdr-s">Generates zone summary + sends combined PDF to customer</div>
+    </div>
+    <div class="hdr-r">
+      <div class="qt-num" id="qtNum">QT-…</div>
+      <div class="hdr-s" id="qtDate">—</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-h">Customer</div>
+    <div id="custBlock">
+      <div class="loading"><div class="sp"></div>Loading customer…</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-h">
+      Zones
+      <button class="section-h-action" id="btnAddZone">+ Add Zone</button>
+    </div>
+    <div id="zonesList"></div>
+    <div class="grand-total">
+      <span>TOTAL ALL ZONES</span>
+      <span id="grandTotalSqft">0 sqft</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-h">
+      Line Items
+      <button class="section-h-action" id="btnAddLine">+ Add Line</button>
+    </div>
+    <table class="li-table">
+      <thead>
+        <tr>
+          <th style="width:50%">Description</th>
+          <th style="width:13%">Qty</th>
+          <th style="width:10%">Unit</th>
+          <th style="width:13%">Price RM</th>
+          <th style="width:14%;text-align:right">Total RM</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="liBody"></tbody>
+    </table>
+    <div class="li-totals">
+      <div class="li-row"><span>Sub-total</span><span id="liSubtotal">RM 0.00</span></div>
+      <div class="li-row"><span>Tax 0%</span><span>RM 0.00</span></div>
+      <div class="li-row final"><span>TOTAL</span><span id="liTotal">RM 0.00</span></div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-secondary" id="btnZonePdf">📄 Zone Summary PDF</button>
+    <button class="btn btn-primary" id="btnGenerate" disabled title="Phase 2/3 coming soon">🚀 Generate &amp; Send</button>
+  </div>
+</div>
+
+<!-- Hidden print view used by html2pdf for zone summary capture -->
+<div id="printView"></div>
+
+<!-- Toasts -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ================================================================
+// CONFIG
+// ================================================================
+const SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+const SHEET_NAME = 'Leak Guard Leads';
+const GVIZ_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+  '/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent(SHEET_NAME);
+
+const DEFAULT_RATE = 8.50;       // RM/sqft for membrane
+const MIN_SQFT = 650;             // minimum chargeable sqft
+const PLUMBER_DEFAULT = 650;      // optional plumber lump sum
+
+// ================================================================
+// STATE
+// ================================================================
+let lead = null;
+let zones = [];   // [{id, name, photoDataUrl, floorSqft, upturnSqft}]
+let lines = [];   // [{id, desc, qty, unit, price, isAuto}]
+let qtNumber = '';
+
+// ================================================================
+// BOOT
+// ================================================================
+function uuid() { return Math.random().toString(36).slice(2, 9); }
+
+function getParam(k) {
+  return new URLSearchParams(window.location.search).get(k) || '';
+}
+
+async function init() {
+  const phone = getParam('phone');
+  if (!phone) {
+    showCustomerError('Missing ?phone=… in URL');
+    return;
+  }
+  await loadLead(phone);
+  qtNumber = generateQtNumber();
+  document.getElementById('qtNum').textContent = qtNumber;
+  document.getElementById('qtDate').textContent =
+    new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
+  // Default: 1 zone + line items prefilled for membrane
+  addZone({ name: 'Slab 1', floorSqft: 0, upturnSqft: 0 });
+  prefillMembraneLines();
+  renderLines();
+}
+
+function generateQtNumber() {
+  const d = new Date();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yy = String(d.getFullYear()).slice(-2);
+  // Random 3-digit suffix; admin can edit later
+  const suffix = String(Math.floor(Math.random() * 900) + 100);
+  return 'QT-' + mm + yy + '-' + suffix;
+}
+
+// ================================================================
+// CUSTOMER LOAD
+// ================================================================
+async function loadLead(phone) {
+  try {
+    const r = await fetch(GVIZ_URL + '&nocache=' + Date.now());
+    const t = await r.text();
+    const m = t.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+    if (!m) throw new Error('gviz parse failed');
+    const j = JSON.parse(m[1]);
+    const cols = j.table.cols.map(c => (c.label || '').trim());
+    const found = (j.table.rows || []).find(row => {
+      const phoneIdx = cols.indexOf('Phone');
+      if (phoneIdx === -1) return false;
+      const cell = row.c[phoneIdx];
+      const cellVal = cell ? String(cell.v || cell.f || '') : '';
+      return cellVal === phone || cellVal.endsWith(phone.slice(-8)) || phone.endsWith(cellVal.slice(-8));
+    });
+    if (!found) {
+      showCustomerError('Lead not found for phone ' + phone);
+      return;
+    }
+    const obj = {};
+    cols.forEach((c, i) => {
+      const cell = found.c[i];
+      obj[c] = cell ? (cell.v != null ? cell.v : (cell.f || '')) : '';
+    });
+    lead = obj;
+    renderCustomer();
+  } catch (e) {
+    showCustomerError('Load failed: ' + e.message);
+  }
+}
+
+function renderCustomer() {
+  if (!lead) return;
+  const name = lead['Name'] || '(no name)';
+  const phone = lead['Phone'] || '';
+  const addr = lead['Full Address'] || lead['Location'] || '';
+  document.getElementById('custBlock').innerHTML =
+    '<div class="cust-line">' + escapeHtml(name) + ' · ' + escapeHtml(phone) + '</div>' +
+    '<div class="cust-meta">' + escapeHtml(addr) + '</div>';
+}
+
+function showCustomerError(msg) {
+  document.getElementById('custBlock').innerHTML =
+    '<div style="color:var(--err);font-size:13px">' + escapeHtml(msg) + '</div>';
+}
+
+// ================================================================
+// ZONES
+// ================================================================
+function addZone(presets) {
+  presets = presets || {};
+  zones.push({
+    id: uuid(),
+    name: presets.name || ('Slab ' + (zones.length + 1)),
+    photoDataUrl: '',
+    floorSqft: presets.floorSqft || 0,
+    upturnSqft: presets.upturnSqft || 0
+  });
+  renderZones();
+  syncLinesFromZones();
+  updateGrandTotals();
+}
+
+function removeZone(id) {
+  zones = zones.filter(z => z.id !== id);
+  renderZones();
+  syncLinesFromZones();
+  updateGrandTotals();
+}
+
+function updateZone(id, field, value) {
+  const z = zones.find(x => x.id === id);
+  if (!z) return;
+  if (field === 'floorSqft' || field === 'upturnSqft') value = Number(value) || 0;
+  z[field] = value;
+  syncLinesFromZones();
+  updateGrandTotals();
+  // Live update displayed total in this zone
+  const totalEl = document.querySelector('[data-zone-total="' + id + '"]');
+  if (totalEl) totalEl.textContent = (z.floorSqft + z.upturnSqft) + ' sqft';
+}
+
+function renderZones() {
+  const list = document.getElementById('zonesList');
+  list.innerHTML = '';
+  zones.forEach(z => {
+    const d = document.createElement('div');
+    d.className = 'zone';
+    d.innerHTML =
+      '<div class="zone-h">' +
+        '<input class="zone-name-input" value="' + escapeHtml(z.name) + '" data-zone="' + z.id + '" data-field="name">' +
+        '<button class="zone-remove" data-remove-zone="' + z.id + '">Remove</button>' +
+      '</div>' +
+      '<label class="zone-photo" data-photo-zone="' + z.id + '">' +
+        (z.photoDataUrl ? '<img src="' + z.photoDataUrl + '" alt="">' : '<div class="zone-photo-text">📷 Tap or drop photo here<br><small>(or paste from clipboard)</small></div>') +
+        '<input type="file" accept="image/*" data-photo-input="' + z.id + '">' +
+      '</label>' +
+      '<div class="zone-row">' +
+        '<div class="zone-input-wrap">' +
+          '<span class="zone-input-label">Floor area (sqft)</span>' +
+          '<input type="number" class="zone-input" value="' + z.floorSqft + '" data-zone="' + z.id + '" data-field="floorSqft" min="0" step="0.01">' +
+        '</div>' +
+        '<div class="zone-input-wrap">' +
+          '<span class="zone-input-label">Upturn (sqft)</span>' +
+          '<input type="number" class="zone-input" value="' + z.upturnSqft + '" data-zone="' + z.id + '" data-field="upturnSqft" min="0" step="0.01">' +
+        '</div>' +
+      '</div>' +
+      '<div class="zone-total">Total: <span data-zone-total="' + z.id + '" style="margin-left:6px">' + (z.floorSqft + z.upturnSqft) + ' sqft</span></div>';
+    list.appendChild(d);
+  });
+  // Wire inputs
+  list.querySelectorAll('input[data-zone]').forEach(el => {
+    el.oninput = function() {
+      updateZone(el.dataset.zone, el.dataset.field, el.value);
+    };
+  });
+  list.querySelectorAll('input[data-photo-input]').forEach(el => {
+    el.onchange = function() {
+      handlePhotoUpload(el.dataset.photoInput, el.files[0]);
+    };
+  });
+  list.querySelectorAll('[data-remove-zone]').forEach(el => {
+    el.onclick = function() { removeZone(el.dataset.removeZone); };
+  });
+}
+
+function handlePhotoUpload(zoneId, file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const z = zones.find(x => x.id === zoneId);
+    if (z) {
+      z.photoDataUrl = e.target.result;
+      renderZones();
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// Paste-from-clipboard (desktop convenience)
+document.addEventListener('paste', function(e) {
+  const items = (e.clipboardData || window.clipboardData).items;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      const file = items[i].getAsFile();
+      // Find first zone without a photo, or last zone
+      const target = zones.find(z => !z.photoDataUrl) || zones[zones.length - 1];
+      if (target) {
+        handlePhotoUpload(target.id, file);
+        toast('Photo pasted into ' + target.name, 'success');
+      }
+      e.preventDefault();
+      break;
+    }
+  }
+});
+
+// ================================================================
+// LINE ITEMS
+// ================================================================
+function prefillMembraneLines() {
+  lines = [
+    { id: uuid(), desc: '4mm Mineral Torch-On Membrane (min ' + MIN_SQFT + ' sqft, RM ' + (MIN_SQFT * DEFAULT_RATE).toFixed(2) + ')', qty: 0, unit: '', price: 0, isAuto: false, isHeader: true }
+  ];
+  // Per-zone lines auto-generated
+  syncLinesFromZones();
+}
+
+function syncLinesFromZones() {
+  // Remove existing auto zone-lines, keep header + manual lines + plumber
+  lines = lines.filter(l => !l.isAuto);
+  // Find insert position: after header
+  const headerIdx = lines.findIndex(l => l.isHeader);
+  const insertAt = headerIdx >= 0 ? headerIdx + 1 : 0;
+  const zoneLines = zones.filter(z => (z.floorSqft + z.upturnSqft) > 0).map(z => ({
+    id: 'auto-' + z.id,
+    desc: z.name,
+    qty: z.floorSqft + z.upturnSqft,
+    unit: 'sqft',
+    price: DEFAULT_RATE,
+    isAuto: true
+  }));
+  lines.splice(insertAt, 0, ...zoneLines);
+  renderLines();
+  updateGrandTotals();
+}
+
+function addLine() {
+  lines.push({ id: uuid(), desc: '', qty: 0, unit: 'l/s', price: 0, isAuto: false });
+  renderLines();
+  updateGrandTotals();
+}
+
+function removeLine(id) {
+  lines = lines.filter(l => l.id !== id);
+  renderLines();
+  updateGrandTotals();
+}
+
+function updateLine(id, field, value) {
+  const l = lines.find(x => x.id === id);
+  if (!l) return;
+  if (field === 'qty' || field === 'price') value = Number(value) || 0;
+  l[field] = value;
+  // Re-render only the totals + this row
+  document.querySelector('[data-line-total="' + id + '"]').textContent = formatRm(l.qty * l.price);
+  updateGrandTotals();
+}
+
+function renderLines() {
+  const tbody = document.getElementById('liBody');
+  tbody.innerHTML = '';
+  lines.forEach(l => {
+    const tr = document.createElement('tr');
+    if (l.isHeader) {
+      // Header row — descriptive only, no qty/price
+      tr.innerHTML =
+        '<td colspan="4"><input class="li-input-desc" value="' + escapeHtml(l.desc) + '" data-line="' + l.id + '" data-field="desc" placeholder="Description"></td>' +
+        '<td style="text-align:right;color:var(--mt);font-style:italic">included</td>' +
+        '<td><button class="li-remove" data-remove-line="' + l.id + '">×</button></td>';
+    } else {
+      const lineTotal = l.qty * l.price;
+      tr.innerHTML =
+        '<td><input value="' + escapeHtml(l.desc) + '" data-line="' + l.id + '" data-field="desc" placeholder="Description"></td>' +
+        '<td><input type="number" class="li-num" value="' + l.qty + '" data-line="' + l.id + '" data-field="qty" min="0" step="0.01"></td>' +
+        '<td><input value="' + escapeHtml(l.unit) + '" data-line="' + l.id + '" data-field="unit" placeholder="sqft"></td>' +
+        '<td><input type="number" class="li-num" value="' + l.price + '" data-line="' + l.id + '" data-field="price" min="0" step="0.01"></td>' +
+        '<td style="text-align:right;font-weight:600" data-line-total="' + l.id + '">' + formatRm(lineTotal) + '</td>' +
+        '<td><button class="li-remove" data-remove-line="' + l.id + '">×</button></td>';
+    }
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('input[data-line]').forEach(el => {
+    el.oninput = function() {
+      updateLine(el.dataset.line, el.dataset.field, el.value);
+    };
+  });
+  tbody.querySelectorAll('[data-remove-line]').forEach(el => {
+    el.onclick = function() { removeLine(el.dataset.removeLine); };
+  });
+}
+
+function updateGrandTotals() {
+  const totalSqft = zones.reduce((s, z) => s + z.floorSqft + z.upturnSqft, 0);
+  document.getElementById('grandTotalSqft').textContent = totalSqft.toFixed(2) + ' sqft';
+
+  const subtotal = lines.reduce((s, l) => l.isHeader ? s : s + (l.qty * l.price), 0);
+  document.getElementById('liSubtotal').textContent = formatRm(subtotal);
+  document.getElementById('liTotal').textContent = formatRm(subtotal);
+}
+
+// ================================================================
+// PDF GENERATION (zone summary only — Phase 1)
+// ================================================================
+function buildPrintView() {
+  const totalSqft = zones.reduce((s, z) => s + z.floorSqft + z.upturnSqft, 0);
+  let html =
+    '<div class="pv-page">' +
+      '<div class="pv-h">Zone Summary</div>' +
+      '<div class="pv-sub">' + escapeHtml(qtNumber) + ' · ' +
+        escapeHtml(lead && lead['Name'] || '') + ' · ' +
+        new Date().toLocaleDateString('en-MY', { day:'numeric', month:'long', year:'numeric' }) +
+      '</div>';
+
+  zones.forEach((z, i) => {
+    if (i > 0 && i % 2 === 0) {
+      // New page every 2 zones
+      html += '</div><div class="pv-page">' +
+        '<div class="pv-h">Zone Summary (cont.)</div>' +
+        '<div class="pv-sub">' + escapeHtml(qtNumber) + '</div>';
+    }
+    const total = z.floorSqft + z.upturnSqft;
+    html +=
+      '<div class="pv-zone">' +
+        (z.photoDataUrl ? '<img class="pv-zone-img" src="' + z.photoDataUrl + '">' : '<div class="pv-zone-img" style="display:flex;align-items:center;justify-content:center;color:#9ca3af">No photo</div>') +
+        '<div class="pv-zone-info">' +
+          '<b>' + escapeHtml(z.name) + ': ' + total.toFixed(2) + ' sqft</b><br>' +
+          'Floor Area — ' + z.floorSqft.toFixed(2) + ' sqft<br>' +
+          'Upturn — ' + z.upturnSqft.toFixed(2) + ' sqft' +
+        '</div>' +
+      '</div>';
+  });
+
+  html +=
+      '<div class="pv-grand">Total = ' + totalSqft.toFixed(2) + ' sqft</div>' +
+    '</div>';
+
+  return html;
+}
+
+async function generateZonePdf() {
+  if (zones.length === 0) {
+    toast('Add at least one zone first', 'warn');
+    return;
+  }
+  const btn = document.getElementById('btnZonePdf');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+
+  try {
+    document.getElementById('printView').innerHTML = buildPrintView();
+    const opt = {
+      margin: 0,
+      filename: qtNumber + '-zone-summary.pdf',
+      image: { type: 'jpeg', quality: 0.92 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' }
+    };
+    await html2pdf().set(opt).from(document.getElementById('printView')).save();
+    toast('Zone summary PDF downloaded', 'success');
+  } catch (e) {
+    toast('PDF generation failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📄 Zone Summary PDF';
+  }
+}
+
+// ================================================================
+// HELPERS
+// ================================================================
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function formatRm(n) {
+  return 'RM ' + Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function toast(msg, type) {
+  type = type || 'info';
+  const c = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(function(){ el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 250); }, 3500);
+}
+
+// ================================================================
+// EVENT WIRING
+// ================================================================
+document.getElementById('btnAddZone').onclick = function() { addZone(); };
+document.getElementById('btnAddLine').onclick = addLine;
+document.getElementById('btnZonePdf').onclick = generateZonePdf;
+
+// Boot
+init();
+</script>
+</body>
+</html>

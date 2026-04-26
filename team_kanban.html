@@ -286,6 +286,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-actions">
       <button class="modal-btn modal-btn-info" id="btnEditAppt" style="display:none">Edit appointment</button>
+      <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Quotation</button>
       <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
       <button class="modal-btn modal-btn-secondary" id="btnModalCancel">Close</button>
       <button class="modal-btn modal-btn-primary" id="btnModalSave">Save</button>
@@ -1133,6 +1134,10 @@ function openLeadDetail(lead) {
   const showEditAppt = (status === 'Site Visit Confirmed');
   document.getElementById('btnEditAppt').style.display = showEditAppt ? '' : 'none';
 
+  // Show "Generate Quotation" only if lead is in Pending QT
+  const showGenQt = (status === 'Pending QT');
+  document.getElementById('btnGenQt').style.display = showGenQt ? '' : 'none';
+
   document.getElementById('leadModal').classList.add('open');
 }
 
@@ -1312,6 +1317,11 @@ document.getElementById('btnModalCancel').onclick = closeLeadDetail;
 document.getElementById('btnModalSave').onclick = saveLeadDetail;
 document.getElementById('btnSendReschedule').onclick = sendRescheduleFromModal;
 document.getElementById('btnEditAppt').onclick = editApptFromDetail;
+document.getElementById('btnGenQt').onclick = function() {
+  if (!currentModalLead) return;
+  const phone = currentModalLead['Phone'];
+  window.open('quotation_builder.html?phone=' + encodeURIComponent(phone), '_blank');
+};
 document.getElementById('leadModal').addEventListener('click', function(e){
   if (e.target.id === 'leadModal') closeLeadDetail();
 });
