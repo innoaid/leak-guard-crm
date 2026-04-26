@@ -81,7 +81,56 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .arch-status-Rejected{background:#FECACA;color:#7F1D1D}
 .arch-status-Out-of-Area{background:#F3F4F6;color:#374151}
 .arch-status-Human-Handoff{background:#FED7AA;color:#9A3412}
-.arch-row-r{display:flex;gap:6px}
+.arch-row-r{display:flex;gap:6px;align-items:center}
+.arch-restore{padding:5px 9px;background:#EEF2FF;color:#3730A3;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.arch-restore:hover{background:#C7D2FE}
+
+/* Toast */
+.toast-container{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;z-index:1000;max-width:340px;pointer-events:none}
+.toast{padding:11px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:slideIn .25s ease-out;pointer-events:auto;display:flex;align-items:center;gap:8px}
+.toast.success{background:#10B981}
+.toast.error{background:#DC2626}
+.toast.info{background:#3B82F6}
+.toast.warn{background:#F59E0B}
+.toast.fade{animation:fadeOut .3s ease-out forwards}
+@keyframes slideIn{from{transform:translateX(380px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes fadeOut{to{opacity:0;transform:translateX(20px)}}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(17,17,17,.55);z-index:200;align-items:center;justify-content:center;padding:14px;animation:fadeIn .2s ease-out}
+.modal-overlay.open{display:flex}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal-h{padding:14px 18px;border-bottom:.5px solid var(--bdr);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;position:sticky;top:0;background:#fff;z-index:1}
+.modal-title{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:3px}
+.modal-sub{font-size:12px;color:var(--mt)}
+.modal-close{background:none;border:none;font-size:22px;color:var(--mt);cursor:pointer;padding:0;line-height:1;font-family:inherit}
+.modal-close:hover{color:var(--ink)}
+.modal-body{padding:14px 18px}
+.modal-status{display:inline-block;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:600;background:#EEF2FF;color:#3730A3;margin-bottom:6px}
+.modal-row{display:flex;flex-direction:column;gap:3px;margin-bottom:11px;padding-bottom:11px;border-bottom:.5px solid #F3F4F6}
+.modal-row:last-of-type{border-bottom:none}
+.modal-label{font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.modal-val{font-size:13px;color:var(--ink);word-break:break-word}
+.modal-val a{color:var(--acc);text-decoration:none}
+.modal-val a:hover{text-decoration:underline}
+.modal-input,.modal-select{width:100%;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;color:var(--ink);background:#FAFAFA}
+.modal-input:focus,.modal-select:focus{outline:none;border-color:var(--acc);background:#fff}
+.modal-textarea{width:100%;padding:8px 11px;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;min-height:60px;background:#FAFAFA}
+.modal-textarea:focus{outline:none;border-color:var(--acc);background:#fff}
+.modal-actions{padding:12px 18px;border-top:.5px solid var(--bdr);display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:#fff}
+.modal-btn{padding:8px 14px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.modal-btn-primary{background:var(--acc);color:#fff;flex:1}
+.modal-btn-primary:hover{background:#0F6E56}
+.modal-btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.modal-btn-secondary{background:#F3F4F6;color:var(--ink)}
+.modal-btn-secondary:hover{background:#E5E7EB}
+.modal-btn-info{background:#EEF2FF;color:#3730A3}
+.modal-btn-info:hover{background:#C7D2FE}
+
+/* Drag visuals */
+.cd.drag-ghost{opacity:.4}
+.kb-body.drag-over{background:#EEF2FF;outline:2px dashed #6366F1;outline-offset:-2px;border-radius:6px}
 
 /* Mobile */
 @media (max-width: 768px){
@@ -151,6 +200,28 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <input type="text" id="archSearch" placeholder="🔍 Search archive...">
   </div>
   <div class="archive-list" id="archiveList"></div>
+</div>
+
+<!-- Toast notifications -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Lead detail modal -->
+<div class="modal-overlay" id="leadModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title" id="modalTitle">—</div>
+        <div class="modal-sub" id="modalSub">—</div>
+      </div>
+      <button class="modal-close" id="btnModalClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
+      <button class="modal-btn modal-btn-secondary" id="btnModalCancel">Close</button>
+      <button class="modal-btn modal-btn-primary" id="btnModalSave">Save</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -324,6 +395,7 @@ function renderKanban(leads) {
     col.appendChild(body);
     board.appendChild(col);
   });
+  wireSortable();
 }
 
 function renderCard(lead) {
@@ -420,13 +492,17 @@ function renderArchive(leads) {
   list.innerHTML = filtered.map(l => {
     const status = String(l['Status'] || '');
     const statusClass = 'arch-status-' + status.replace(/\s+/g, '-');
+    const phone = l['Phone'] || '';
+    const restoreOptions = '<option value="">Restore to ▾</option>' +
+      ACTIVE_STATUSES.map(s => '<option value="' + s + '">' + (STATUS_LABELS[s] || s) + '</option>').join('');
     return '<div class="arch-row">' +
       '<div class="arch-row-l">' +
         '<span class="arch-status-badge ' + statusClass + '">' + status + '</span>' +
-        '<span class="arch-row-name">' + escapeHtml(l['Name'] || '(no name)') + ' · ' + escapeHtml(l['Phone'] || '') + '</span>' +
+        '<span class="arch-row-name">' + escapeHtml(l['Name'] || '(no name)') + ' · ' + escapeHtml(String(phone)) + '</span>' +
         '<span class="arch-row-meta">' + escapeHtml(l['Location'] || '') + (l['Group Name (AE)'] ? ' · ' + escapeHtml(l['Group Name (AE)']) : '') + '</span>' +
       '</div>' +
       '<div class="arch-row-r">' +
+        '<select class="arch-restore" data-phone="' + escapeHtml(String(phone)) + '" onchange="if(this.value){restoreLead(this.dataset.phone, this.value); this.value=\'\';}">' + restoreOptions + '</select>' +
         (l['Group Invite Link (AJ)'] ? '<a class="cd-wa" href="' + l['Group Invite Link (AJ)'] + '" target="_blank">💬</a>' : '') +
       '</div>' +
     '</div>';
@@ -434,13 +510,252 @@ function renderArchive(leads) {
 }
 
 // ================================================================
-// MODAL — placeholder for S2/S3
+// API HELPER
 // ================================================================
 
+async function apiCall(action, payload) {
+  if (!WEBAPP_URL) {
+    return { status: 'error', message: 'WEBAPP_URL not set' };
+  }
+  try {
+    const r = await fetch(WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // text/plain avoids CORS preflight
+      body: JSON.stringify(Object.assign({}, payload, { action: action, secret: SHARED_SECRET }))
+    });
+    return await r.json();
+  } catch (e) {
+    return { status: 'error', message: e.message || String(e) };
+  }
+}
+
+// ================================================================
+// TOAST
+// ================================================================
+
+function toast(message, type) {
+  type = type || 'info';
+  const c = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = message;
+  c.appendChild(el);
+  setTimeout(function(){
+    el.classList.add('fade');
+    setTimeout(function(){ el.remove(); }, 300);
+  }, 3500);
+}
+
+// ================================================================
+// SORTABLEJS — drag and drop
+// ================================================================
+
+let sortableInstances = [];
+
+function wireSortable() {
+  // Destroy old instances
+  sortableInstances.forEach(s => { try { s.destroy(); } catch(_e){} });
+  sortableInstances = [];
+
+  document.querySelectorAll('#kanbanBoard .kc').forEach(col => {
+    const body = col.querySelector('.kb-body');
+    if (!body) return;
+    const inst = Sortable.create(body, {
+      group: 'kanban',
+      animation: 180,
+      ghostClass: 'drag-ghost',
+      delay: 150,
+      delayOnTouchOnly: true,
+      onAdd: handleDragAdd,
+      onEnd: function(evt) {
+        // onAdd handles cross-column. onEnd handles same-column reorder (no-op for us).
+      }
+    });
+    sortableInstances.push(inst);
+  });
+}
+
+async function handleDragAdd(evt) {
+  const card = evt.item;
+  const newCol = evt.to.closest('.kc');
+  const oldCol = evt.from.closest('.kc');
+  if (!newCol || !oldCol) return;
+
+  const newStatus = newCol.dataset.status;
+  const oldStatus = oldCol.dataset.status;
+  const phone = card.dataset.phone;
+
+  if (newStatus === oldStatus) return;
+
+  // Find lead in memory + update optimistically
+  const lead = allLeads.find(l => String(l['Phone']) === phone);
+
+  // Warn for appointment-stage drops (S3 will gate properly)
+  if (newStatus === 'Site Visit Confirmed' || newStatus === 'Pending I.Date') {
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus) + ' — remember to set the appointment date (modal in next phase)', 'warn');
+  }
+
+  const r = await apiCall('updateStatus', {
+    phone: phone,
+    status: newStatus,
+    changedBy: 'Kanban'
+  });
+
+  if (r.status === 'ok') {
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus), 'success');
+    if (lead) {
+      lead['Status'] = newStatus;
+      lead['Status Changed At'] = new Date().toISOString();
+    }
+  } else {
+    // Revert: move card back
+    evt.from.appendChild(card);
+    toast('Move failed: ' + (r.message || 'unknown'), 'error');
+  }
+}
+
+// ================================================================
+// LEAD DETAIL MODAL
+// ================================================================
+
+let currentModalLead = null;
+let modalOriginalAssignee = '';
+let modalOriginalNotes = '';
+
 function openLeadDetail(lead) {
-  // TODO S2: full detail modal with edit-in-place + appointment edit
-  alert('Lead: ' + (lead['Name'] || lead['Phone']) + '\nStatus: ' + lead['Status'] +
-    '\n\n(Detail modal coming in next phase)');
+  currentModalLead = lead;
+  modalOriginalAssignee = lead['Assigned To'] || '';
+  modalOriginalNotes = lead['Notes'] || '';
+
+  document.getElementById('modalTitle').textContent = lead['Name'] || '(no name)';
+  document.getElementById('modalSub').innerHTML = '<a href="tel:' + lead['Phone'] + '">📞 ' + lead['Phone'] + '</a>';
+
+  const status = lead['Status'] || '';
+  const statusLabel = STATUS_LABELS[status] || status;
+
+  // Build staff dropdown — include current value if not blank
+  const staffOptions = ['Unassigned','Ken','Admin','Alvin','Osment','William','Team KL','Team JB'];
+  const currentAssignee = lead['Assigned To'] || '';
+  if (currentAssignee && staffOptions.indexOf(currentAssignee) === -1) staffOptions.unshift(currentAssignee);
+
+  const groupLink = lead['Group Invite Link (AJ)'] || '';
+  const fmtVal = v => v ? escapeHtml(String(v)) : '<span style="color:#9CA3AF">—</span>';
+
+  document.getElementById('modalBody').innerHTML =
+    '<span class="modal-status">' + escapeHtml(statusLabel) + '</span>' +
+    rowDisplay('Group', lead['Group Name (AE)'] ? escapeHtml(lead['Group Name (AE)']) +
+      (groupLink ? ' · <a href="' + groupLink + '" target="_blank">💬 open</a>' : '') : '—') +
+    rowDisplay('Problem', fmtVal(lead['Problem Type'])) +
+    rowDisplay('Location', fmtVal(lead['Location'])) +
+    rowDisplay('Full address', fmtVal(lead['Full Address'])) +
+    rowDisplay('Slab size', fmtVal(lead['Slab Size (sqft)'])) +
+    rowDisplay('Source', fmtVal(lead['Source'])) +
+    rowDisplay('Slot chosen', fmtVal(lead['Slot Chosen'])) +
+    rowDisplay('Date confirmed', fmtVal(lead['Date Appt Confirmed'])) +
+    rowDisplay('Tags', lead['Tags'] ? escapeHtml(String(lead['Tags'])) : '—') +
+    rowDisplay('Last bot msg', fmtVal(lead['Last Bot Msg Time (AD)'])) +
+    rowEdit('Assigned to', '<select class="modal-select" id="modalAssignee">' +
+      staffOptions.map(s => '<option value="' + escapeHtml(s) + '"' +
+        (s === currentAssignee ? ' selected' : '') + '>' + escapeHtml(s) + '</option>').join('') +
+      '</select>') +
+    rowEdit('Notes', '<textarea class="modal-textarea" id="modalNotes" placeholder="Add notes...">' +
+      escapeHtml(lead['Notes'] || '') + '</textarea>');
+
+  document.getElementById('leadModal').classList.add('open');
+}
+
+function rowDisplay(label, valHtml) {
+  return '<div class="modal-row"><div class="modal-label">' + label + '</div>' +
+    '<div class="modal-val">' + valHtml + '</div></div>';
+}
+function rowEdit(label, inputHtml) {
+  return '<div class="modal-row"><div class="modal-label">' + label + '</div>' + inputHtml + '</div>';
+}
+
+function closeLeadDetail() {
+  document.getElementById('leadModal').classList.remove('open');
+  currentModalLead = null;
+}
+
+async function saveLeadDetail() {
+  if (!currentModalLead) return;
+  const phone = currentModalLead['Phone'];
+  const newAssignee = document.getElementById('modalAssignee').value;
+  const newNotes = document.getElementById('modalNotes').value;
+
+  const saveBtn = document.getElementById('btnModalSave');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving...';
+
+  let allOk = true;
+  const updates = [];
+
+  if (newAssignee !== modalOriginalAssignee) {
+    const r = await apiCall('updateAssignee', { phone: phone, assignee: newAssignee });
+    if (r.status === 'ok') updates.push('assignee'); else { allOk = false; toast('Assignee save failed: ' + r.message, 'error'); }
+  }
+  if (newNotes !== modalOriginalNotes) {
+    const r = await apiCall('updateNotes', { phone: phone, notes: newNotes });
+    if (r.status === 'ok') updates.push('notes'); else { allOk = false; toast('Notes save failed: ' + r.message, 'error'); }
+  }
+
+  saveBtn.disabled = false;
+  saveBtn.textContent = 'Save';
+
+  if (updates.length === 0) {
+    toast('No changes to save', 'info');
+    return;
+  }
+  if (allOk) {
+    toast('Saved: ' + updates.join(' + '), 'success');
+    // Update in-memory lead so subsequent renders reflect changes
+    if (newAssignee !== modalOriginalAssignee) currentModalLead['Assigned To'] = newAssignee;
+    if (newNotes !== modalOriginalNotes) currentModalLead['Notes'] = newNotes;
+    modalOriginalAssignee = newAssignee;
+    modalOriginalNotes = newNotes;
+    render();
+  }
+}
+
+async function sendRescheduleFromModal() {
+  if (!currentModalLead) return;
+  const phone = currentModalLead['Phone'];
+  const groupId = currentModalLead['Group ID (AB)'] || '';
+
+  const btn = document.getElementById('btnSendReschedule');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  const r = await apiCall('sendRescheduleLink', { phone: phone, groupId: groupId });
+
+  btn.disabled = false;
+  btn.textContent = 'Send reschedule link';
+
+  if (r.status === 'ok') {
+    toast('Reschedule link sent to ' + (currentModalLead['Name'] || phone), 'success');
+  } else {
+    toast('Send failed: ' + (r.message || 'unknown'), 'error');
+  }
+}
+
+// ================================================================
+// ARCHIVE — restore action
+// ================================================================
+
+async function restoreLead(phone, newStatus) {
+  const r = await apiCall('updateStatus', {
+    phone: phone,
+    status: newStatus,
+    changedBy: 'Kanban (restore)'
+  });
+  if (r.status === 'ok') {
+    toast('Restored to ' + newStatus, 'success');
+    const lead = allLeads.find(l => String(l['Phone']) === phone);
+    if (lead) { lead['Status'] = newStatus; lead['Status Changed At'] = new Date().toISOString(); }
+    render();
+  } else {
+    toast('Restore failed: ' + (r.message || 'unknown'), 'error');
+  }
 }
 
 // ================================================================
@@ -493,9 +808,26 @@ function debounce(fn, ms) {
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(() => {
-    if (!document.hidden) loadLeads();
+    if (document.hidden) return;
+    if (document.getElementById('leadModal').classList.contains('open')) return; // pause while modal open
+    loadLeads();
   }, REFRESH_MS);
 }
+
+// ================================================================
+// MODAL EVENT WIRING
+// ================================================================
+
+document.getElementById('btnModalClose').onclick = closeLeadDetail;
+document.getElementById('btnModalCancel').onclick = closeLeadDetail;
+document.getElementById('btnModalSave').onclick = saveLeadDetail;
+document.getElementById('btnSendReschedule').onclick = sendRescheduleFromModal;
+document.getElementById('leadModal').addEventListener('click', function(e){
+  if (e.target.id === 'leadModal') closeLeadDetail();
+});
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') closeLeadDetail();
+});
 
 // ================================================================
 // BOOT
