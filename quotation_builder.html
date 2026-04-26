@@ -34,11 +34,16 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .zone-remove{margin-left:8px;padding:5px 10px;background:#FEE2E2;color:#991B1B;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
 .zone-remove:hover{background:#FECACA}
 
-.zone-photo{width:100%;min-height:120px;border:1.5px dashed #D1D5DB;border-radius:6px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--mt);font-size:12px;margin-bottom:9px;overflow:hidden;position:relative}
+.zone-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px}
+.zone-photo{position:relative;min-height:140px;border:1.5px dashed #D1D5DB;border-radius:6px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--mt);font-size:11px;overflow:hidden}
 .zone-photo:hover{border-color:var(--acc);background:#F0FDF4}
-.zone-photo img{max-width:100%;max-height:280px;object-fit:contain}
+.zone-photo img{max-width:100%;max-height:240px;object-fit:contain}
 .zone-photo input[type="file"]{display:none}
-.zone-photo-text{padding:18px}
+.zone-photo-text{padding:14px;text-align:center;line-height:1.4}
+.zone-photo-text small{display:block;color:#9ca3af;margin-top:3px;font-size:10px}
+.zone-photo-label{position:absolute;top:5px;left:5px;background:rgba(45,42,110,.8);color:#fff;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.zone-photo-clear{position:absolute;top:5px;right:5px;background:rgba(255,255,255,.9);border:none;border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:13px;color:#dc2626;display:none;align-items:center;justify-content:center;font-family:inherit}
+.zone-photo:has(img) .zone-photo-clear{display:flex}
 
 .zone-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
 .zone-input-wrap{display:flex;flex-direction:column;gap:3px}
@@ -90,7 +95,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .pv-h{font-size:22px;font-weight:800;color:#2D2A6E;margin-bottom:6px}
 .pv-sub{font-size:12px;color:#6b7280;margin-bottom:24px}
 .pv-zone{margin-bottom:30px;page-break-inside:avoid}
-.pv-zone-img{width:100%;max-width:694px;max-height:380px;object-fit:contain;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:14px;display:block}
+.pv-zone-photos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.pv-zone-img-wrap{display:flex;flex-direction:column;align-items:center;gap:5px}
+.pv-zone-img{width:100%;max-height:340px;object-fit:contain;border-radius:6px;border:1px solid #e5e7eb;display:block}
+.pv-zone-img-cap{font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
 .pv-zone-info{font-size:14px;line-height:1.7}
 .pv-zone-info b{font-weight:700}
 .pv-grand{margin-top:24px;padding:14px 18px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;font-size:18px;font-weight:800;color:#065F46;text-align:center}
@@ -98,6 +106,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 @media (max-width: 600px){
   .wrap{padding:8px}
   .zone-row{grid-template-columns:1fr}
+  .zone-photos{grid-template-columns:1fr}
   .li-table{font-size:11px}
   .li-table input{font-size:11px;padding:4px 6px}
 }
@@ -286,7 +295,8 @@ function addZone(presets) {
   zones.push({
     id: uuid(),
     name: presets.name || ('Slab ' + (zones.length + 1)),
-    photoDataUrl: '',
+    photoActualUrl: '',       // real photo of the zone
+    photoMeasureUrl: '',      // measurement-app screenshot
     floorSqft: presets.floorSqft || 0,
     upturnSqft: presets.upturnSqft || 0
   });
@@ -325,10 +335,10 @@ function renderZones() {
         '<input class="zone-name-input" value="' + escapeHtml(z.name) + '" data-zone="' + z.id + '" data-field="name">' +
         '<button class="zone-remove" data-remove-zone="' + z.id + '">Remove</button>' +
       '</div>' +
-      '<label class="zone-photo" data-photo-zone="' + z.id + '">' +
-        (z.photoDataUrl ? '<img src="' + z.photoDataUrl + '" alt="">' : '<div class="zone-photo-text">📷 Tap or drop photo here<br><small>(or paste from clipboard)</small></div>') +
-        '<input type="file" accept="image/*" data-photo-input="' + z.id + '">' +
-      '</label>' +
+      '<div class="zone-photos">' +
+        photoSlotHtml(z, 'actual', z.photoActualUrl, 'Actual photo') +
+        photoSlotHtml(z, 'measure', z.photoMeasureUrl, 'Measurement') +
+      '</div>' +
       '<div class="zone-row">' +
         '<div class="zone-input-wrap">' +
           '<span class="zone-input-label">Floor area (sqft)</span>' +
@@ -350,7 +360,20 @@ function renderZones() {
   });
   list.querySelectorAll('input[data-photo-input]').forEach(el => {
     el.onchange = function() {
-      handlePhotoUpload(el.dataset.photoInput, el.files[0]);
+      handlePhotoUpload(el.dataset.photoInput, el.dataset.photoSlot, el.files[0]);
+    };
+  });
+  list.querySelectorAll('[data-clear-photo]').forEach(el => {
+    el.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const [zoneId, slot] = el.dataset.clearPhoto.split('|');
+      const z = zones.find(x => x.id === zoneId);
+      if (z) {
+        if (slot === 'actual') z.photoActualUrl = '';
+        else z.photoMeasureUrl = '';
+        renderZones();
+      }
     };
   });
   list.querySelectorAll('[data-remove-zone]').forEach(el => {
@@ -358,34 +381,53 @@ function renderZones() {
   });
 }
 
-function handlePhotoUpload(zoneId, file) {
+function photoSlotHtml(z, slot, url, label) {
+  return '<label class="zone-photo">' +
+    '<span class="zone-photo-label">' + label + '</span>' +
+    (url
+      ? '<img src="' + url + '" alt="">' +
+        '<button type="button" class="zone-photo-clear" data-clear-photo="' + z.id + '|' + slot + '" title="Remove photo">×</button>'
+      : '<div class="zone-photo-text">📷 Tap or drop<br><small>or paste (Ctrl+V)</small></div>'
+    ) +
+    '<input type="file" accept="image/*" data-photo-input="' + z.id + '" data-photo-slot="' + slot + '">' +
+  '</label>';
+}
+
+function handlePhotoUpload(zoneId, slot, file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
     const z = zones.find(x => x.id === zoneId);
-    if (z) {
-      z.photoDataUrl = e.target.result;
-      renderZones();
-    }
+    if (!z) return;
+    if (slot === 'actual') z.photoActualUrl = e.target.result;
+    else if (slot === 'measure') z.photoMeasureUrl = e.target.result;
+    renderZones();
   };
   reader.readAsDataURL(file);
 }
 
-// Paste-from-clipboard (desktop convenience)
+// Paste-from-clipboard (desktop convenience) — fills first empty slot
 document.addEventListener('paste', function(e) {
   const items = (e.clipboardData || window.clipboardData).items;
   for (let i = 0; i < items.length; i++) {
-    if (items[i].type.indexOf('image') !== -1) {
-      const file = items[i].getAsFile();
-      // Find first zone without a photo, or last zone
-      const target = zones.find(z => !z.photoDataUrl) || zones[zones.length - 1];
-      if (target) {
-        handlePhotoUpload(target.id, file);
-        toast('Photo pasted into ' + target.name, 'success');
-      }
-      e.preventDefault();
-      break;
+    if (items[i].type.indexOf('image') === -1) continue;
+    const file = items[i].getAsFile();
+    // Find first zone+slot that's empty (actual first, then measure)
+    let target = null, slot = null;
+    for (const z of zones) {
+      if (!z.photoActualUrl) { target = z; slot = 'actual'; break; }
+      if (!z.photoMeasureUrl) { target = z; slot = 'measure'; break; }
     }
+    if (!target) {
+      target = zones[zones.length - 1];
+      slot = 'measure';
+    }
+    if (target) {
+      handlePhotoUpload(target.id, slot, file);
+      toast('Photo pasted into ' + target.name + ' (' + (slot === 'actual' ? 'actual' : 'measurement') + ')', 'success');
+    }
+    e.preventDefault();
+    break;
   }
 });
 
@@ -497,16 +539,26 @@ function buildPrintView() {
       '</div>';
 
   zones.forEach((z, i) => {
-    if (i > 0 && i % 2 === 0) {
-      // New page every 2 zones
+    if (i > 0) {
+      // One zone per page (with 2 photos side by side, single zone fits A4 cleanly)
       html += '</div><div class="pv-page">' +
         '<div class="pv-h">Zone Summary (cont.)</div>' +
         '<div class="pv-sub">' + escapeHtml(qtNumber) + '</div>';
     }
     const total = z.floorSqft + z.upturnSqft;
+    const noPhotoBlock = '<div class="pv-zone-img" style="display:flex;align-items:center;justify-content:center;color:#9ca3af;min-height:240px">No photo</div>';
     html +=
       '<div class="pv-zone">' +
-        (z.photoDataUrl ? '<img class="pv-zone-img" src="' + z.photoDataUrl + '">' : '<div class="pv-zone-img" style="display:flex;align-items:center;justify-content:center;color:#9ca3af">No photo</div>') +
+        '<div class="pv-zone-photos">' +
+          '<div class="pv-zone-img-wrap">' +
+            (z.photoActualUrl ? '<img class="pv-zone-img" src="' + z.photoActualUrl + '">' : noPhotoBlock) +
+            '<div class="pv-zone-img-cap">Actual photo</div>' +
+          '</div>' +
+          '<div class="pv-zone-img-wrap">' +
+            (z.photoMeasureUrl ? '<img class="pv-zone-img" src="' + z.photoMeasureUrl + '">' : noPhotoBlock) +
+            '<div class="pv-zone-img-cap">Measurement</div>' +
+          '</div>' +
+        '</div>' +
         '<div class="pv-zone-info">' +
           '<b>' + escapeHtml(z.name) + ': ' + total.toFixed(2) + ' sqft</b><br>' +
           'Floor Area — ' + z.floorSqft.toFixed(2) + ' sqft<br>' +
