@@ -228,6 +228,24 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   .kh-name{font-size:13px}
   .kh-toggle{font-size:13px;padding:4px 8px}    /* bigger tap target */
 }
+.nl-row{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.nl-row label{font-size:12px;color:#6B7280;font-weight:600}
+.nl-row input,.nl-row select,.nl-row textarea{padding:7px 9px;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;background:#fff}
+.nl-row textarea{resize:vertical;min-height:48px}
+.nl-dup-warn{padding:8px 10px;border-radius:6px;font-size:12px;margin-bottom:10px;display:none;line-height:1.4}
+.nl-dup-warn.active-dup{display:block;background:#FEE2E2;color:#991B1B;border:.5px solid #FCA5A5}
+.nl-dup-warn.terminal-dup{display:block;background:#FEF3C7;color:#92400E;border:.5px solid #FCD34D}
+.nl-dup-warn .nl-copy-btn{display:inline-block;margin-top:6px;padding:4px 10px;background:#F59E0B;color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.nl-dup-warn .nl-copy-btn:hover{background:#D97706}
+.nl-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.nl-actions button{padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;border:none}
+.nl-btn-secondary{background:#F3F4F6;color:#111827}
+.nl-btn-secondary:hover{background:#E5E7EB}
+.nl-btn-primary{background:#10B981;color:#fff}
+.nl-btn-primary:hover{background:#059669}
+.nl-btn-primary:disabled{background:#9CA3AF;cursor:not-allowed}
+.btn-newlead{padding:7px 11px;background:#10B981;color:#fff;border:.5px solid #059669;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-newlead:hover{background:#059669}
 </style>
 </head>
 <body>
@@ -255,6 +273,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   </select>
   <button class="refresh quickfilter" id="btnRepliesNeeded" title="Show only cards tagged needs_reply (combines with staff filter)">🔔 Replies needed</button>
   <button class="refresh quickfilter" id="btnSilentOnly" title="Show only PSV/QS leads who have never sent any customer message — useful for bulk first-touch FU">🔇 Silent</button>
+  <button class="btn-newlead" id="btnNewLead" title="Create a new lead manually">+ New Lead</button>
   <button class="refresh" id="btnRefresh">🔄 Refresh</button>
   <span class="last-sync" id="lastSync">—</span>
 </div>
@@ -349,6 +368,55 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
       <button class="modal-btn modal-btn-secondary" id="btnModalCancel">Close</button>
       <button class="modal-btn modal-btn-primary" id="btnModalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create New Lead modal -->
+<div class="modal-overlay" id="newLeadModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">Create New Lead</div>
+        <div class="modal-sub">Manual entry — bypasses ChatHero</div>
+      </div>
+      <button class="modal-close" id="btnNewLeadClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="nl-row"><label for="nlName">Name *</label><input id="nlName" type="text" autocomplete="off"></div>
+      <div class="nl-row"><label for="nlPhone">Phone *</label><input id="nlPhone" type="tel" autocomplete="off" placeholder="60123456789"></div>
+      <div class="nl-dup-warn" id="nlDupWarn"></div>
+      <div class="nl-row"><label for="nlStatus">Initial Status *</label>
+        <select id="nlStatus">
+          <option value="Pending Invitation">Pending Invitation</option>
+          <option value="Pending Site Visit" selected>Pending Site Visit</option>
+          <option value="Pending QT">Pending QT</option>
+          <option value="Pending I.Date">Pending Installation Date</option>
+          <option value="Pending Downpayment">Pending Downpayment</option>
+          <option value="Pending Balance">Pending Balance</option>
+          <option value="Completed with Complaint">Completed with Complaint</option>
+        </select>
+      </div>
+      <div class="nl-row"><label for="nlSource">Source *</label>
+        <select id="nlSource">
+          <option>Walk-in</option>
+          <option>Repeat Customer</option>
+          <option>Referral</option>
+          <option>Direct Call</option>
+          <option>Online</option>
+          <option>ChatHero</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="nl-row"><label for="nlLocation">Location</label><input id="nlLocation" type="text" placeholder="e.g. Klang"></div>
+      <div class="nl-row"><label for="nlProblem">Problem Type</label><input id="nlProblem" type="text" placeholder="e.g. Bathroom slab leaking"></div>
+      <div class="nl-row"><label for="nlAddress">Full Address</label><textarea id="nlAddress" rows="2"></textarea></div>
+      <div class="nl-row"><label for="nlNotes">Notes</label><textarea id="nlNotes" rows="2"></textarea></div>
+      <div class="nl-row"><label for="nlAssignee">Assigned To</label><select id="nlAssignee"><option value="">Unassigned</option></select></div>
+      <div class="nl-actions">
+        <button class="nl-btn-secondary" id="btnNewLeadCancel">Cancel</button>
+        <button class="nl-btn-primary" id="btnNewLeadSubmit">Create Lead</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1952,6 +2020,148 @@ async function sendRescheduleFromModal() {
 }
 
 // ================================================================
+// CREATE NEW LEAD
+// ================================================================
+
+let nlAllowDuplicate = false;       // set true when user accepted a terminal-only match
+let nlDupCheckTimer = null;
+
+function openNewLeadModal() {
+  // Reset form
+  ['nlName','nlPhone','nlLocation','nlProblem','nlAddress','nlNotes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('nlStatus').value = 'Pending Site Visit';
+  document.getElementById('nlSource').value = 'Walk-in';
+  document.getElementById('nlDupWarn').className = 'nl-dup-warn';
+  document.getElementById('nlDupWarn').innerHTML = '';
+  nlAllowDuplicate = false;
+  document.getElementById('btnNewLeadSubmit').disabled = false;
+  document.getElementById('btnNewLeadSubmit').textContent = 'Create Lead';
+
+  // Populate assignee dropdown from current staff list
+  const sel = document.getElementById('nlAssignee');
+  const staff = new Set();
+  allLeads.forEach(l => { const a = (l['Assigned To'] || '').trim(); if (a) staff.add(a); });
+  const sorted = Array.from(staff).sort();
+  sel.innerHTML = '<option value="">Unassigned</option>' +
+    sorted.map(s => '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>').join('');
+
+  document.getElementById('newLeadModal').classList.add('open');
+  setTimeout(() => document.getElementById('nlName').focus(), 50);
+}
+
+function closeNewLeadModal() {
+  document.getElementById('newLeadModal').classList.remove('open');
+}
+
+function checkNewLeadDuplicate() {
+  const phoneRaw = document.getElementById('nlPhone').value || '';
+  const phoneDigits = phoneRaw.replace(/\D/g, '');
+  const warn = document.getElementById('nlDupWarn');
+  const submitBtn = document.getElementById('btnNewLeadSubmit');
+
+  warn.className = 'nl-dup-warn';
+  warn.innerHTML = '';
+  nlAllowDuplicate = false;
+  submitBtn.disabled = false;
+
+  if (phoneDigits.length < 8) return;
+  const last8 = phoneDigits.slice(-8);
+
+  const matches = allLeads.filter(l => {
+    const p = String(l['Phone'] || '').replace(/\D/g, '');
+    return p.length >= 8 && p.endsWith(last8);
+  });
+  if (matches.length === 0) return;
+
+  const activeMatch = matches.find(l => ACTIVE_STATUSES.includes(String(l['Status'] || '').trim()));
+  if (activeMatch) {
+    const name = escapeHtml(activeMatch['Name'] || '(no name)');
+    const status = escapeHtml(activeMatch['Status'] || '');
+    warn.className = 'nl-dup-warn active-dup';
+    warn.innerHTML = '⚠️ <b>Active lead exists</b> for ' + name + ' — Status: ' + status +
+      '. Cannot create duplicate while active.';
+    submitBtn.disabled = true;
+    return;
+  }
+
+  // All matches are terminal — allow with copy-from-existing offer
+  // Pick most recent (last in append order)
+  const prev = matches[matches.length - 1];
+  const name = escapeHtml(prev['Name'] || '(no name)');
+  const status = escapeHtml(prev['Status'] || '');
+  warn.className = 'nl-dup-warn terminal-dup';
+  warn.innerHTML = 'ℹ️ Previous lead found for <b>' + name + '</b> (last status: ' + status + '). ' +
+    'You can continue creating a new lead.<br>' +
+    '<button type="button" class="nl-copy-btn" id="nlCopyBtn">Copy info from previous</button>';
+  nlAllowDuplicate = true;
+
+  // Wire up copy button (re-rendered each time)
+  setTimeout(() => {
+    const btn = document.getElementById('nlCopyBtn');
+    if (btn) btn.onclick = () => {
+      if (prev['Name']) document.getElementById('nlName').value = prev['Name'];
+      if (prev['Location']) document.getElementById('nlLocation').value = prev['Location'];
+      if (prev['Problem Type']) document.getElementById('nlProblem').value = prev['Problem Type'];
+      if (prev['Full Address']) document.getElementById('nlAddress').value = prev['Full Address'];
+      toast('Copied info from ' + (prev['Name'] || 'previous lead'), 'success');
+    };
+  }, 0);
+}
+
+async function submitNewLead() {
+  const name    = (document.getElementById('nlName').value || '').trim();
+  const phone   = (document.getElementById('nlPhone').value || '').trim();
+  const status  = document.getElementById('nlStatus').value;
+  const source  = document.getElementById('nlSource').value;
+  const location    = (document.getElementById('nlLocation').value || '').trim();
+  const problemType = (document.getElementById('nlProblem').value || '').trim();
+  const address     = (document.getElementById('nlAddress').value || '').trim();
+  const notes       = (document.getElementById('nlNotes').value || '').trim();
+  const assignedTo  = document.getElementById('nlAssignee').value || '';
+
+  if (!name)   { toast('Name is required', 'error'); return; }
+  if (!phone)  { toast('Phone is required', 'error'); return; }
+  if (!status) { toast('Status is required', 'error'); return; }
+
+  // Final phone digit-check (last-8 minimum)
+  const phoneDigits = phone.replace(/\D/g, '');
+  if (phoneDigits.length < 8) { toast('Phone looks too short', 'error'); return; }
+
+  const submitBtn = document.getElementById('btnNewLeadSubmit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Creating...';
+
+  const r = await apiCall('createLead', {
+    name: name,
+    phone: phoneDigits,
+    status: status,
+    source: source,
+    location: location,
+    address: address,
+    problemType: problemType,
+    notes: notes,
+    assignedTo: assignedTo,
+    allowDuplicate: nlAllowDuplicate,
+    changedBy: 'Kanban (create)'
+  });
+
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Create Lead';
+
+  if (r.status === 'ok') {
+    toast('Lead created at row ' + r.rowNum, 'success');
+    closeNewLeadModal();
+    await loadLeads();
+  } else if (r.code === 'active_duplicate') {
+    toast('Active lead already exists at row ' + r.existingRow + ' (' + r.existingStatus + ')', 'error');
+  } else {
+    toast('Create failed: ' + (r.message || 'unknown'), 'error');
+  }
+}
+
+// ================================================================
 // ARCHIVE — restore action
 // ================================================================
 
@@ -1995,6 +2205,14 @@ function showError(msg) {
 // ================================================================
 
 document.getElementById('btnRefresh').onclick = loadLeads;
+document.getElementById('btnNewLead').onclick = openNewLeadModal;
+document.getElementById('btnNewLeadClose').onclick = closeNewLeadModal;
+document.getElementById('btnNewLeadCancel').onclick = closeNewLeadModal;
+document.getElementById('btnNewLeadSubmit').onclick = submitNewLead;
+document.getElementById('nlPhone').oninput = function() {
+  if (nlDupCheckTimer) clearTimeout(nlDupCheckTimer);
+  nlDupCheckTimer = setTimeout(checkNewLeadDuplicate, 250);
+};
 document.getElementById('searchInput').oninput = debounce(render, 200);
 document.getElementById('staffFilter').onchange = render;
 document.getElementById('tagFilter').onchange = render;

@@ -47,6 +47,7 @@ function doPost(e) {
       case 'archiveLead':        return handleArchive(body);
       case 'restoreLead':        return handleRestore(body);
       case 'sendRescheduleLink': return handleSendReschedule(body);
+      case 'createLead':         return handleCreateLead(body);
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -232,6 +233,73 @@ function handleSendReschedule(body) {
   } catch (err) {
     return jsonResponse({status: 'error', message: 'whapi: ' + err.toString()});
   }
+}
+
+// ================================================================
+// Create New Lead (kanban "+ New Lead" button)
+// ================================================================
+
+// Returns ALL rows matching phone (last-8 digits), each {rowNum, status}.
+function findAllMatchesByPhone(sheet, phone) {
+  if (!phone) return [];
+  const target = String(phone).replace(/\D/g, '');
+  if (target.length < 8) return [];
+  const last8 = target.slice(-8);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const phoneCol = headers.indexOf('Phone');
+  const statusCol = headers.indexOf('Status');
+  if (phoneCol === -1) return [];
+  const out = [];
+  for (let i = 1; i < data.length; i++) {
+    const cell = String(data[i][phoneCol] || '').replace(/\D/g, '');
+    if (cell.length >= 8 && cell.endsWith(last8)) {
+      out.push({rowNum: i + 1, status: String(data[i][statusCol] || '').trim()});
+    }
+  }
+  return out;
+}
+
+function handleCreateLead(body) {
+  // body: {action, name, phone, status, source, location, address, problemType,
+  //        notes, assignedTo, allowDuplicate, changedBy, secret}
+  if (!body.name || !body.phone || !body.status) {
+    return jsonResponse({status: 'error', message: 'name, phone, status required'});
+  }
+  const ACTIVE = ['New Lead','Pending Invitation','Pending Site Visit','Site Visit Confirmed',
+                  'Pending QT','Quotation Sent','Follow Up','Pending I.Date',
+                  'I.Date Confirmed','Job In Progress'];
+  const sheet = getSheet();
+
+  // Server-side duplicate gate (defence-in-depth — frontend already filters)
+  const matches = findAllMatchesByPhone(sheet, body.phone);
+  const activeMatch = matches.find(function(m) { return ACTIVE.indexOf(m.status) !== -1; });
+  if (activeMatch && !body.allowDuplicate) {
+    return jsonResponse({
+      status: 'error', code: 'active_duplicate',
+      existingRow: activeMatch.rowNum, existingStatus: activeMatch.status
+    });
+  }
+
+  const newRow = sheet.getLastRow() + 1;
+  const nowIso = new Date().toISOString();
+  const todayStr = nowIso.slice(0, 10);
+
+  setCellByHeader(sheet, newRow, 'Timestamp', nowIso);
+  setCellByHeader(sheet, newRow, 'Phone', body.phone);
+  setCellByHeader(sheet, newRow, 'Name', body.name);
+  setCellByHeader(sheet, newRow, 'Status', body.status);
+  setCellByHeader(sheet, newRow, 'Status Changed At', nowIso);
+  setCellByHeader(sheet, newRow, 'Changed By', body.changedBy || 'Kanban (create)');
+  setCellByHeader(sheet, newRow, 'Date Lead In', todayStr);
+  setCellByHeader(sheet, newRow, 'Source', body.source || 'Other');
+  if (body.location)    setCellByHeader(sheet, newRow, 'Location', body.location);
+  if (body.address)     setCellByHeader(sheet, newRow, 'Full Address', body.address);
+  if (body.problemType) setCellByHeader(sheet, newRow, 'Problem Type', body.problemType);
+  if (body.notes)       setCellByHeader(sheet, newRow, 'Notes', body.notes);
+  if (body.assignedTo)  setCellByHeader(sheet, newRow, 'Assigned To', body.assignedTo);
+
+  return jsonResponse({status: 'ok', rowNum: newRow});
 }
 
 // ================================================================
