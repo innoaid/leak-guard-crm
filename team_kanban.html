@@ -254,6 +254,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <option value="cold_lead">cold_lead</option>
   </select>
   <button class="refresh quickfilter" id="btnRepliesNeeded" title="Show only cards tagged needs_reply (combines with staff filter)">🔔 Replies needed</button>
+  <button class="refresh quickfilter" id="btnSilentOnly" title="Show only PSV/QS leads who have never sent any customer message — useful for bulk first-touch FU">🔇 Silent</button>
   <button class="refresh" id="btnRefresh">🔄 Refresh</button>
   <span class="last-sync" id="lastSync">—</span>
 </div>
@@ -504,6 +505,7 @@ function render() {
   const staff = document.getElementById('staffFilter').value;
   const tagFilter = document.getElementById('tagFilter').value;
   const repliesOnly = document.getElementById('btnRepliesNeeded').classList.contains('active');
+  const silentOnly = document.getElementById('btnSilentOnly').classList.contains('active');
 
   function passesFilters(lead) {
     if (search) {
@@ -523,6 +525,12 @@ function render() {
     if (repliesOnly) {
       const tags = String(lead['Tags'] || '').toLowerCase();
       if (!tags.includes('needs_reply')) return false;
+    }
+    if (silentOnly) {
+      const status = String(lead['Status'] || '');
+      if (status !== 'Pending Site Visit' && status !== 'Quotation Sent') return false;
+      const lastMsg = String(lead['Last Customer Msg (AM)'] || '').trim();
+      if (lastMsg) return false;
     }
     return true;
   }
@@ -1939,6 +1947,10 @@ document.getElementById('searchInput').oninput = debounce(render, 200);
 document.getElementById('staffFilter').onchange = render;
 document.getElementById('tagFilter').onchange = render;
 document.getElementById('btnRepliesNeeded').onclick = function() {
+  this.classList.toggle('active');
+  render();
+};
+document.getElementById('btnSilentOnly').onclick = function() {
   this.classList.toggle('active');
   render();
 };
