@@ -47,6 +47,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .kh-refresh-msgs{background:#EEF2FF;color:#3730A3;border:.5px solid #C7D2FE;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.3;white-space:nowrap}
 .kh-refresh-msgs:hover{background:#C7D2FE}
 .kh-refresh-msgs:disabled{opacity:.6;cursor:wait}
+.kh-bulk-pause{background:#F3F4F6;color:#374151;border:.5px solid #D1D5DB;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.3;white-space:nowrap}
+.kh-bulk-pause:hover{background:#E5E7EB}
+.kh-bulk-pause[data-action="resume"]{background:#FEF3C7;color:#92400E;border-color:#FDE68A}
+.kh-bulk-pause[data-action="resume"]:hover{background:#FDE68A}
+.kh-bulk-pause:disabled{opacity:.6;cursor:wait}
 .kb-body{flex:1;background:#FAFAFA;padding:6px;overflow-y:auto;max-height:calc(100vh - 200px);min-height:80px}
 .kc.collapsed .kb-body{display:none}
 .kc.collapsed{min-width:200px;max-width:200px}
@@ -73,6 +78,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .tag-complaint{background:#FEE2E2;color:#991B1B}
 .tag-cancel_request{background:#FCE7F3;color:#9D174D}
 .tag-cold_lead{background:#E0F2FE;color:#075985}
+.tag-fu_paused{background:#E5E7EB;color:#374151}
 .cd-meta{display:flex;gap:5px;align-items:center}
 .cd-days{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#6B7280}
 .cd-days.warn{background:#FEF3C7;color:#92400E}
@@ -82,6 +88,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-wa{font-size:14px;color:#25D366;text-decoration:none;padding:1px 6px;border-radius:8px;background:#DCFCE7;display:inline-flex;align-items:center;gap:3px;font-weight:600}
 .cd-wa:hover{background:#BBF7D0}
 .cd-wa.disabled{color:#9CA3AF;background:#F3F4F6;cursor:not-allowed;pointer-events:none}
+.cd-pause{font-size:10px;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#374151;border:none;cursor:pointer;font-family:inherit;font-weight:600;line-height:1.4}
+.cd-pause:hover{background:#E5E7EB}
+.cd-pause.paused{background:#FEF3C7;color:#92400E}
+.cd-pause.paused:hover{background:#FDE68A}
 .kc-empty{text-align:center;padding:18px 8px;color:var(--mt);font-size:11px;font-style:italic}
 
 /* Archive view */
@@ -512,11 +522,21 @@ function renderKanban(leads) {
     // Count expired leads in this column (only for Site Visit Confirmed)
     const expiredCount = (status === 'Site Visit Confirmed')
       ? byStatus[status].filter(isVisitExpired).length : 0;
-    const showRefreshMsgs = (status === 'Pending Site Visit');
+    const showPsvActions = (status === 'Pending Site Visit');
+    let bulkPauseBtn = '';
+    if (showPsvActions) {
+      const psvLeads = byStatus[status];
+      const allPaused = psvLeads.length > 0 && psvLeads.every(l =>
+        String(l['Tags'] || '').toLowerCase().includes('fu_paused')
+      );
+      const label = allPaused ? '▶ Resume all (' + psvLeads.length + ')' : '⏸ Pause all (' + psvLeads.length + ')';
+      bulkPauseBtn = '<button class="kh-bulk-pause" id="btnBulkPauseFu" data-action="' + (allPaused ? 'resume' : 'pause') + '">' + label + '</button>';
+    }
     head.innerHTML =
       '<span class="kh-name" data-toggle="' + status + '">' + (STATUS_LABELS[status] || status) + '</span>' +
       '<span class="kh-right">' +
-        (showRefreshMsgs ? '<button class="kh-refresh-msgs" id="btnRefreshPsvMsgs" title="Fetch latest customer message for every PSV lead from Whapi">🔄 msgs</button>' : '') +
+        (showPsvActions ? '<button class="kh-refresh-msgs" id="btnRefreshPsvMsgs" title="Fetch latest customer message for every PSV lead from Whapi">🔄 msgs</button>' : '') +
+        bulkPauseBtn +
         '<span class="kh-count">' + byStatus[status].length + '</span>' +
         (expiredCount > 0 ? '<span class="kh-expired">⚠️ ' + expiredCount + '</span>' : '') +
         '<button class="kh-toggle" data-toggle="' + status + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + '">' +
@@ -539,6 +559,16 @@ function renderKanban(leads) {
   wireSortable();
   wireColumnToggles();
   wireRefreshPsvMsgs();
+  wireBulkPauseFu();
+}
+
+function wireBulkPauseFu() {
+  const btn = document.getElementById('btnBulkPauseFu');
+  if (!btn) return;
+  btn.onclick = function(e) {
+    e.stopPropagation();
+    bulkPauseFu(btn);
+  };
 }
 
 function wireRefreshPsvMsgs() {
@@ -635,6 +665,7 @@ function renderCard(lead) {
       '<div class="cd-meta">' +
         (daysInfo ? '<span class="cd-days ' + daysInfo.cls + '">' + daysInfo.label + '</span>' : '') +
         (assignee ? '<span class="cd-assignee">' + escapeHtml(assignee) + '</span>' : '') +
+        '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume auto follow-up' : 'Pause auto follow-up') + '">' + (tags.includes('fu_paused') ? '▶ FU' : '⏸ FU') + '</button>' +
         (inviteLink
           ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
           : '<span class="cd-wa disabled" title="No invite link saved for this lead">💬 WA</span>') +
@@ -811,6 +842,104 @@ function copyPhone(el) {
     catch (_e) { toast('Copy failed', 'error'); }
     document.body.removeChild(ta);
   }
+}
+
+async function togglePauseFu(btn) {
+  const phone = btn.dataset.phone || '';
+  if (!phone) return;
+  const lead = (allLeads || []).find(l => String(l['Phone'] || '') === phone);
+  if (!lead) { toast('Lead not found in cache — refresh', 'error'); return; }
+
+  const current = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+  const isPaused = current.includes('fu_paused');
+  const next = isPaused ? current.filter(t => t !== 'fu_paused') : [...current, 'fu_paused'];
+
+  // Optimistic UI
+  btn.disabled = true;
+  const wasLabel = btn.textContent;
+  btn.textContent = isPaused ? '⏸ FU' : '▶ FU';
+  btn.classList.toggle('paused', !isPaused);
+  btn.title = isPaused ? 'Pause auto follow-up' : 'Resume auto follow-up';
+
+  const r = await apiCall('updateTag', { phone: phone, tags: next.join(',') });
+  btn.disabled = false;
+  if (r && r.status === 'ok') {
+    lead['Tags'] = next.join(',');
+    toast(isPaused ? 'Resumed FU for ' + (lead['Name'] || phone) : 'Paused FU for ' + (lead['Name'] || phone), 'success');
+    // Re-render so the chip in the tags row also updates
+    if (typeof render === 'function') render();
+  } else {
+    toast('Failed to update — refresh', 'error');
+    btn.textContent = wasLabel;
+    btn.classList.toggle('paused', isPaused);
+  }
+}
+
+async function bulkPauseFu(btn) {
+  const action = btn.dataset.action; // 'pause' or 'resume'
+  // Re-derive visible PSV leads at click time (filters may have changed since render)
+  const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  const staff = document.getElementById('staffFilter').value;
+  const tagFilter = document.getElementById('tagFilter').value;
+  const repliesOnly = document.getElementById('btnRepliesNeeded').classList.contains('active');
+  const visiblePsv = (allLeads || []).filter(l => {
+    if (String(l['Status'] || '') !== 'Pending Site Visit') return false;
+    if (search) {
+      const blob = ((l['Name']||'')+' '+(l['Phone']||'')+' '+(l['Location']||'')+' '+(l['Group Name (AE)']||'')).toLowerCase();
+      if (!blob.includes(search)) return false;
+    }
+    if (staff && (l['Assigned To'] || '') !== staff) return false;
+    if (tagFilter) {
+      const t = String(l['Tags']||'').toLowerCase();
+      if (!t.includes(tagFilter.toLowerCase())) return false;
+    }
+    if (repliesOnly) {
+      const t = String(l['Tags']||'').toLowerCase();
+      if (!t.includes('needs_reply')) return false;
+    }
+    return true;
+  });
+
+  if (!visiblePsv.length) { toast('No visible PSV leads', 'warn'); return; }
+
+  // Filter to only those that actually need the change (idempotent)
+  const targets = visiblePsv.filter(l => {
+    const has = String(l['Tags']||'').toLowerCase().includes('fu_paused');
+    return action === 'pause' ? !has : has;
+  });
+
+  if (!targets.length) {
+    toast('All ' + (action === 'pause' ? 'already paused' : 'already active'), 'info');
+    return;
+  }
+
+  const names = targets.map(l => l['Name'] || l['Phone']).filter(Boolean);
+  const preview = names.slice(0, 3).join(', ') + (names.length > 3 ? ', +' + (names.length - 3) + ' more' : '');
+  const verb = action === 'pause' ? 'Pause' : 'Resume';
+  if (!confirm(verb + ' FU for ' + targets.length + ' leads?\n\n' + preview)) return;
+
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ ' + verb + 'ing…';
+
+  const calls = targets.map(l => {
+    const phone = String(l['Phone'] || '');
+    const current = String(l['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+    const next = action === 'pause'
+      ? (current.includes('fu_paused') ? current : [...current, 'fu_paused'])
+      : current.filter(t => t !== 'fu_paused');
+    return apiCall('updateTag', { phone: phone, tags: next.join(',') })
+      .then(r => ({ ok: r && r.status === 'ok', phone, lead: l, next }));
+  });
+
+  const results = await Promise.all(calls);
+  const okCount = results.filter(r => r.ok).length;
+  // Sync local cache so re-render reflects
+  results.forEach(r => { if (r.ok) r.lead['Tags'] = r.next.join(','); });
+  toast(verb + 'd ' + okCount + ' / ' + targets.length + ' leads', okCount === targets.length ? 'success' : 'warn');
+  btn.disabled = false;
+  btn.textContent = orig;
+  if (typeof render === 'function') render();
 }
 
 async function clearTagFromCard(el) {
