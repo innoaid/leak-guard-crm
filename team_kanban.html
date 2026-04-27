@@ -39,6 +39,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .kb::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px}
 .kc{min-width:230px;max-width:250px;flex-shrink:0;display:flex;flex-direction:column;background:#fff;border:.5px solid rgba(0,0,0,.07);border-radius:8px;overflow:hidden}
 .kh{padding:9px 11px;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;background:#F9FAFB;border-bottom:.5px solid var(--bdr);gap:6px}
+.kh-select{width:14px;height:14px;cursor:pointer;accent-color:#3730A3;margin:0;flex-shrink:0}
+.kh-select:disabled{cursor:not-allowed;opacity:.4}
 .kh-name{color:var(--ink);flex:1;cursor:pointer}
 .kh-right{display:flex;align-items:center;gap:6px}
 .kh-count{padding:1px 7px;border-radius:14px;font-size:10px;font-weight:700;background:#E5E7EB;color:#374151}
@@ -547,7 +549,18 @@ function renderKanban(leads) {
     // Count expired leads in this column (only for Site Visit Confirmed)
     const expiredCount = (status === 'Site Visit Confirmed')
       ? byStatus[status].filter(isVisitExpired).length : 0;
+    // Per-column select-all state
+    const colLeads = byStatus[status];
+    const colPhones = colLeads.map(l => String(l['Phone'] || '')).filter(Boolean);
+    const colSelectedCount = colPhones.filter(p => selectedPhones.has(p)).length;
+    const allColSelected = colPhones.length > 0 && colSelectedCount === colPhones.length;
+    const someColSelected = colSelectedCount > 0 && colSelectedCount < colPhones.length;
+
     head.innerHTML =
+      '<input type="checkbox" class="kh-select" data-status="' + escapeHtml(status) + '"' +
+        (allColSelected ? ' checked' : '') +
+        (colPhones.length === 0 ? ' disabled' : '') +
+        ' title="Select all in ' + escapeHtml(STATUS_LABELS[status] || status) + '">' +
       '<span class="kh-name" data-toggle="' + status + '">' + (STATUS_LABELS[status] || status) + '</span>' +
       '<span class="kh-right">' +
         '<span class="kh-count">' + byStatus[status].length + '</span>' +
@@ -556,6 +569,9 @@ function renderKanban(leads) {
           (isCollapsed ? '▶' : '▼') +
         '</button>' +
       '</span>';
+    // Indeterminate is a JS-only property — set after innerHTML
+    const colSelectCb = head.querySelector('.kh-select');
+    if (colSelectCb) colSelectCb.indeterminate = someColSelected;
     col.appendChild(head);
 
     const body = document.createElement('div');
@@ -571,6 +587,30 @@ function renderKanban(leads) {
   });
   wireSortable();
   wireColumnToggles();
+  wireColumnSelectAll();
+}
+
+function wireColumnSelectAll() {
+  document.querySelectorAll('.kh-select').forEach(cb => {
+    cb.onclick = function(e) {
+      e.stopPropagation();
+      const status = cb.dataset.status;
+      if (!status) return;
+      const col = document.querySelector('.kc[data-status="' + status + '"]');
+      if (!col) return;
+      const phones = Array.from(col.querySelectorAll('.cd'))
+        .map(c => c.dataset.phone)
+        .filter(Boolean);
+      if (!phones.length) return;
+      const allSelected = phones.every(p => selectedPhones.has(p));
+      if (allSelected) {
+        phones.forEach(p => selectedPhones.delete(p));
+      } else {
+        phones.forEach(p => selectedPhones.add(p));
+      }
+      render();
+    };
+  });
 }
 
 function wireBulkPauseFu() {
