@@ -574,13 +574,19 @@ function renderKanban(leads) {
     });
   }
 
-  // Sort Site Visit Confirmed: expired leads first (oldest expired on top)
+  // Sort Site Visit Confirmed:
+  //   1. cancel_request cards on top (admin must act now, regardless of appt date)
+  //   2. then expired-visit cards (oldest first)
+  //   3. then by appt date asc (oldest first)
   if (byStatus['Site Visit Confirmed']) {
     byStatus['Site Visit Confirmed'].sort((a, b) => {
+      const aCancel = String(a['Tags']||'').toLowerCase().includes('cancel_request');
+      const bCancel = String(b['Tags']||'').toLowerCase().includes('cancel_request');
+      if (aCancel && !bCancel) return -1;
+      if (bCancel && !aCancel) return 1;
       const aExp = isVisitExpired(a), bExp = isVisitExpired(b);
       if (aExp && !bExp) return -1;
       if (bExp && !aExp) return 1;
-      // Both expired or both not — sort by date asc (oldest first)
       const aDate = String(a['Date Appt Confirmed']||'').slice(0,10);
       const bDate = String(b['Date Appt Confirmed']||'').slice(0,10);
       return aDate.localeCompare(bDate);
@@ -740,11 +746,13 @@ function renderCard(lead) {
 
   // "Urgent" cards get a red left-border:
   //   - SVC expired (already handled below via `expired` class)
+  //   - SVC with cancel_request tag (customer wants to cancel — admin must act)
   //   - PSV with a captured customer last-msg (admin needs to act)
   //   - PQT (always — waiting on admin to send the QT)
   const isUrgentPsv = (status === 'Pending Site Visit' && !!lastMsgRaw);
   const isUrgentPqt = (status === 'Pending QT');
-  if (isUrgentPsv || isUrgentPqt) c.classList.add('urgent');
+  const isUrgentSvcCancel = (status === 'Site Visit Confirmed' && tags.includes('cancel_request'));
+  if (isUrgentPsv || isUrgentPqt || isUrgentSvcCancel) c.classList.add('urgent');
 
   if (expired) c.classList.add('expired');
 
