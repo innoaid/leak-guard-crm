@@ -1304,16 +1304,25 @@ function wireSortable() {
   });
 }
 
-// Fire-and-forget welcome resend when a lead lands in PSV from another phase.
-// Skipped when the previous status was already PSV (handles drag-and-drop
-// no-ops and SVC reschedule loops). Whapi msg goes to the lead's group;
-// webhook is no-op if no Group ID yet.
+// Welcome resend when a lead lands in PSV from another phase. Prompts admin
+// for confirmation first (symmetric with the SVC-leaving prompt) so the bot
+// never DMs a customer without explicit human approval.
+// Skipped silently when the previous status was already PSV (drag-drop no-ops).
+// Webhook is also a no-op if lead has no Group ID yet.
 function maybeResendWelcomeOnPsvEntry(lead, newStatus, prevStatus) {
   if (newStatus !== 'Pending Site Visit') return;
   if (prevStatus === 'Pending Site Visit') return;
   if (!lead) return;
   const phone = String(lead['Phone'] || '');
   if (!phone) return;
+  const name = lead['Name'] || phone;
+  const groupName = lead['Group Name (AE)'] || '(no group name)';
+  if (!confirm(
+    'Send welcome msg to ' + name + '?\n\n' +
+    'A welcome WhatsApp msg will go to:\n' + groupName + '\n\n' +
+    'It includes the booking link for the waterproofing site inspection.\n\n' +
+    'OK = send\nCancel = skip (status still moves)'
+  )) return;
   // Async — don't block UI. Log result to toast on completion.
   fetch('https://leakguard.app.n8n.cloud/webhook/lg-resend-welcome', {
     method: 'POST',
@@ -1321,7 +1330,7 @@ function maybeResendWelcomeOnPsvEntry(lead, newStatus, prevStatus) {
     body: JSON.stringify({ secret: 'ABC', phone })
   }).then(r => r.json()).then(data => {
     if (data && data.success) {
-      toast('Welcome msg resent to ' + (lead['Name'] || phone), 'success');
+      toast('Welcome msg resent to ' + name, 'success');
     } else if (data && data.error) {
       toast('Welcome resend skipped: ' + data.error, 'warn');
     }
