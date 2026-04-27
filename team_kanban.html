@@ -95,6 +95,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-wa{font-size:14px;color:#25D366;text-decoration:none;padding:1px 6px;border-radius:8px;background:#DCFCE7;display:inline-flex;align-items:center;gap:3px;font-weight:600}
 .cd-wa:hover{background:#BBF7D0}
 .cd-wa.disabled{color:#9CA3AF;background:#F3F4F6;cursor:not-allowed;pointer-events:none}
+.cd-fucount{font-size:9.5px;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#374151;font-weight:600;line-height:1.4;letter-spacing:.2px;white-space:nowrap}
+.cd-fucount.high{background:#FEF3C7;color:#92400E}
 .cd-pause{font-size:10px;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#374151;border:none;cursor:pointer;font-family:inherit;font-weight:600;line-height:1.4}
 .cd-pause:hover{background:#E5E7EB}
 .cd-pause.paused{background:#FEF3C7;color:#92400E}
@@ -708,6 +710,8 @@ function renderCard(lead) {
   const lastMsg = (status === 'Pending Site Visit' && lastMsgRaw)
     ? (lastMsgRaw.length > 60 ? lastMsgRaw.slice(0, 60) + '…' : lastMsgRaw)
     : '';
+  const fuCount = parseInt(String(lead['Follow Up Count (AK)'] || '0'), 10) || 0;
+  const fuLastAt = String(lead['Last Follow Up At (AL)'] || '').trim();
 
   if (expired) c.classList.add('expired');
 
@@ -747,6 +751,9 @@ function renderCard(lead) {
       '<div class="cd-meta">' +
         (daysInfo ? '<span class="cd-days ' + daysInfo.cls + '">' + daysInfo.label + '</span>' : '') +
         (assignee ? '<span class="cd-assignee">' + escapeHtml(assignee) + '</span>' : '') +
+        (fuCount > 0
+          ? '<span class="cd-fucount' + (fuCount >= 3 ? ' high' : '') + '" title="' + (fuLastAt ? 'Last FU: ' + escapeHtml(fuLastAt) : 'Follow-up count') + '">📨 ' + fuCount + '</span>'
+          : '') +
         '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume auto follow-up' : 'Pause auto follow-up') + '">' + (tags.includes('fu_paused') ? '▶ FU' : '⏸ FU') + '</button>' +
         (inviteLink
           ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
