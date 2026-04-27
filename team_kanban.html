@@ -66,7 +66,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd.selected{border-color:#3730A3;box-shadow:0 0 0 1.5px #3730A3}
 .cd-select{position:absolute;top:6px;right:6px;width:18px;height:18px;cursor:pointer;accent-color:#3730A3;z-index:5;margin:0}
 .cd-select-hit{position:absolute;top:0;right:0;width:34px;height:34px;cursor:pointer;z-index:4}
-.cd-svid{font-family:'SF Mono',Consolas,Monaco,monospace;font-size:9.5px;color:#6B7280;background:#F3F4F6;padding:1px 6px;border-radius:4px;letter-spacing:.3px;display:inline-block;margin-bottom:4px}
+.cd-idrow{display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap}
+.cd-svid{font-family:'SF Mono',Consolas,Monaco,monospace;font-size:9.5px;color:#6B7280;background:#F3F4F6;padding:1px 6px;border-radius:4px;letter-spacing:.3px;display:inline-block}
+.cd-team-jb{font-size:9px;font-weight:700;color:#6D28D9;background:#EDE9FE;padding:1px 6px;border-radius:4px;letter-spacing:.4px;display:inline-block}
 .cd-name{font-size:13px;font-weight:600;color:#111827;margin-bottom:2px;padding-right:24px}
 .cd-phone{font-size:11px;color:#0F6E56;text-decoration:none;display:block;margin-bottom:4px;cursor:copy}
 .cd-phone:hover{text-decoration:underline}
@@ -375,6 +377,16 @@ const SLOT_TIMES_JB = {
 };
 function teamFromGroupName(groupName) {
   return /^(SVJB|QTJB)-/i.test(String(groupName || '').trim()) ? 'JB' : 'KL';
+}
+function teamFromLead(lead) {
+  if (!lead) return 'KL';
+  // 1. Group Name prefix is the cleanest signal once SVJB- is in use
+  const groupName = String(lead['Group Name (AE)'] || '');
+  if (/^(SVJB|QTJB)-/i.test(groupName.trim())) return 'JB';
+  // 2. Fallback: Location column contains "JB" or "Johor"
+  const loc = String(lead['Location'] || '').trim().toUpperCase();
+  if (loc === 'JB' || /\bJB\b/.test(loc) || loc.includes('JOHOR')) return 'JB';
+  return 'KL';
 }
 function slotTimesFor(team) { return team === 'JB' ? SLOT_TIMES_JB : SLOT_TIMES_KL; }
 // Backward-compat alias — defaults to KL. Most callers should switch to slotTimesFor(team).
@@ -687,8 +699,9 @@ function renderCard(lead) {
   const inviteLink = lead['Group Invite Link (AJ)'] || '';
   const expired = isVisitExpired(lead);
   const groupName = String(lead['Group Name (AE)'] || '');
-  const svMatch = groupName.match(/^(SV-\d{4}-\d{3})/);
+  const svMatch = groupName.match(/^((?:SVJB|SV)-\d{4}-\d{3})/);
   const svId = svMatch ? svMatch[1] : '';
+  const cardTeam = teamFromLead(lead);
   const apptDateStr = String(lead['Date Appt Confirmed'] || '').slice(0, 10);
   const apptShort = (status === 'Site Visit Confirmed' && apptDateStr) ? formatApptShort(apptDateStr) : '';
   const lastMsgRaw = String(lead['Last Customer Msg (AM)'] || '').trim();
@@ -711,7 +724,12 @@ function renderCard(lead) {
   c.innerHTML =
     '<input type="checkbox" class="cd-select" data-phone="' + escapeHtml(phone) + '"' + (isSelected ? ' checked' : '') + ' onclick="event.stopPropagation();toggleCardSelect(this);">' +
     (expired ? '<span class="cd-expired-badge">⚠️ VISIT DONE — DECIDE</span>' : '') +
-    (svId ? '<div class="cd-svid">' + svId + '</div>' : '') +
+    (svId || cardTeam === 'JB' ?
+      '<div class="cd-idrow">' +
+        (svId ? '<span class="cd-svid">' + svId + '</span>' : '') +
+        (cardTeam === 'JB' ? '<span class="cd-team-jb">🏢 JB</span>' : '') +
+      '</div>'
+      : '') +
     '<div class="cd-name">' + escapeHtml(name) + '</div>' +
     '<span class="cd-phone" data-copy-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();copyPhone(this);">📞 ' + escapeHtml(phone) + '</span>' +
     (apptShort ? '<div class="cd-apptdate">📅 ' + apptShort + '</div>' : '') +
@@ -1310,7 +1328,7 @@ function openApptModal(lead) {
     apptModalState = {
       lead: lead,
       isReschedule: isReschedule,
-      team: teamFromGroupName(lead['Group Name (AE)']),
+      team: teamFromLead(lead),
       availability: {},
       existingAppt: null,
       selectedDate: null,
@@ -1384,6 +1402,8 @@ async function loadApptAvailability() {
   if (phone) params.push('phone=' + encodeURIComponent(phone));
   if (groupName) params.push('group=' + encodeURIComponent(groupName));
   if (oldEventId && apptModalState.isReschedule) params.push('oldEventId=' + encodeURIComponent(oldEventId));
+  // Pass client-detected team — server uses this when group prefix doesn't disambiguate
+  if (apptModalState.team) params.push('team=' + encodeURIComponent(apptModalState.team));
 
   try {
     const r = await fetch(N8N_AVAIL_URL + '?' + params.join('&'));
@@ -1475,7 +1495,8 @@ async function confirmApptModal() {
     name: String(lead['Name'] || ''),
     date: s.selectedDate,
     slot: s.selectedSlot,
-    action: s.isReschedule ? 'reschedule' : 'new'
+    action: s.isReschedule ? 'reschedule' : 'new',
+    team: s.team || 'KL'
   };
   if (s.isReschedule) {
     payload.oldDate = String(lead['Date Appt Confirmed'] || '').slice(0,10);
