@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kanban — Design Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F4EE;
+  --surface:#FFFFFF;
+  --surface-2:#FAFAFA;
+  --bdr:#E5E7EB;
+  --bdr-strong:#D1D5DB;
+  --ink:#111827;
+  --mt:#6B7280;
+  --mt-2:#9CA3AF;
+  --acc:#0F6E56;
+  --acc-light:#E8F4EE;
+  --warn:#92400E;
+  --warn-bg:#FEF3C7;
+  --err:#991B1B;
+  --err-bg:#FEE2E2;
+  --info:#3730A3;
+  --info-bg:#EEF2FF;
+  --jb:#6D28D9;
+  --jb-bg:#EDE9FE;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;font-size:14px;line-height:1.45}
+.page{max-width:1400px;margin:0 auto;padding:24px}
+.preview-meta{background:var(--surface);border:.5px solid var(--bdr);border-radius:8px;padding:14px 18px;margin-bottom:24px;font-size:12.5px;color:var(--mt)}
+.preview-meta b{color:var(--ink)}
+
+.hdr{padding:18px 0 16px;display:flex;justify-content:space-between;align-items:flex-end;gap:18px}
+.hdr-l h1{font-size:17px;font-weight:700;letter-spacing:-.2px}
+.hdr-l p{font-size:12px;color:var(--mt);margin-top:2px}
+.hdr-r{display:flex;gap:8px}
+.btn{padding:7px 13px;border:.5px solid var(--bdr-strong);border-radius:6px;background:var(--surface);font-size:12.5px;font-weight:500;color:var(--ink);font-family:inherit;cursor:pointer;transition:.15s}
+.btn:hover{background:var(--surface-2);border-color:var(--mt-2)}
+.btn-primary{background:var(--acc);color:#fff;border-color:var(--acc)}
+.btn-primary:hover{background:#0a5743;border-color:#0a5743}
+
+/* Toolbar */
+.toolbar{background:var(--surface);border:.5px solid var(--bdr);border-radius:8px;padding:10px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.toolbar input,.toolbar select{padding:7px 11px;border:.5px solid var(--bdr-strong);border-radius:6px;font-size:12.5px;font-family:inherit;background:var(--surface);min-width:0}
+.toolbar input{flex:1;min-width:200px}
+.toolbar .quickfilter{padding:7px 12px;border:.5px solid var(--bdr-strong);border-radius:6px;background:var(--surface);font-size:12.5px;font-weight:500;cursor:pointer;font-family:inherit;color:var(--ink)}
+.toolbar .quickfilter.active{background:var(--warn-bg);color:var(--warn);border-color:#F59E0B}
+.toolbar .last-sync{font-size:11px;color:var(--mt-2);margin-left:auto}
+
+/* Board */
+.board{display:flex;gap:10px;overflow-x:auto;padding-bottom:24px}
+.col{min-width:260px;max-width:280px;flex-shrink:0;background:var(--surface);border:.5px solid var(--bdr);border-radius:8px;display:flex;flex-direction:column}
+.col-h{padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:6px;background:var(--surface-2);border-bottom:.5px solid var(--bdr);border-radius:8px 8px 0 0}
+.col-name{font-size:12px;font-weight:600;color:var(--ink);letter-spacing:-.1px}
+.col-right{display:flex;align-items:center;gap:8px}
+.col-count{font-size:10.5px;font-weight:600;color:var(--mt);background:var(--surface);border:.5px solid var(--bdr);padding:1px 7px;border-radius:10px;min-width:22px;text-align:center}
+.col-count.alert{background:var(--err-bg);color:var(--err);border-color:#FCA5A5}
+.col-collapse{background:none;border:none;color:var(--mt-2);font-size:10px;cursor:pointer;padding:2px 4px;line-height:1;font-family:inherit}
+.col-collapse:hover{color:var(--ink)}
+.col-body{padding:6px 7px;flex:1;overflow-y:auto;max-height:calc(100vh - 240px);min-height:80px}
+
+/* Card */
+.card{background:var(--surface);border:.5px solid var(--bdr);border-left:3px solid var(--bdr);border-radius:6px;padding:10px 11px;margin-bottom:5px;cursor:pointer;transition:.12s;position:relative}
+.card:hover{border-color:var(--bdr-strong);border-left-color:var(--bdr-strong)}
+.card.urgent{border-left-color:#DC2626}
+.card.selected{box-shadow:0 0 0 1.5px var(--info);border-color:var(--info)}
+.card-select{position:absolute;top:8px;right:8px;width:14px;height:14px;cursor:pointer;accent-color:var(--info);margin:0}
+.card-id-row{display:flex;align-items:center;gap:5px;margin-bottom:5px;flex-wrap:wrap}
+.card-id{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--mt);background:var(--surface-2);padding:1px 6px;border-radius:4px;border:.5px solid var(--bdr);letter-spacing:.2px}
+.card-team{font-size:9.5px;font-weight:600;letter-spacing:.4px;padding:1px 6px;border-radius:4px}
+.card-team.jb{background:var(--jb-bg);color:var(--jb)}
+.card-flag{font-size:9.5px;font-weight:600;letter-spacing:.4px;padding:1px 6px;border-radius:4px;background:var(--err-bg);color:var(--err);text-transform:uppercase}
+.card-flag.warn{background:var(--warn-bg);color:var(--warn)}
+
+.card-name{font-size:13.5px;font-weight:600;color:var(--ink);padding-right:24px;line-height:1.3;margin-bottom:1px}
+.card-phone{font-size:11.5px;color:var(--ink);margin-bottom:2px;cursor:copy;display:inline-block}
+.card-phone:hover{text-decoration:underline}
+.card-appt{font-size:11px;color:var(--acc);background:var(--acc-light);padding:2px 7px;border-radius:4px;display:inline-block;margin-top:4px;margin-bottom:2px;font-weight:500}
+.card-appt.expired{color:var(--err);background:var(--err-bg)}
+.card-loc{font-size:11px;color:var(--mt);margin-top:3px}
+.card-lastmsg{font-size:11px;color:var(--ink);font-style:italic;background:#FFFBEB;border-left:2px solid #F59E0B;padding:5px 8px;margin-top:6px;border-radius:0 3px 3px 0;line-height:1.4}
+.card-lastmsg::before{content:'"';color:#9CA3AF;margin-right:1px}
+.card-lastmsg::after{content:'"';color:#9CA3AF;margin-left:1px}
+
+.card-row{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+.card-row-l{display:flex;gap:4px;align-items:center;flex-wrap:wrap;min-width:0}
+.card-row-r{display:flex;gap:4px;align-items:center;flex-shrink:0}
+
+.tag{padding:2px 7px;border-radius:4px;font-size:9.5px;font-weight:600;text-transform:lowercase;letter-spacing:.3px;cursor:pointer;display:inline-flex;align-items:center;gap:3px}
+.tag-x{font-size:11px;line-height:1;font-weight:700;opacity:.5;margin-left:2px}
+.tag:hover .tag-x{opacity:1}
+.tag-needs_reply{background:var(--warn-bg);color:var(--warn)}
+.tag-complaint{background:var(--err-bg);color:var(--err)}
+.tag-cancel_request{background:#FCE7F3;color:#9D174D}
+.tag-cold_lead{background:#E0F2FE;color:#075985}
+.tag-fu_paused{background:#E5E7EB;color:#374151}
+
+.chip{padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:.1px}
+.chip-days{background:var(--surface-2);color:var(--mt);border:.5px solid var(--bdr)}
+.chip-days.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip-days.err{background:var(--err-bg);color:var(--err);border-color:transparent}
+.chip-days.green{background:#D1FAE5;color:#065F46;border-color:transparent}
+.chip-fucount{background:var(--surface-2);color:var(--mt);border:.5px solid var(--bdr)}
+.chip-fucount.high{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip-assignee{background:var(--info-bg);color:var(--info);border:.5px solid #C7D2FE}
+
+.btn-mini{padding:3px 8px;border:.5px solid var(--bdr-strong);border-radius:5px;background:var(--surface);font-size:10px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit;line-height:1.4;letter-spacing:.1px}
+.btn-mini:hover{background:var(--surface-2)}
+.btn-mini.paused{background:var(--warn-bg);color:var(--warn);border-color:#F59E0B}
+.btn-mini.wa{background:var(--acc-light);color:var(--acc);border-color:#A7DCC9}
+.btn-mini.wa:hover{background:#D1EAE0}
+.btn-mini.wa.disabled{background:var(--surface-2);color:var(--mt-2);border-color:var(--bdr);cursor:not-allowed;opacity:.7}
+
+/* Action bar (selected) */
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:#111827;color:#fff;padding:11px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 -4px 20px rgba(0,0,0,.18);z-index:100}
+.action-bar-count{font-size:12.5px;font-weight:600;background:#1F2937;padding:5px 11px;border-radius:14px;border:.5px solid #374151}
+.action-bar-btn{background:#374151;color:#fff;border:none;padding:7px 13px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;letter-spacing:.1px}
+.action-bar-btn:hover{background:#4B5563}
+.action-bar-btn.bar-clear{background:none;color:#9CA3AF;margin-left:auto}
+.action-bar-btn.bar-clear:hover{color:#fff;background:none}
+
+/* Compare callouts */
+.callouts{margin-top:42px;background:var(--surface);border:.5px solid var(--bdr);border-radius:8px;padding:18px 22px}
+.callouts h2{font-size:14px;font-weight:600;margin-bottom:10px}
+.callouts ul{list-style:none;padding:0}
+.callouts li{font-size:12.5px;color:var(--mt);padding:4px 0;display:flex;gap:8px}
+.callouts li b{color:var(--ink);min-width:160px;display:inline-block;font-weight:500}
+.callouts li code{background:var(--surface-2);border:.5px solid var(--bdr);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:11px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="preview-meta">
+    <b>Mockup preview only.</b> This is a static design proposal — not connected to live data. Shows the proposed layout with no decorative emojis: text labels, colour-coded states, monospace IDs. Cards reflect every state combination used in production. <i>Live kanban (team_kanban.html) is unchanged until you approve this direction.</i>
+  </div>
+
+  <div class="hdr">
+    <div class="hdr-l">
+      <h1>Leak Guard — Lead Pipeline</h1>
+      <p>27 active leads across 9 phases</p>
+    </div>
+    <div class="hdr-r">
+      <button class="btn">Archive</button>
+      <button class="btn btn-primary">+ New Lead</button>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <input placeholder="Search name, phone, location...">
+    <select><option>All staff</option><option>Alvin</option><option>Osment</option><option>William</option></select>
+    <select><option>All tags</option><option>needs_reply</option><option>complaint</option><option>cancel_request</option><option>cold_lead</option></select>
+    <button class="quickfilter active">Replies needed</button>
+    <button class="quickfilter">Silent</button>
+    <button class="btn">Refresh</button>
+    <span class="last-sync">Updated 2:47 PM</span>
+  </div>
+
+  <!-- Board (showing 4 columns for layout review) -->
+  <div class="board">
+
+    <!-- COLUMN: Pending Site Visit -->
+    <div class="col">
+      <div class="col-h">
+        <span class="col-name">Pending Site Visit</span>
+        <span class="col-right">
+          <span class="col-count">7</span>
+          <button class="col-collapse">▼</button>
+        </span>
+      </div>
+      <div class="col-body">
+
+        <!-- PSV: urgent (last msg captured) -->
+        <div class="card urgent">
+          <input class="card-select" type="checkbox">
+          <div class="card-id-row">
+            <span class="card-id">SV-0426-016</span>
+          </div>
+          <div class="card-name">Zach Insurance and Property</div>
+          <span class="card-phone">+60 12-318 5836</span>
+          <div class="card-loc">Ampang</div>
+          <div class="card-lastmsg">Ok wil do later free</div>
+          <div class="card-row">
+            <div class="card-row-l">
+              <span class="tag tag-needs_reply">needs_reply<span class="tag-x">×</span></span>
+              <span class="chip chip-fucount">FU 1</span>
+            </div>
+            <div class="card-row-r">
+              <span class="chip chip-days warn">3d</span>
+              <span class="chip chip-assignee">Alvin</span>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:6px">
+            <div></div>
+            <div class="card-row-r">
+              <button class="btn-mini">Pause FU</button>
+              <button class="btn-mini wa">WhatsApp</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- PSV: JB lead, paused -->
+        <div class="card">
+          <input class="card-select" type="checkbox">
+          <div class="card-id-row">
+            <span class="card-id">SVJB-0426-019</span>
+            <span class="card-team jb">JB</span>
+          </div>
+          <div class="card-name">Nick Ng</div>
+          <span class="card-phone">+60 12-728 9980</span>
+          <div class="card-loc">Johor</div>
+          <div class="card-row">
+            <div class="card-row-l">
+              <span class="tag tag-fu_paused">fu_paused<span class="tag-x">×</span></span>
+            </div>
+            <div class="card-row-r">
+              <span class="chip chip-days">2d</span>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:6px">
+            <div></div>
+            <div class="card-row-r">
+              <button class="btn-mini paused">Resume FU</button>
+              <button class="btn-mini wa">WhatsApp</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- PSV: silent (no msg captured) -->
+        <div class="card">
+          <input class="card-select" type="checkbox" checked>
+          <div class="card-id-row">
+            <span class="card-id">SV-0426-008</span>
+          </div>
+          <div class="card-name">Selva</div>
+          <span class="card-phone">+60 12-580 6848</span>
+          <div class="card-loc">Ampang</div>
+          <div class="card-row">
+            <div class="card-row-l">
+              <span class="chip chip-fucount high">FU 3</span>
+            </div>
+            <div class="card-row-r">
+              <span class="chip chip-days err">7d</span>
+              <span class="chip chip-assignee">Alvin</span>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:6px">
+            <div></div>
+            <div class="card-row-r">
+              <button class="btn-mini">Pause FU</button>
+              <button class="btn-mini wa">WhatsApp</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- COLUMN: Site Visit Confirmed -->
+    <div class="col">
+      <div class="col-h">
+        <span class="col-name">Site Visit Confirmed</span>
+        <span class="col-right">
+          <span class="col-count alert">5</span>
+          <button class="col-collapse">▼</button>
+        </span>
+      </div>
+      <div class="col-body">
+
+        <!-- SVC: cancel_request (red, top) -->
+        <div class="card urgent">
+          <input class="card-select" type="checkbox">
+          <div class="card-id-row">
+            <span class="card-id">SV-0426-014</span>
+            <span class="card-flag">Cancel requested</span>
+          </div>
+          <div class="card-name">Mr Hew</div>
+          <span class="card-phone">+60 14-292 2429</span>
+          <div class="card-appt">Thu, 30 Apr · 10:30 AM</div>
+          <div class="card-loc">Sentul</div>
+          <div class="card-lastmsg">Sorry, tak boleh datang esok</div>
+          <div class="card-row">
+            <div class="card-row-l">
+              <span class="tag tag-cancel_request">cancel_request<span class="tag-x">×</span></span>
+            </div>
+            <div class="card-row-r">
+              <span class="chip chip-days">2d</span>
+              <span class="chip chip-assignee">Alvin</span>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:6px">
+            <div></div>
+            <div class="card-row-r">
+              <button class="btn-mini">Edit appt</button>
+              <button class="btn-mini wa">WhatsApp</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SVC: expired -->
+        <div class="card urgent">
+          <input class="card-select" type="checkbox">
+          <div class="card-id-row">
+            <span class="card-id">SV-0426-007</span>
+            <span class="card-flag warn">Visit done — decide</span>
+          </div>
+          <div class="card-name">Tan</div>
+          <span class="card-phone">+60 12-200 9086</span>
+          <div class="card-appt expired">Thu, 30 Apr · 10:30 AM</div>
+          <div class="card-loc">Klang</div>
+          <div class="card-row">
+            <div class="card-row-l"></div>
+            <div class="card-row-r">
+              <span class="chip chip-days err">5d</span>
+              <span class="chip chip-assignee">Alvin</span>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:6px">
+            <div></div>
+            <div class="card-row-r">
+              <button class="btn-mini">Edit appt</button>
+              <button class="btn-mini wa">WhatsApp</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SVC: normal future -->
+        <div class="card">
+          <input class="card-select" type="checkbox">
+          <div class="card-id-row">
+            <span class="card-id">SV-0426-003</span>
+          </div>
+          <div class="card-name">Kiong</div>
+          <span class="card-phone">+60 13-209 6128</span>
+          <div class="card-appt">Sat, 2 May · 12:00 PM</div>
+          <div class="card-loc">Kuala Lumpur</div>
+          <div class="card-row">
+            <div class="card-row-l"></div>
+            <div class="card-row-r">
+              <span class="chip chip-days green">1d</span>
+              <span class="chip chip-assignee">Alvin</span>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:6px">
+            <div></div>
+            <div class="card-row-r">
+              <button class="btn-mini">Edit appt</button>
+              <button class="btn-mini wa">WhatsApp</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- COLUMN: Pending QT (always urgent) -->
+    <div class="col">
+      <div class="col-h">
+        <span class="col-name">Pending Quotation</span>
+        <span class="col-right">
+          <span class="col-count alert">2</span>
+          <button class="col-collapse">▼</button>
+        </span>
+      </div>
+      <div class="col-body">
+
+        <!-- PQT: always urgent -->
+        <div class="card urgent">
+          <input class="card-select" type="checkbox">
+          <div class="card-id-row">
+            <span class="card-id">SV-0426-018</span>
+            <span class="card-flag">Send quote</span>
+          </div>
+          <div class="card-name">Annie</div>
+          <span class="card-phone">+60 17-993 4386</span>
+          <div class="card-loc">Sri Hartamas</div>
+          <div class="card-row">
+            <div class="card-row-l"></div>
+            <div class="card-row-r">
+              <span class="chip chip-days warn">3d</span>
+              <span class="chip chip-assignee">Ken</span>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:6px">
+            <div></div>
+            <div class="card-row-r">
+              <button class="btn-mini">Build QT</button>
+              <button class="btn-mini wa">WhatsApp</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- COLUMN: Quotation Sent -->
+    <div class="col">
+      <div class="col-h">
+        <span class="col-name">Quotation Sent</span>
+        <span class="col-right">
+          <span class="col-count">1</span>
+          <button class="col-collapse">▼</button>
+        </span>
+      </div>
+      <div class="col-body">
+
+        <!-- QS -->
+        <div class="card">
+          <input class="card-select" type="checkbox">
+          <div class="card-id-row">
+            <span class="card-id">QT-0426-088</span>
+          </div>
+          <div class="card-name">Mr Riza</div>
+          <span class="card-phone">+60 17-993 4386</span>
+          <div class="card-loc">Sri Hartamas</div>
+          <div class="card-row">
+            <div class="card-row-l">
+              <span class="chip chip-fucount">FU 2</span>
+            </div>
+            <div class="card-row-r">
+              <span class="chip chip-days warn">4d</span>
+              <span class="chip chip-assignee">Ken</span>
+            </div>
+          </div>
+          <div class="card-row" style="margin-top:6px">
+            <div></div>
+            <div class="card-row-r">
+              <button class="btn-mini">Pause FU</button>
+              <button class="btn-mini wa">WhatsApp</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callouts">
+    <h2>Design changes vs current kanban</h2>
+    <ul>
+      <li><b>Decorative emojis</b><span>removed (no <code>📞</code>, <code>📍</code>, <code>📅</code>, <code>💬</code>, <code>📨</code>, <code>🔔</code>, <code>🔇</code>, <code>🏢</code>, <code>⏸</code>, <code>▶</code> in chrome)</span></li>
+      <li><b>Functional symbols</b><span>kept (<code>×</code> chip-clear, <code>▼</code>/<code>▶</code> column collapse) — these are UI symbols not decorations</span></li>
+      <li><b>Card flags</b><span>replaced emoji ribbons with text labels: <code>Cancel requested</code>, <code>Visit done — decide</code>, <code>Send quote</code></span></li>
+      <li><b>Phone format</b><span>now <code>+60 17-993 4386</code> (international, dash-grouped) instead of raw <code>60179934386</code></span></li>
+      <li><b>Appointment pill</b><span>green <code>Thu, 30 Apr · 10:30 AM</code> replaces <code>📅 Thu 30 Apr</code></span></li>
+      <li><b>Last customer msg</b><span>quote-style with amber accent bar, no <code>💬</code> prefix</span></li>
+      <li><b>FU count</b><span>chip <code>FU 1</code> / <code>FU 3</code> instead of <code>📨 1</code></span></li>
+      <li><b>Action buttons</b><span><code>WhatsApp</code> / <code>Pause FU</code> / <code>Resume FU</code> / <code>Edit appt</code> / <code>Build QT</code> — text labels</span></li>
+      <li><b>Filter buttons</b><span><code>Replies needed</code> / <code>Silent</code> — text labels (active state shown via amber background)</span></li>
+      <li><b>Action bar (selected)</b><span>preserved at bottom; same buttons but label-only: <code>Refresh msgs</code> / <code>Send Follow-up</code> / <code>Pause FU</code> / <code>×</code> close</span></li>
+      <li><b>Type</b><span><code>JetBrains Mono</code> for IDs, <code>Inter</code> for everything else; tighter line-height; reduced font sizes</span></li>
+      <li><b>Spacing</b><span>denser padding inside cards (10/11px vs current 9/10px), bigger gap between rows for clarity</span></li>
+      <li><b>Card hierarchy</b><span>name → phone → appt/last-msg → tags+chips row → actions row, top-down scannable</span></li>
+    </ul>
+  </div>
+</div>
+
+<!-- Action bar shown when selection exists (1 card pre-checked above for demo) -->
+<div class="action-bar">
+  <span class="action-bar-count">1 selected</span>
+  <button class="action-bar-btn">Refresh msgs</button>
+  <button class="action-bar-btn">Send Follow-up</button>
+  <button class="action-bar-btn">Pause FU</button>
+  <button class="action-bar-btn">Select all visible</button>
+  <button class="action-bar-btn bar-clear">× Clear</button>
+</div>
+</body>
+</html>
