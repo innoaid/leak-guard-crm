@@ -86,7 +86,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .tag-cancel_request{background:#FCE7F3;color:#9D174D}
 .tag-cold_lead{background:#E0F2FE;color:#075985}
 .tag-fu_paused{background:#E5E7EB;color:#374151}
-.cd-meta{display:flex;gap:5px;align-items:center}
+.cd-meta{display:flex;justify-content:space-between;gap:5px;align-items:center;flex-wrap:wrap}
+.cd-meta-l{display:flex;gap:5px;align-items:center;flex-wrap:wrap;min-width:0}
+.cd-meta-r{display:flex;gap:5px;align-items:center;flex-shrink:0}
 .cd-days{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#6B7280}
 .cd-days.warn{background:#FEF3C7;color:#92400E}
 .cd-days.err{background:#FEE2E2;color:#991B1B}
@@ -186,6 +188,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 
 /* Expired site visit signal */
 .cd.expired{border-left:3px solid #DC2626}
+.cd.urgent{border-left:3px solid #DC2626}
 .cd-expired-badge{display:inline-block;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;background:#FEE2E2;color:#991B1B;margin-bottom:5px;letter-spacing:.3px}
 .kh-expired{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#FEE2E2;color:#991B1B;margin-left:4px}
 
@@ -290,6 +293,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 <div class="action-bar" id="actionBar">
   <span class="action-bar-count" id="actionBarCount">0 selected</span>
   <button class="action-bar-btn" id="actionBarRefresh" onclick="actionRefreshMsgs()">🔄 Refresh msgs</button>
+  <button class="action-bar-btn" id="actionBarSendFu" onclick="actionSendFu()">📨 Send FU</button>
   <button class="action-bar-btn bar-fu" id="actionBarFu" data-action="pause" onclick="actionTogglePauseFu()">⏸ Pause FU</button>
   <button class="action-bar-btn" id="actionBarSelectAll" onclick="actionSelectAllVisible()">Select all visible</button>
   <button class="action-bar-btn bar-clear" id="actionBarClear" onclick="actionClearSelection()">✕ Clear</button>
@@ -549,6 +553,17 @@ function renderKanban(leads) {
     if (byStatus[s]) byStatus[s].push(l);
   });
 
+  // Sort Pending Site Visit: cards with a captured customer last-msg float to top
+  if (byStatus['Pending Site Visit']) {
+    byStatus['Pending Site Visit'].sort((a, b) => {
+      const aHas = !!String(a['Last Customer Msg (AM)'] || '').trim();
+      const bHas = !!String(b['Last Customer Msg (AM)'] || '').trim();
+      if (aHas && !bHas) return -1;
+      if (bHas && !aHas) return 1;
+      return 0;
+    });
+  }
+
   // Sort Site Visit Confirmed: expired leads first (oldest expired on top)
   if (byStatus['Site Visit Confirmed']) {
     byStatus['Site Visit Confirmed'].sort((a, b) => {
@@ -713,6 +728,14 @@ function renderCard(lead) {
   const fuCount = parseInt(String(lead['Follow Up Count (AK)'] || '0'), 10) || 0;
   const fuLastAt = String(lead['Last Follow Up At (AL)'] || '').trim();
 
+  // "Urgent" cards get a red left-border:
+  //   - SVC expired (already handled below via `expired` class)
+  //   - PSV with a captured customer last-msg (admin needs to act)
+  //   - PQT (always — waiting on admin to send the QT)
+  const isUrgentPsv = (status === 'Pending Site Visit' && !!lastMsgRaw);
+  const isUrgentPqt = (status === 'Pending QT');
+  if (isUrgentPsv || isUrgentPqt) c.classList.add('urgent');
+
   if (expired) c.classList.add('expired');
 
   // Days in stage
@@ -749,15 +772,19 @@ function renderCard(lead) {
         ).join('') +
       '</div>' +
       '<div class="cd-meta">' +
-        (daysInfo ? '<span class="cd-days ' + daysInfo.cls + '">' + daysInfo.label + '</span>' : '') +
-        (assignee ? '<span class="cd-assignee">' + escapeHtml(assignee) + '</span>' : '') +
-        (fuCount > 0
-          ? '<span class="cd-fucount' + (fuCount >= 3 ? ' high' : '') + '" title="' + (fuLastAt ? 'Last FU: ' + escapeHtml(fuLastAt) : 'Follow-up count') + '">📨 ' + fuCount + '</span>'
-          : '') +
-        '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume auto follow-up' : 'Pause auto follow-up') + '">' + (tags.includes('fu_paused') ? '▶ FU' : '⏸ FU') + '</button>' +
-        (inviteLink
-          ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
-          : '<span class="cd-wa disabled" title="No invite link saved for this lead">💬 WA</span>') +
+        '<div class="cd-meta-l">' +
+          (daysInfo ? '<span class="cd-days ' + daysInfo.cls + '">' + daysInfo.label + '</span>' : '') +
+          (assignee ? '<span class="cd-assignee">' + escapeHtml(assignee) + '</span>' : '') +
+          (fuCount > 0
+            ? '<span class="cd-fucount' + (fuCount >= 3 ? ' high' : '') + '" title="' + (fuLastAt ? 'Last FU: ' + escapeHtml(fuLastAt) : 'Follow-up count') + '">📨 ' + fuCount + '</span>'
+            : '') +
+        '</div>' +
+        '<div class="cd-meta-r">' +
+          '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume auto follow-up' : 'Pause auto follow-up') + '">' + (tags.includes('fu_paused') ? '▶ FU' : '⏸ FU') + '</button>' +
+          (inviteLink
+            ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
+            : '<span class="cd-wa disabled" title="No invite link saved for this lead">💬 WA</span>') +
+        '</div>' +
       '</div>' +
     '</div>' +
     '<select class="cd-move" data-phone="' + escapeHtml(String(phone)) + '" data-current="' + escapeHtml(status) + '" onclick="event.stopPropagation()">' +
@@ -1015,6 +1042,49 @@ async function actionRefreshMsgs() {
     await loadLeads();
   } catch (e) {
     toast('Refresh failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function actionSendFu() {
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) return;
+  // Build preview from cache
+  const targets = phones
+    .map(p => (allLeads || []).find(l => String(l['Phone'] || '') === p))
+    .filter(Boolean)
+    .filter(l => {
+      const s = String(l['Status'] || '');
+      return s === 'Pending Site Visit' || s === 'Quotation Sent';
+    });
+  if (!targets.length) {
+    toast('No PSV/QS leads in selection — manual FU only fires for those', 'warn');
+    return;
+  }
+  const names = targets.map(l => l['Name'] || l['Phone']).filter(Boolean);
+  const preview = names.slice(0, 3).join(', ') + (names.length > 3 ? ', +' + (names.length - 3) + ' more' : '');
+  if (!confirm('Send manual follow-up to ' + targets.length + ' leads?\n\n' + preview)) return;
+
+  const btn = document.getElementById('actionBarSendFu');
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ sending…';
+  try {
+    const r = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-manual-fu-send?secret=ABC', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ phones: targets.map(l => String(l['Phone'] || '')) })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(() => ({}));
+    const sent = data.sent || 0;
+    const failed = data.failed || 0;
+    toast('Sent FU to ' + sent + ' / ' + (sent + failed) + ' leads', failed > 0 ? 'warn' : 'success');
+    await loadLeads();
+  } catch (e) {
+    toast('Send FU failed: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = orig;
@@ -1858,6 +1928,12 @@ document.getElementById('apptModal').addEventListener('click', function(e){
 // ================================================================
 // BOOT
 // ================================================================
+
+// On mobile, start with all phases collapsed so user sees just the list of
+// column headers and taps the one(s) they want to expand.
+if (isMobile()) {
+  ACTIVE_STATUSES.forEach(s => collapsedCols.add(s));
+}
 
 loadLeads();
 startAutoRefresh();
