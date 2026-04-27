@@ -527,10 +527,12 @@ function render() {
       if (!tags.includes('needs_reply')) return false;
     }
     if (silentOnly) {
+      // Only narrows PSV/QS columns. Cards in other phases are unaffected.
       const status = String(lead['Status'] || '');
-      if (status !== 'Pending Site Visit' && status !== 'Quotation Sent') return false;
-      const lastMsg = String(lead['Last Customer Msg (AM)'] || '').trim();
-      if (lastMsg) return false;
+      if (status === 'Pending Site Visit' || status === 'Quotation Sent') {
+        const lastMsg = String(lead['Last Customer Msg (AM)'] || '').trim();
+        if (lastMsg) return false;
+      }
     }
     return true;
   }
