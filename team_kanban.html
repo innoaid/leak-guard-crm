@@ -1360,13 +1360,14 @@ function openApptModal(lead) {
     // Reset error
     document.getElementById('apptError').classList.remove('on');
 
-    // Set date min = tomorrow, max = +60 days
+    // Set date min = today, max = +60 days. Server's Build Availability
+    // skips past slots for today, so the slot grid will only show ones still
+    // bookable.
     const today = new Date();
     today.setHours(0,0,0,0);
-    const min = new Date(today.getTime() + 86400000);
     const max = new Date(today.getTime() + 60*86400000);
     const dateInput = document.getElementById('apptDate');
-    dateInput.min = isoDate(min);
+    dateInput.min = isoDate(today);
     dateInput.max = isoDate(max);
     dateInput.value = '';
 
