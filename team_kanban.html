@@ -1304,6 +1304,30 @@ function wireSortable() {
   });
 }
 
+// Fire-and-forget welcome resend when a lead lands in PSV from another phase.
+// Skipped when the previous status was already PSV (handles drag-and-drop
+// no-ops and SVC reschedule loops). Whapi msg goes to the lead's group;
+// webhook is no-op if no Group ID yet.
+function maybeResendWelcomeOnPsvEntry(lead, newStatus, prevStatus) {
+  if (newStatus !== 'Pending Site Visit') return;
+  if (prevStatus === 'Pending Site Visit') return;
+  if (!lead) return;
+  const phone = String(lead['Phone'] || '');
+  if (!phone) return;
+  // Async — don't block UI. Log result to toast on completion.
+  fetch('https://leakguard.app.n8n.cloud/webhook/lg-resend-welcome', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ secret: 'ABC', phone })
+  }).then(r => r.json()).then(data => {
+    if (data && data.success) {
+      toast('Welcome msg resent to ' + (lead['Name'] || phone), 'success');
+    } else if (data && data.error) {
+      toast('Welcome resend skipped: ' + data.error, 'warn');
+    }
+  }).catch(() => {/* silent fail — admin can manually resend if needed */});
+}
+
 // Pre-move gate when leaving Site Visit Confirmed: confirm (if appt is
 // today/future), call cleanup webhook to delete the calendar event +
 // clear appt fields + set new status atomically.
@@ -1393,7 +1417,11 @@ async function moveCardFromButton(phone, newStatus, currentStatus) {
   // GATED: leaving Site Visit Confirmed → confirm + delete cal event via webhook
   const svcGate = await preMoveSvcGate(lead, newStatus);
   if (!svcGate.ok) return;
-  if (svcGate.handled) { render(); return; }
+  if (svcGate.handled) {
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, currentStatus);
+    render();
+    return;
+  }
 
   if (newStatus === 'Pending I.Date') {
     toast('Moved to Pending Installation Date — installation booking flow coming later', 'warn');
@@ -1410,6 +1438,7 @@ async function moveCardFromButton(phone, newStatus, currentStatus) {
       lead['Status'] = newStatus;
       lead['Status Changed At'] = new Date().toISOString();
     }
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, currentStatus);
     render();
   } else {
     toast('Move failed: ' + (r.message || 'unknown'), 'error');
@@ -1457,6 +1486,7 @@ async function handleDragAdd(evt) {
     return;
   }
   if (svcGate.handled) {
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, oldStatus);
     return; // card already in new column; lead state synced; toast emitted
   }
 
@@ -1478,6 +1508,7 @@ async function handleDragAdd(evt) {
       lead['Status'] = newStatus;
       lead['Status Changed At'] = new Date().toISOString();
     }
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, oldStatus);
   } else {
     evt.from.appendChild(card);
     toast('Move failed: ' + (r.message || 'unknown'), 'error');
