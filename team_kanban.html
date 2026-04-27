@@ -1939,6 +1939,8 @@ async function sendRescheduleFromModal() {
 // ================================================================
 
 async function restoreLead(phone, newStatus) {
+  const lead = allLeads.find(l => String(l['Phone']) === phone);
+  const prevStatus = lead ? String(lead['Status'] || '') : '';
   const r = await apiCall('updateStatus', {
     phone: phone,
     status: newStatus,
@@ -1946,8 +1948,8 @@ async function restoreLead(phone, newStatus) {
   });
   if (r.status === 'ok') {
     toast('Restored to ' + newStatus, 'success');
-    const lead = allLeads.find(l => String(l['Phone']) === phone);
     if (lead) { lead['Status'] = newStatus; lead['Status Changed At'] = new Date().toISOString(); }
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, prevStatus);
     render();
   } else {
     toast('Restore failed: ' + (r.message || 'unknown'), 'error');
