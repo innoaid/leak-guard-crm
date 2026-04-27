@@ -1371,17 +1371,21 @@ function openApptModal(lead) {
     dateInput.max = isoDate(max);
     dateInput.value = '';
 
-    // Reset slots
+    // Reset slots — disabled until availability loads
     document.getElementById('apptSlotsArea').innerHTML =
-      '<div class="appt-loading">Pick a date to see available slots…</div>';
+      '<div class="appt-loading">⏳ Loading calendar availability…</div>';
 
     // Reset confirm button
     document.getElementById('btnApptConfirm').disabled = true;
 
+    // Disable date input until availability fetch completes (prevents race
+    // where user picks a date before the fetch lands and sees all slots disabled)
+    dateInput.disabled = true;
+
     // Show modal
     document.getElementById('apptModal').classList.add('open');
 
-    // Fetch availability in background
+    // Fetch availability — re-enables date input when done
     loadApptAvailability();
   });
 }
@@ -1413,8 +1417,18 @@ async function loadApptAvailability() {
     apptModalState.existingAppt = data.existingAppt || null;
     // Server is authoritative on team — override the prefix-derived guess
     if (data.team) apptModalState.team = data.team;
+    // Re-enable date input + reset slot area placeholder
+    const dateInput = document.getElementById('apptDate');
+    if (dateInput) dateInput.disabled = false;
+    const slotsArea = document.getElementById('apptSlotsArea');
+    if (slotsArea && slotsArea.querySelector('.appt-loading')) {
+      slotsArea.innerHTML = '<div class="appt-loading">Pick a date to see available slots…</div>';
+    }
   } catch (e) {
     showApptError('Failed to load availability: ' + e.message);
+    // Re-enable date input even on error so user can retry
+    const dateInput = document.getElementById('apptDate');
+    if (dateInput) dateInput.disabled = false;
   }
 }
 
