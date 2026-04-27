@@ -362,13 +362,23 @@ const N8N_AVAIL_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-availability';
 const N8N_BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
 
 // Slot times (matches booking page + lg-booking webhook)
-const SLOT_TIMES = {
+const SLOT_TIMES_KL = {
   1: '9:00 AM - 10:00 AM',
   2: '10:30 AM - 11:30 AM',
   3: '12:00 PM - 1:00 PM',
   4: '2:00 PM - 3:00 PM',
   5: '3:30 PM - 4:30 PM'
 };
+const SLOT_TIMES_JB = {
+  1: '11:30 AM - 12:30 PM',
+  2: '2:00 PM - 3:00 PM'
+};
+function teamFromGroupName(groupName) {
+  return /^(SVJB|QTJB)-/i.test(String(groupName || '').trim()) ? 'JB' : 'KL';
+}
+function slotTimesFor(team) { return team === 'JB' ? SLOT_TIMES_JB : SLOT_TIMES_KL; }
+// Backward-compat alias — defaults to KL. Most callers should switch to slotTimesFor(team).
+const SLOT_TIMES = SLOT_TIMES_KL;
 
 // 9 active columns (left → right)
 const ACTIVE_STATUSES = [
@@ -1300,6 +1310,7 @@ function openApptModal(lead) {
     apptModalState = {
       lead: lead,
       isReschedule: isReschedule,
+      team: teamFromGroupName(lead['Group Name (AE)']),
       availability: {},
       existingAppt: null,
       selectedDate: null,
@@ -1379,6 +1390,8 @@ async function loadApptAvailability() {
     const data = await r.json();
     apptModalState.availability = data.availability || {};
     apptModalState.existingAppt = data.existingAppt || null;
+    // Server is authoritative on team — override the prefix-derived guess
+    if (data.team) apptModalState.team = data.team;
   } catch (e) {
     showApptError('Failed to load availability: ' + e.message);
   }
@@ -1396,10 +1409,12 @@ function onApptDateChange() {
   slotsArea.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'appt-slots';
-  for (let s = 1; s <= 5; s++) {
+  const slotMap = slotTimesFor(apptModalState.team || 'KL');
+  const slotIds = Object.keys(slotMap).map(Number);
+  for (const s of slotIds) {
     const btn = document.createElement('button');
     btn.className = 'appt-slot';
-    btn.textContent = SLOT_TIMES[s];
+    btn.textContent = slotMap[s];
     btn.dataset.slot = s;
     if (!freeSlots.includes(s)) {
       btn.disabled = true;
@@ -1442,7 +1457,7 @@ async function confirmApptModal() {
   // Same-slot guard (server enforces too, but UI sanity)
   if (s.isReschedule && s.lead['Date Appt Confirmed']) {
     const oldDate = String(s.lead['Date Appt Confirmed']).slice(0,10);
-    const oldSlot = parseSlotFromChosen(s.lead['Slot Chosen']);
+    const oldSlot = parseSlotFromChosen(s.lead['Slot Chosen'], s.team);
     if (oldDate === s.selectedDate && oldSlot === s.selectedSlot) {
       showApptError('Same date and slot as current — pick a different one');
       return;
@@ -1464,7 +1479,7 @@ async function confirmApptModal() {
   };
   if (s.isReschedule) {
     payload.oldDate = String(lead['Date Appt Confirmed'] || '').slice(0,10);
-    payload.oldSlot = parseSlotFromChosen(lead['Slot Chosen']);
+    payload.oldSlot = parseSlotFromChosen(lead['Slot Chosen'], s.team);
     payload.oldCalEventId = String(lead['Cal Event ID (AH)'] || '');
   }
 
@@ -1480,7 +1495,7 @@ async function confirmApptModal() {
     btn.textContent = 'Confirm Booking';
 
     if (result.success) {
-      const slotLabel = SLOT_TIMES[s.selectedSlot];
+      const slotLabel = slotTimesFor(s.team)[s.selectedSlot];
       // Build slotChosen string the same way lg-booking does
       const dt = new Date(s.selectedDate + 'T12:00:00+08:00');
       const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -1523,9 +1538,14 @@ function cancelApptModal() {
   r({ confirmed: false });
 }
 
-function parseSlotFromChosen(slotChosen) {
+function parseSlotFromChosen(slotChosen, team) {
   if (!slotChosen) return 0;
-  const map = {'9:00 AM':1,'10:30 AM':2,'12:00 PM':3,'2:00 PM':4,'3:30 PM':5};
+  // 11:30 AM is JB-only, so check JB first if team unspecified
+  const jbMap = {'11:30 AM':1, '2:00 PM':2};
+  const klMap = {'9:00 AM':1, '10:30 AM':2, '12:00 PM':3, '2:00 PM':4, '3:30 PM':5};
+  const map = (team === 'JB') ? jbMap
+            : (team === 'KL') ? klMap
+            : (slotChosen.indexOf('11:30 AM') !== -1 ? jbMap : klMap);
   for (const k in map) if (slotChosen.indexOf(k) !== -1) return map[k];
   return 0;
 }

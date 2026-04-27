@@ -177,13 +177,25 @@ var FULL_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Sa
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-var SLOT_LABELS = {
+var SLOT_LABELS_KL = {
   1: {label:'9:00 AM', full:'9:00 AM - 10:00 AM'},
   2: {label:'10:30 AM', full:'10:30 AM - 11:30 AM'},
   3: {label:'12:00 PM', full:'12:00 PM - 1:00 PM'},
   4: {label:'2:00 PM', full:'2:00 PM - 3:00 PM'},
   5: {label:'3:30 PM', full:'3:30 PM - 4:30 PM'}
 };
+var SLOT_LABELS_JB = {
+  1: {label:'11:30 AM', full:'11:30 AM - 12:30 PM'},
+  2: {label:'2:00 PM', full:'2:00 PM - 3:00 PM'}
+};
+// Default to KL; switched to JB after availability response confirms team
+var SLOT_LABELS = SLOT_LABELS_KL;
+var TEAM = 'KL';
+function buildSlotMap() {
+  var m = {};
+  for (var k in SLOT_LABELS) { m[SLOT_LABELS[k].label] = parseInt(k); }
+  return m;
+}
 
 // Parse URL params
 var params = new URLSearchParams(window.location.search);
@@ -241,6 +253,9 @@ function loadAvailability() {
     .then(function(r){ return r.json(); })
     .then(function(data){
       availability = data.availability || {};
+      // Team-aware slot rendering — server returns 'JB' or 'KL'
+      TEAM = data.team || 'KL';
+      SLOT_LABELS = (TEAM === 'JB') ? SLOT_LABELS_JB : SLOT_LABELS_KL;
       // TC1: show existing-appt screen if lead already has a confirmed appt AND user didn't already click reschedule
       if (data.existingAppt && ACTION !== 'reschedule') {
         showExistingAppt(data.existingAppt);
@@ -480,7 +495,7 @@ document.getElementById('btnKeep').onclick = function(){
   confirmedDate = existingApptData.dateApptConfirmed || '';
   confirmedEventId = existingApptData.calEventId || '';
   // best-effort: derive confirmedSlot from slotChosen so Reschedule from success screen works
-  var slotMap = {'9:00 AM':1,'10:30 AM':2,'12:00 PM':3,'2:00 PM':4,'3:30 PM':5};
+  var slotMap = buildSlotMap();
   for (var label in slotMap) {
     if ((existingApptData.slotChosen || '').indexOf(label) !== -1) { confirmedSlot = slotMap[label]; break; }
   }
@@ -491,7 +506,7 @@ document.getElementById('btnGoReschedule').onclick = function(){
   ACTION = 'reschedule';
   OLD_DATE = existingApptData.dateApptConfirmed || '';
   OLD_EVENT_ID = existingApptData.calEventId || '';
-  var slotMap = {'9:00 AM':1,'10:30 AM':2,'12:00 PM':3,'2:00 PM':4,'3:30 PM':5};
+  var slotMap = buildSlotMap();
   for (var label in slotMap) {
     if ((existingApptData.slotChosen || '').indexOf(label) !== -1) { OLD_SLOT = slotMap[label]; break; }
   }
