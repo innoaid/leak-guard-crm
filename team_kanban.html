@@ -1294,6 +1294,72 @@ function wireSortable() {
   });
 }
 
+// Pre-move gate when leaving Site Visit Confirmed: confirm (if appt is
+// today/future), call cleanup webhook to delete the calendar event +
+// clear appt fields + set new status atomically.
+// Returns { ok, handled }: ok=false → abort move; handled=true → webhook
+// already updated CRM, caller should skip the normal updateStatus call.
+async function preMoveSvcGate(lead, newStatus) {
+  if (!lead) return { ok: true };
+  const currentStatus = String(lead['Status'] || '');
+  if (currentStatus !== 'Site Visit Confirmed') return { ok: true };
+  if (newStatus === 'Site Visit Confirmed') return { ok: true };
+
+  const calEventId = String(lead['Cal Event ID (AH)'] || '').trim();
+  if (!calEventId) return { ok: true }; // nothing to delete
+
+  const dateApptStr = String(lead['Date Appt Confirmed'] || '').slice(0, 10);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const apptDate = new Date(dateApptStr + 'T12:00:00+08:00');
+  const isFutureOrToday = !isNaN(apptDate.getTime()) && apptDate >= today;
+
+  if (isFutureOrToday) {
+    const slotChosen = String(lead['Slot Chosen'] || '');
+    const apptDisplay = slotChosen || dateApptStr || '(unknown date)';
+    const name = lead['Name'] || lead['Phone'] || '';
+    if (!confirm(
+      'Move and delete calendar event?\n\n' +
+      name + '\'s appointment:\n' + apptDisplay + '\n\n' +
+      'It will be removed from the calendar so the slot frees up for others.\n\n' +
+      'OK = move and delete\nCancel = keep as-is'
+    )) {
+      return { ok: false, reason: 'cancelled' };
+    }
+  }
+
+  try {
+    const r = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-svc-leaving', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        secret: 'ABC',
+        phone: String(lead['Phone'] || ''),
+        calEventId: calEventId,
+        team: teamFromLead(lead),
+        newStatus: newStatus,
+        changedBy: 'Kanban'
+      })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.success === false) {
+      const why = data.error || ('HTTP ' + r.status);
+      toast('Calendar delete failed (' + why + ') — move blocked, retry', 'error');
+      return { ok: false, reason: 'cal_delete_failed' };
+    }
+    // Sync local cache so the next render reflects the cleanup
+    lead['Status'] = newStatus;
+    lead['Status Changed At'] = new Date().toISOString();
+    lead['Slot Chosen'] = '';
+    lead['Date Appt Confirmed'] = '';
+    lead['Cal Event ID (AH)'] = '';
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus) + ' — calendar event deleted', 'success');
+    return { ok: true, handled: true };
+  } catch (e) {
+    toast('Calendar delete failed: ' + e.message + ' — move blocked', 'error');
+    return { ok: false, reason: 'network' };
+  }
+}
+
 // Mobile move-to handler (mirrors handleDragAdd; no SortableJS event)
 async function moveCardFromButton(phone, newStatus, currentStatus) {
   if (newStatus === currentStatus) return;
@@ -1313,6 +1379,11 @@ async function moveCardFromButton(phone, newStatus, currentStatus) {
     render();
     return;
   }
+
+  // GATED: leaving Site Visit Confirmed → confirm + delete cal event via webhook
+  const svcGate = await preMoveSvcGate(lead, newStatus);
+  if (!svcGate.ok) return;
+  if (svcGate.handled) { render(); return; }
 
   if (newStatus === 'Pending I.Date') {
     toast('Moved to Pending Installation Date — installation booking flow coming later', 'warn');
@@ -1367,6 +1438,16 @@ async function handleDragAdd(evt) {
     }
     toast('Appointment set: ' + result.displayDate + ', ' + result.displayTime, 'success');
     return;
+  }
+
+  // GATED: leaving Site Visit Confirmed → confirm + delete cal event via webhook
+  const svcGate = await preMoveSvcGate(lead, newStatus);
+  if (!svcGate.ok) {
+    evt.from.appendChild(card); // revert drag
+    return;
+  }
+  if (svcGate.handled) {
+    return; // card already in new column; lead state synced; toast emitted
   }
 
   // Pending I.Date — proper installation booking flow not built yet (S4 backlog)
