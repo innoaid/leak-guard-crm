@@ -58,11 +58,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-move{display:none;width:100%;margin-top:6px;padding:5px 8px;border:.5px solid #D1D5DB;border-radius:5px;font-size:11px;font-family:inherit;background:#F9FAFB;color:var(--ink);cursor:pointer}
 .cd-move:focus{outline:none;border-color:var(--acc);background:#fff}
 
-.cd{background:#fff;border:.5px solid #E5E7EB;border-radius:6px;padding:9px 10px;margin-bottom:5px;cursor:pointer;transition:border-color .15s,transform .1s}
+.cd{background:#fff;border:.5px solid #E5E7EB;border-radius:6px;padding:9px 10px;margin-bottom:5px;cursor:pointer;transition:border-color .15s,transform .1s,box-shadow .15s;position:relative}
 .cd:hover{border-color:#D1D5DB}
 .cd.dragging{opacity:.5}
+.cd.selected{border-color:#3730A3;box-shadow:0 0 0 1.5px #3730A3}
+.cd-select{position:absolute;top:6px;right:6px;width:18px;height:18px;cursor:pointer;accent-color:#3730A3;z-index:5;margin:0}
+.cd-select-hit{position:absolute;top:0;right:0;width:34px;height:34px;cursor:pointer;z-index:4}
 .cd-svid{font-family:'SF Mono',Consolas,Monaco,monospace;font-size:9.5px;color:#6B7280;background:#F3F4F6;padding:1px 6px;border-radius:4px;letter-spacing:.3px;display:inline-block;margin-bottom:4px}
-.cd-name{font-size:13px;font-weight:600;color:#111827;margin-bottom:2px}
+.cd-name{font-size:13px;font-weight:600;color:#111827;margin-bottom:2px;padding-right:24px}
 .cd-phone{font-size:11px;color:#0F6E56;text-decoration:none;display:block;margin-bottom:4px;cursor:copy}
 .cd-phone:hover{text-decoration:underline}
 .cd-apptdate{font-size:10px;font-weight:600;color:#065F46;background:#D1FAE5;padding:1px 7px;border-radius:9px;display:inline-block;margin-bottom:4px}
@@ -115,6 +118,18 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .arch-row-r{display:flex;gap:6px;align-items:center}
 .arch-restore{padding:5px 9px;background:#EEF2FF;color:#3730A3;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
 .arch-restore:hover{background:#C7D2FE}
+
+/* Floating multi-select action bar */
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:#111827;color:#fff;padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));display:none;align-items:center;gap:8px;flex-wrap:wrap;box-shadow:0 -4px 16px rgba(0,0,0,.25);z-index:600;font-size:13px}
+.action-bar.open{display:flex}
+.action-bar-count{font-weight:700;background:#3730A3;color:#fff;padding:5px 11px;border-radius:14px;font-size:12px;flex-shrink:0;white-space:nowrap}
+.action-bar-btn{background:#374151;color:#fff;border:none;padding:7px 11px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+.action-bar-btn:hover{background:#4B5563}
+.action-bar-btn:disabled{opacity:.55;cursor:wait}
+.action-bar-btn.bar-fu[data-action="resume"]{background:#FEF3C7;color:#92400E}
+.action-bar-btn.bar-fu[data-action="resume"]:hover{background:#FDE68A}
+.action-bar-btn.bar-clear{background:none;color:#9CA3AF;margin-left:auto;padding-right:0}
+.action-bar-btn.bar-clear:hover{color:#fff;background:none}
 
 /* Toast */
 .toast-container{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;z-index:1000;max-width:340px;pointer-events:none}
@@ -266,6 +281,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 <!-- Toast notifications -->
 <div class="toast-container" id="toastContainer"></div>
 
+<div class="action-bar" id="actionBar">
+  <span class="action-bar-count" id="actionBarCount">0 selected</span>
+  <button class="action-bar-btn" id="actionBarRefresh" onclick="actionRefreshMsgs()">🔄 Refresh msgs</button>
+  <button class="action-bar-btn bar-fu" id="actionBarFu" data-action="pause" onclick="actionTogglePauseFu()">⏸ Pause FU</button>
+  <button class="action-bar-btn" id="actionBarSelectAll" onclick="actionSelectAllVisible()">Select all visible</button>
+  <button class="action-bar-btn bar-clear" id="actionBarClear" onclick="actionClearSelection()">✕ Clear</button>
+</div>
+
 <!-- Appointment edit modal -->
 <div class="modal-overlay" id="apptModal">
   <div class="modal">
@@ -391,6 +414,7 @@ let viewMode = 'kanban';     // 'kanban' | 'archive'
 let refreshTimer = null;
 const REFRESH_MS = 60000;
 const collapsedCols = new Set();  // status names that are currently collapsed (mobile UX)
+const selectedPhones = new Set(); // phones of multi-select-checked cards (in-memory only)
 
 function isMobile() { return window.innerWidth < 768; }
 
@@ -485,6 +509,7 @@ function render() {
   } else {
     renderArchive(allLeads.filter(passesFilters));
   }
+  updateActionBar();
 }
 
 function renderKanban(leads) {
@@ -522,21 +547,9 @@ function renderKanban(leads) {
     // Count expired leads in this column (only for Site Visit Confirmed)
     const expiredCount = (status === 'Site Visit Confirmed')
       ? byStatus[status].filter(isVisitExpired).length : 0;
-    const showPsvActions = (status === 'Pending Site Visit');
-    let bulkPauseBtn = '';
-    if (showPsvActions) {
-      const psvLeads = byStatus[status];
-      const allPaused = psvLeads.length > 0 && psvLeads.every(l =>
-        String(l['Tags'] || '').toLowerCase().includes('fu_paused')
-      );
-      const label = allPaused ? '▶ Resume all (' + psvLeads.length + ')' : '⏸ Pause all (' + psvLeads.length + ')';
-      bulkPauseBtn = '<button class="kh-bulk-pause" id="btnBulkPauseFu" data-action="' + (allPaused ? 'resume' : 'pause') + '">' + label + '</button>';
-    }
     head.innerHTML =
       '<span class="kh-name" data-toggle="' + status + '">' + (STATUS_LABELS[status] || status) + '</span>' +
       '<span class="kh-right">' +
-        (showPsvActions ? '<button class="kh-refresh-msgs" id="btnRefreshPsvMsgs" title="Fetch latest customer message for every PSV lead from Whapi">🔄 msgs</button>' : '') +
-        bulkPauseBtn +
         '<span class="kh-count">' + byStatus[status].length + '</span>' +
         (expiredCount > 0 ? '<span class="kh-expired">⚠️ ' + expiredCount + '</span>' : '') +
         '<button class="kh-toggle" data-toggle="' + status + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + '">' +
@@ -558,8 +571,6 @@ function renderKanban(leads) {
   });
   wireSortable();
   wireColumnToggles();
-  wireRefreshPsvMsgs();
-  wireBulkPauseFu();
 }
 
 function wireBulkPauseFu() {
@@ -617,6 +628,8 @@ function renderCard(lead) {
 
   const name = lead['Name'] || '(no name)';
   const phone = String(lead['Phone'] || '');
+  const isSelected = selectedPhones.has(phone);
+  if (isSelected) c.classList.add('selected');
   const loc = lead['Location'] || '';
   const tags = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
   const assignee = lead['Assigned To'] || '';
@@ -646,6 +659,7 @@ function renderCard(lead) {
     .join('');
 
   c.innerHTML =
+    '<input type="checkbox" class="cd-select" data-phone="' + escapeHtml(phone) + '"' + (isSelected ? ' checked' : '') + ' onclick="event.stopPropagation();toggleCardSelect(this);">' +
     (expired ? '<span class="cd-expired-badge">⚠️ VISIT DONE — DECIDE</span>' : '') +
     (svId ? '<div class="cd-svid">' + svId + '</div>' : '') +
     '<div class="cd-name">' + escapeHtml(name) + '</div>' +
@@ -842,6 +856,142 @@ function copyPhone(el) {
     catch (_e) { toast('Copy failed', 'error'); }
     document.body.removeChild(ta);
   }
+}
+
+// ================================================================
+// MULTI-SELECT (checkbox + floating action bar)
+// ================================================================
+
+function toggleCardSelect(cb) {
+  const phone = cb.dataset.phone || '';
+  if (!phone) return;
+  const card = cb.closest('.cd');
+  if (cb.checked) {
+    selectedPhones.add(phone);
+    if (card) card.classList.add('selected');
+  } else {
+    selectedPhones.delete(phone);
+    if (card) card.classList.remove('selected');
+  }
+  updateActionBar();
+}
+
+function updateActionBar() {
+  const bar = document.getElementById('actionBar');
+  const count = selectedPhones.size;
+  if (count === 0) {
+    bar.classList.remove('open');
+    return;
+  }
+  bar.classList.add('open');
+  document.getElementById('actionBarCount').textContent = count + ' selected';
+
+  // Smart pause/resume label: if every selected lead already has fu_paused → resume
+  const fuBtn = document.getElementById('actionBarFu');
+  let allPaused = true;
+  for (const p of selectedPhones) {
+    const lead = (allLeads || []).find(l => String(l['Phone'] || '') === p);
+    if (!lead) continue;
+    if (!String(lead['Tags'] || '').toLowerCase().includes('fu_paused')) { allPaused = false; break; }
+  }
+  fuBtn.dataset.action = allPaused ? 'resume' : 'pause';
+  fuBtn.textContent = allPaused ? '▶ Resume FU' : '⏸ Pause FU';
+}
+
+function actionSelectAllVisible() {
+  document.querySelectorAll('.cd .cd-select').forEach(cb => {
+    const phone = cb.dataset.phone;
+    if (!phone) return;
+    cb.checked = true;
+    selectedPhones.add(phone);
+    const card = cb.closest('.cd');
+    if (card) card.classList.add('selected');
+  });
+  updateActionBar();
+}
+
+function actionClearSelection() {
+  selectedPhones.clear();
+  document.querySelectorAll('.cd.selected').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('.cd-select').forEach(cb => { cb.checked = false; });
+  updateActionBar();
+}
+
+async function actionRefreshMsgs() {
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) return;
+  const btn = document.getElementById('actionBarRefresh');
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ fetching…';
+  try {
+    const r = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-refresh-psv-msgs?secret=ABC', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // text/plain to skip CORS preflight
+      body: JSON.stringify({ phones })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(() => ({}));
+    const captured = data.captured || 0;
+    const skipped = data.skipped || 0;
+    const errs = (data.errors || []).length;
+    toast('Refreshed: ' + captured + ' new, ' + skipped + ' silent' + (errs ? ', ' + errs + ' errors' : ''),
+      errs > 0 ? 'warn' : 'success');
+    await loadLeads();
+  } catch (e) {
+    toast('Refresh failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function actionTogglePauseFu() {
+  const fuBtn = document.getElementById('actionBarFu');
+  const action = fuBtn.dataset.action;
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) return;
+
+  const targets = phones
+    .map(p => (allLeads || []).find(l => String(l['Phone'] || '') === p))
+    .filter(Boolean)
+    .filter(l => {
+      const has = String(l['Tags'] || '').toLowerCase().includes('fu_paused');
+      return action === 'pause' ? !has : has;
+    });
+
+  if (!targets.length) {
+    toast('All ' + (action === 'pause' ? 'already paused' : 'already active'), 'info');
+    return;
+  }
+
+  const verb = action === 'pause' ? 'Pause' : 'Resume';
+  const names = targets.map(l => l['Name'] || l['Phone']).filter(Boolean);
+  const preview = names.slice(0, 3).join(', ') + (names.length > 3 ? ', +' + (names.length - 3) + ' more' : '');
+  if (!confirm(verb + ' FU for ' + targets.length + ' leads?\n\n' + preview)) return;
+
+  fuBtn.disabled = true;
+  const orig = fuBtn.textContent;
+  fuBtn.textContent = '⏳ ' + verb + 'ing…';
+
+  const calls = targets.map(l => {
+    const phone = String(l['Phone'] || '');
+    const current = String(l['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+    const next = action === 'pause'
+      ? (current.includes('fu_paused') ? current : [...current, 'fu_paused'])
+      : current.filter(t => t !== 'fu_paused');
+    return apiCall('updateTag', { phone: phone, tags: next.join(',') })
+      .then(r => ({ ok: r && r.status === 'ok', phone, lead: l, next }));
+  });
+
+  const results = await Promise.all(calls);
+  const okCount = results.filter(r => r.ok).length;
+  results.forEach(r => { if (r.ok) r.lead['Tags'] = r.next.join(','); });
+  toast(verb + 'd ' + okCount + ' / ' + targets.length, okCount === targets.length ? 'success' : 'warn');
+
+  fuBtn.disabled = false;
+  fuBtn.textContent = orig;
+  if (typeof render === 'function') render();
 }
 
 async function togglePauseFu(btn) {
