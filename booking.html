@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Leak Guard — Book Site Visit</title>
+<!-- Open Graph tags for WhatsApp/social link preview -->
+<meta property="og:title" content="Leak Guard — Book Your Site Visit">
+<meta property="og:description" content="Pick a date and time for your free waterproofing site inspection.">
+<meta property="og:url" content="https://leakguard.my/appointment/">
+<meta property="og:image" content="https://leakguard.my/appointment/logo.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:type" content="website">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -16,13 +23,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
 
   <!-- Header -->
   <div style="background:var(--pri);padding:18px 20px 20px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <div style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <div style="width:50px;height:50px;border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+        <img src="logo.png" alt="Leak Guard" style="width:100%;height:100%;object-fit:contain;padding:5px;box-sizing:border-box">
       </div>
       <div>
-        <div style="color:rgba(255,255,255,0.6);font-size:10px;letter-spacing:0.5px;text-transform:uppercase">Leak Guard</div>
-        <div style="color:#fff;font-size:14px;font-weight:500">Schedule Site Visit</div>
+        <div style="color:rgba(255,255,255,0.6);font-size:11px;letter-spacing:0.5px;text-transform:uppercase">Leak Guard</div>
+        <div style="color:#fff;font-size:15px;font-weight:500">Schedule Site Visit</div>
       </div>
     </div>
     <div style="background:rgba(255,255,255,0.1);border-radius:9px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
@@ -197,11 +204,14 @@ function buildSlotMap() {
   return m;
 }
 
-// Parse URL params
+// Parse URL params (backward compat: `p` is short form, `phone` is legacy long form)
 var params = new URLSearchParams(window.location.search);
-var PHONE = params.get('phone') || '';
+var PHONE = params.get('p') || params.get('phone') || '';
 var NAME = params.get('name') || '';
 var GROUP = params.get('group') || '';
+// Resolved display values — start from URL, get filled from lg-availability response if URL omitted them
+var resolvedName = NAME;
+var resolvedGroup = GROUP;
 var ACTION = params.get('action') || 'new';
 var OLD_DATE = params.get('oldDate') || '';
 var OLD_SLOT = parseInt(params.get('oldSlot')) || 0;
@@ -218,9 +228,14 @@ var confirmedSlot = null;
 var confirmedEventId = null;
 var existingApptData = null;
 
-// Init header
-document.getElementById('hdrName').textContent = NAME || 'Customer';
-document.getElementById('hdrGroup').textContent = GROUP || '—';
+// Init header (re-applied after lg-availability response if URL omitted name/group)
+function applyHeader() {
+  document.getElementById('hdrName').textContent = resolvedName || 'Customer';
+  document.getElementById('hdrGroup').textContent = resolvedGroup || '—';
+  var c3 = document.getElementById('c3name');
+  if (c3) c3.textContent = resolvedName || 'Customer';
+}
+applyHeader();
 
 function show(id) {
   ['loading','loadError','s0','s1','s2','s3','s4'].forEach(function(s){
@@ -256,6 +271,10 @@ function loadAvailability() {
       // Team-aware slot rendering — server returns 'JB' or 'KL'
       TEAM = data.team || 'KL';
       SLOT_LABELS = (TEAM === 'JB') ? SLOT_LABELS_JB : SLOT_LABELS_KL;
+      // Fill in display name + group from CRM lookup if URL didn't supply them
+      if (!resolvedName && data.name) resolvedName = data.name;
+      if (!resolvedGroup && data.groupName) resolvedGroup = data.groupName;
+      applyHeader();
       // TC1: show existing-appt screen if lead already has a confirmed appt AND user didn't already click reschedule
       if (data.existingAppt && ACTION !== 'reschedule') {
         showExistingAppt(data.existingAppt);
@@ -390,7 +409,7 @@ function showConfirm() {
   var slot = SLOT_LABELS[selSlot];
   document.getElementById('c3date').textContent = FULL_DAYS[dt.getDay()] + ', ' + dt.getDate() + ' ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
   document.getElementById('c3time').textContent = slot.full;
-  document.getElementById('c3name').textContent = NAME || 'Customer';
+  document.getElementById('c3name').textContent = resolvedName || 'Customer';
   document.getElementById('confirmError').style.display = 'none';
   show('s3');
 }

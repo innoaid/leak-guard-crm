@@ -48,6 +48,9 @@ function doPost(e) {
       case 'restoreLead':        return handleRestore(body);
       case 'sendRescheduleLink': return handleSendReschedule(body);
       case 'createLead':         return handleCreateLead(body);
+      case 'resetTestLead':      return handleResetTestLead(body);
+      case 'setPending':         return handleSetPending(body);  // round 12 — v2 agent pending-confirmation slot
+      case 'bulkMoveStatus':     return handleBulkMoveStatus(body);  // round 32 — kanban bulk move-to-phase
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -303,6 +306,153 @@ function handleCreateLead(body) {
 }
 
 // ================================================================
+// Reset Test Lead — wipes chat-state CRM fields for v2 agent sandbox
+// ================================================================
+
+function handleResetTestLead(body) {
+  // body: {action, groupName, secret, deleteCalEvent? (default false)}
+  if (!body.groupName) {
+    return jsonResponse({status: 'error', message: 'groupName required'});
+  }
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const gnIdx = headers.indexOf('Group Name (AE)');
+  if (gnIdx === -1) return jsonResponse({status: 'error', message: 'Group Name (AE) header missing'});
+
+  let rowNum = null;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][gnIdx] || '').trim() === body.groupName.trim()) {
+      rowNum = i + 1;
+      break;
+    }
+  }
+  if (!rowNum) return jsonResponse({status: 'error', message: 'group not found: ' + body.groupName});
+
+  const calEventIdIdx = headers.indexOf('Cal Event ID (AH)');
+  const oldCalEventId = calEventIdIdx >= 0 ? String(data[rowNum-1][calEventIdIdx] || '').trim() : '';
+
+  // Fields to blank — chat lifecycle state
+  const fieldsToBlank = [
+    'Slot Chosen',
+    'Date Appt Confirmed',
+    'Cal Event ID (AH)',
+    'Tags',
+    'Pending Date (AF)',
+    'Pending Slot (AG)',
+    'Pending Confirmation (AI)',
+    'Last Bot Msg Time (AD)',
+    'Follow Up Count (AK)',
+    'Last Customer Msg (AM)',
+    'Last Follow Up At (AL)',
+    'Bot Cooldown'
+  ];
+  const cleared = [];
+  fieldsToBlank.forEach(function(f) {
+    try {
+      setCellByHeader(sheet, rowNum, f, '');
+      cleared.push(f);
+    } catch (_e) {
+      // header missing — silently skip (defensive against future column rename)
+    }
+  });
+
+  // Reset to known-good baseline
+  setCellByHeader(sheet, rowNum, 'Status', 'Pending Site Visit');
+  try { setCellByHeader(sheet, rowNum, 'Flow Stage (AC)', 'welcome_sent'); } catch (_e) {}
+  setCellByHeader(sheet, rowNum, 'Status Changed At', new Date().toISOString());
+  setCellByHeader(sheet, rowNum, 'Changed By', body.changedBy || 'v2 reset');
+
+  return jsonResponse({
+    status: 'ok',
+    rowNum: rowNum,
+    group: body.groupName,
+    clearedFields: cleared,
+    oldCalEventId: oldCalEventId,
+    note: oldCalEventId ? 'Calendar event NOT deleted automatically — delete from Google Calendar UI if you want the slot freed for testing' : 'no calendar event was set'
+  });
+}
+
+// ================================================================
+// Set Pending — store/clear v2 agent's pending-confirmation slot
+// ================================================================
+// Called by n8n's Send Whapi Reply (when bot emits [PROPOSE] marker) and
+// Debug Skip Echo (to clear pending on escalation interruption).
+// Pass empty strings for pendingDate / pendingSlot / pendingCreatedAt to clear.
+
+function handleSetPending(body) {
+  // body: {action: 'setPending', secret, groupName, pendingDate, pendingSlot, pendingCreatedAt}
+  if (!body.groupName) {
+    return jsonResponse({status: 'error', message: 'groupName required'});
+  }
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const gnIdx = headers.indexOf('Group Name (AE)');
+  if (gnIdx === -1) return jsonResponse({status: 'error', message: 'Group Name (AE) header missing'});
+
+  let rowNum = null;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][gnIdx] || '').trim() === body.groupName.trim()) {
+      rowNum = i + 1;
+      break;
+    }
+  }
+  if (!rowNum) return jsonResponse({status: 'error', message: 'group not found: ' + body.groupName});
+
+  // Set or clear all three pending fields atomically. Empty string = clear.
+  const pendingDate      = body.pendingDate || '';
+  const pendingSlot      = body.pendingSlot || '';
+  const pendingCreatedAt = body.pendingCreatedAt || '';
+
+  try { setCellByHeader(sheet, rowNum, 'Pending Date (AF)',         pendingDate); } catch (_e) {}
+  try { setCellByHeader(sheet, rowNum, 'Pending Slot (AG)',         pendingSlot); } catch (_e) {}
+  try { setCellByHeader(sheet, rowNum, 'Pending Confirmation (AI)', pendingCreatedAt); } catch (_e) {}
+
+  return jsonResponse({
+    status: 'ok',
+    rowNum: rowNum,
+    group: body.groupName,
+    pendingDate: pendingDate,
+    pendingSlot: pendingSlot,
+    pendingCreatedAt: pendingCreatedAt
+  });
+}
+
+// Round 32 — kanban bulk move-to-phase
+function handleBulkMoveStatus(body) {
+  const phones = Array.isArray(body.phones) ? body.phones : [];
+  const newStatus = String(body.newStatus || '').trim();
+  if (!phones.length) return jsonResponse({status: 'error', message: 'no phones'});
+
+  // Whitelist all known statuses (active + terminal). Reject anything else to
+  // catch typos before they corrupt the sheet.
+  const ALLOWED = [
+    'New Lead','Pending Invitation','Pending Site Visit','Site Visit Confirmed',
+    'Pending QT','Quotation Sent','Pending I.Date','Pending Downpayment',
+    'Pending Balance','Completed with Complaint','Job Complete','Receipt Sent',
+    'Lost','Cold Lead','Rejected','Out of Area','Human Handoff'
+  ];
+  if (ALLOWED.indexOf(newStatus) === -1) {
+    return jsonResponse({status: 'error', message: 'invalid newStatus: ' + newStatus});
+  }
+
+  const sheet = getSheet();
+  const ts = new Date().toISOString();
+  let updated = 0;
+  const missing = [];
+  phones.forEach(function(phone) {
+    const row = findRowByPhone(sheet, phone);
+    if (!row) { missing.push(phone); return; }
+    try { setCellByHeader(sheet, row, 'Status',            newStatus); } catch (_e) {}
+    try { setCellByHeader(sheet, row, 'Status Changed At', ts);        } catch (_e) {}
+    try { setCellByHeader(sheet, row, 'Changed By',        'Kanban_Bulk'); } catch (_e) {}
+    updated++;
+  });
+  return jsonResponse({status: 'ok', updated: updated, missing: missing, newStatus: newStatus});
+}
+
+// ================================================================
 // Quick test (run from Apps Script editor manually)
 // ================================================================
 
@@ -320,4 +470,22 @@ function testFindRow() {
   const sheet = getSheet();
   const rowNum = findRowByPhone(sheet, '60183639951');
   Logger.log('Row found: ' + rowNum);
+}
+
+function testSetPending() {
+  // Manual test from editor — sets a pending slot for the test group
+  const fakeEvent = {
+    postData: {
+      contents: JSON.stringify({
+        secret: SHARED_SECRET,
+        action: 'setPending',
+        groupName: 'SV-0426-018 Annie - Ampang',
+        pendingDate: '2026-05-13',
+        pendingSlot: '4',
+        pendingCreatedAt: new Date().toISOString()
+      })
+    }
+  };
+  const r = doPost(fakeEvent);
+  Logger.log(r.getContent());
 }
