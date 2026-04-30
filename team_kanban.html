@@ -100,6 +100,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-fucount{font-size:9.5px;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#374151;font-weight:600;line-height:1.4;letter-spacing:.2px;white-space:nowrap}
 .cd-fucount.high{background:#FEF3C7;color:#92400E}
 .cd-pause{font-size:10px;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#374151;border:none;cursor:pointer;font-family:inherit;font-weight:600;line-height:1.4}
+.cd-setappt{font-size:10px;padding:1px 6px;border-radius:8px;background:#DBEAFE;color:#1E40AF;border:none;cursor:pointer;font-family:inherit;font-weight:600;line-height:1.4}
+.cd-setappt:hover{background:#BFDBFE}
 .cd-pause:hover{background:#E5E7EB}
 .cd-pause.paused{background:#FEF3C7;color:#92400E}
 .cd-pause.paused:hover{background:#FDE68A}
@@ -271,6 +273,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <option value="cancel_request">cancel_request</option>
     <option value="cold_lead">cold_lead</option>
   </select>
+  <select id="redFilter" title="Show only red-border (urgent) cards or non-red cards">
+    <option value="">All cards</option>
+    <option value="red">🔴 Red border only</option>
+    <option value="non-red">⚪ Non-red only</option>
+  </select>
   <button class="refresh quickfilter" id="btnRepliesNeeded" title="Show only cards tagged needs_reply (combines with staff filter)">🔔 Replies needed</button>
   <button class="refresh quickfilter" id="btnSilentOnly" title="Show only PSV/QS leads who have never sent any customer message — useful for bulk first-touch FU">🔇 Silent</button>
   <button class="btn-newlead" id="btnNewLead" title="Create a new lead manually">+ New Lead</button>
@@ -315,6 +322,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <button class="action-bar-btn" id="actionBarRefresh" onclick="actionRefreshMsgs()">🔄 Refresh msgs</button>
   <button class="action-bar-btn" id="actionBarSendFu" onclick="actionSendFu()">📨 Send FU</button>
   <button class="action-bar-btn bar-fu" id="actionBarFu" data-action="pause" onclick="actionTogglePauseFu()">⏸ Pause FU</button>
+  <select class="action-bar-btn" id="actionBarMove" onchange="actionBulkMoveStatus(this.value); this.value='';" title="Move all selected leads to a new phase">
+    <option value="">📋 Move to...</option>
+  </select>
   <button class="action-bar-btn" id="actionBarSelectAll" onclick="actionSelectAllVisible()">Select all visible</button>
   <button class="action-bar-btn bar-clear" id="actionBarClear" onclick="actionClearSelection()">✕ Clear</button>
 </div>
@@ -572,8 +582,22 @@ function render() {
   const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
   const staff = document.getElementById('staffFilter').value;
   const tagFilter = document.getElementById('tagFilter').value;
+  const redFilter = document.getElementById('redFilter').value;
   const repliesOnly = document.getElementById('btnRepliesNeeded').classList.contains('active');
   const silentOnly = document.getElementById('btnSilentOnly').classList.contains('active');
+
+  // Mirror of the urgent-card flags computed in renderCard. Kept in sync if
+  // those conditions ever expand.
+  function isRedBorder(lead) {
+    const status = String(lead['Status'] || '');
+    const tags = String(lead['Tags'] || '').toLowerCase();
+    const lastMsgRaw = String(lead['Last Customer Msg (AM)'] || '').trim();
+    if (status === 'Pending Site Visit' && !!lastMsgRaw) return true;
+    if (status === 'Pending QT') return true;
+    if (status === 'Site Visit Confirmed' && tags.includes('cancel_request')) return true;
+    if (status === 'Site Visit Confirmed' && isVisitExpired(lead)) return true;
+    return false;
+  }
 
   function passesFilters(lead) {
     if (search) {
@@ -590,6 +614,8 @@ function render() {
       const tags = String(lead['Tags'] || '').toLowerCase();
       if (!tags.includes(tagFilter.toLowerCase())) return false;
     }
+    if (redFilter === 'red' && !isRedBorder(lead)) return false;
+    if (redFilter === 'non-red' && isRedBorder(lead)) return false;
     if (repliesOnly) {
       const tags = String(lead['Tags'] || '').toLowerCase();
       if (!tags.includes('needs_reply')) return false;
@@ -866,6 +892,9 @@ function renderCard(lead) {
             : '') +
         '</div>' +
         '<div class="cd-meta-r">' +
+          (status === 'Pending Site Visit'
+            ? '<button class="cd-setappt" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();setApptFromCard(this);" title="Set site visit appointment for this lead">📅 Set</button>'
+            : '') +
           '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume auto follow-up' : 'Pause auto follow-up') + '">' + (tags.includes('fu_paused') ? '▶ FU' : '⏸ FU') + '</button>' +
           (inviteLink
             ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
@@ -1177,6 +1206,35 @@ async function actionSendFu() {
   }
 }
 
+// Round 32 — bulk move selected leads to a new status
+async function actionBulkMoveStatus(newStatus) {
+  if (!newStatus) return;
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) { toast('No leads selected', 'warn'); return; }
+  const label = STATUS_LABELS[newStatus] || newStatus;
+  if (!confirm('Move ' + phones.length + ' lead' + (phones.length > 1 ? 's' : '') + ' to "' + label + '"?')) return;
+  const sel = document.getElementById('actionBarMove');
+  sel.disabled = true;
+  try {
+    const r = await fetch(WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'bulkMoveStatus', secret: 'ABC', phones: phones, newStatus: newStatus })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(function() { return {}; });
+    if (data.status !== 'ok') throw new Error(data.message || 'unknown error');
+    const miss = (data.missing && data.missing.length) ? (' (' + data.missing.length + ' not found)') : '';
+    toast('Moved ' + data.updated + ' lead' + (data.updated > 1 ? 's' : '') + ' to ' + label + miss, 'success');
+    actionClearSelection();
+    await loadLeads();
+  } catch (e) {
+    toast('Bulk move failed: ' + e.message, 'error');
+  } finally {
+    sel.disabled = false;
+  }
+}
+
 async function actionTogglePauseFu() {
   const fuBtn = document.getElementById('actionBarFu');
   const action = fuBtn.dataset.action;
@@ -1223,6 +1281,25 @@ async function actionTogglePauseFu() {
   fuBtn.disabled = false;
   fuBtn.textContent = orig;
   if (typeof render === 'function') render();
+}
+
+// Round 32 — open the existing appointment modal from a PSV card
+async function setApptFromCard(btn) {
+  const phone = btn.dataset.phone || '';
+  if (!phone) return;
+  const lead = (allLeads || []).find(l => String(l['Phone'] || '') === phone);
+  if (!lead) { toast('Lead not found in cache — refresh', 'error'); return; }
+  if (String(lead['Status'] || '') !== 'Pending Site Visit') {
+    toast('Set Appointment is only for PSV leads', 'warn'); return;
+  }
+  // openApptModal auto-detects isReschedule = (status === SVC); for PSV it
+  // shows "Set Site Visit Date" + action='new'. After successful booking,
+  // LG-Booking flips Status to SVC and the kanban refresh moves the card.
+  const result = await openApptModal(lead);
+  if (result && result.confirmed) {
+    toast('Appointment set — card moving to Site Visit Confirmed', 'success');
+    await loadLeads();
+  }
 }
 
 async function togglePauseFu(btn) {
@@ -2216,6 +2293,15 @@ document.getElementById('nlPhone').oninput = function() {
 document.getElementById('searchInput').oninput = debounce(render, 200);
 document.getElementById('staffFilter').onchange = render;
 document.getElementById('tagFilter').onchange = render;
+// Red-border filter: persist choice in localStorage so it survives reload
+(function initRedFilter() {
+  var sel = document.getElementById('redFilter');
+  try { sel.value = localStorage.getItem('kanbanRedFilter') || ''; } catch (_e) {}
+  sel.onchange = function() {
+    try { localStorage.setItem('kanbanRedFilter', this.value); } catch (_e) {}
+    render();
+  };
+})();
 document.getElementById('btnRepliesNeeded').onclick = function() {
   this.classList.toggle('active');
   render();
@@ -2297,6 +2383,18 @@ document.getElementById('apptModal').addEventListener('click', function(e){
 if (isMobile()) {
   ACTIVE_STATUSES.forEach(s => collapsedCols.add(s));
 }
+
+// Round 32 — populate the bulk Move-to dropdown with all active phases
+(function initBulkMoveDropdown() {
+  var sel = document.getElementById('actionBarMove');
+  if (!sel) return;
+  ACTIVE_STATUSES.forEach(function(s) {
+    var opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = STATUS_LABELS[s] || s;
+    sel.appendChild(opt);
+  });
+})();
 
 loadLeads();
 startAutoRefresh();
