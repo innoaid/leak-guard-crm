@@ -422,8 +422,8 @@ function confirmBooking() {
 
   var body = {
     phone: PHONE,
-    group: GROUP,
-    name: NAME,
+    group: resolvedGroup || GROUP || '',
+    name:  resolvedName  || NAME  || '',
     date: selDate,
     slot: selSlot,
     action: ACTION
@@ -451,7 +451,7 @@ function confirmBooking() {
       var slot = SLOT_LABELS[selSlot];
       document.getElementById('s4d').textContent = FULL_DAYS[dt.getDay()] + ', ' + dt.getDate() + ' ' + SHORT_MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
       document.getElementById('s4t').textContent = slot.full;
-      document.getElementById('s4ref').textContent = GROUP || '—';
+      document.getElementById('s4ref').textContent = resolvedGroup || GROUP || '—';
       show('s4');
     } else if (data.error === 'slot_taken') {
       // Refresh availability and show error
