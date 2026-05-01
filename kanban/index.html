@@ -1,0 +1,2403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leak Guard — Team Kanban</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626;--sh:0 1px 3px rgba(0,0,0,.08)}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;min-height:100vh}
+
+.hdr{background:var(--pri);color:#fff;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.hdr-l{display:flex;align-items:center;gap:14px}
+.hdr-t{font-size:17px;font-weight:800}
+.hdr-r{display:flex;gap:8px;align-items:center}
+.hdr-btn{background:rgba(255,255,255,.15);color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.hdr-btn:hover{background:rgba(255,255,255,.25)}
+.hdr-btn .badge{display:inline-block;background:#fff;color:var(--pri);border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:4px}
+
+.toolbar{display:flex;gap:8px;padding:10px 14px;background:#fff;border-bottom:.5px solid #E5E7EB;flex-wrap:wrap;align-items:center}
+.toolbar input,.toolbar select{padding:7px 11px;background:#F9FAFB;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;color:var(--ink)}
+.toolbar input{flex:1;min-width:160px}
+.toolbar select{min-width:130px;cursor:pointer}
+.toolbar .refresh{padding:7px 11px;background:#F3F4F6;border:.5px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink);font-family:inherit}
+.toolbar .refresh:hover{background:#E5E7EB}
+.toolbar .quickfilter.active{background:#FEF3C7;border-color:#F59E0B;color:#92400E}
+.toolbar .quickfilter.active:hover{background:#FDE68A}
+.last-sync{font-size:11px;color:var(--mt);margin-left:auto}
+
+.err{background:#FEE2E2;color:#991B1B;padding:9px 16px;font-size:13px;font-weight:600;text-align:center;display:none}
+.ld{text-align:center;padding:48px;color:var(--mt)}
+.sp{width:26px;height:26px;border:3px solid var(--bdr);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.kb{display:flex;gap:8px;overflow-x:auto;padding:10px 14px;background:#fff}
+.kb::-webkit-scrollbar{height:6px}
+.kb::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px}
+.kc{min-width:230px;max-width:250px;flex-shrink:0;display:flex;flex-direction:column;background:#fff;border:.5px solid rgba(0,0,0,.07);border-radius:8px;overflow:hidden}
+.kh{padding:9px 11px;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;background:#F9FAFB;border-bottom:.5px solid var(--bdr);gap:6px}
+.kh-select{width:14px;height:14px;cursor:pointer;accent-color:#3730A3;margin:0;flex-shrink:0}
+.kh-select:disabled{cursor:not-allowed;opacity:.4}
+.kh-name{color:var(--ink);flex:1;cursor:pointer}
+.kh-right{display:flex;align-items:center;gap:6px}
+.kh-count{padding:1px 7px;border-radius:14px;font-size:10px;font-weight:700;background:#E5E7EB;color:#374151}
+.kh-toggle{background:none;border:none;color:var(--mt);font-size:11px;cursor:pointer;padding:2px 4px;line-height:1;font-family:inherit;border-radius:4px;transition:.15s}
+.kh-toggle:hover{background:#E5E7EB;color:var(--ink)}
+.kh-refresh-msgs{background:#EEF2FF;color:#3730A3;border:.5px solid #C7D2FE;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.3;white-space:nowrap}
+.kh-refresh-msgs:hover{background:#C7D2FE}
+.kh-refresh-msgs:disabled{opacity:.6;cursor:wait}
+.kh-bulk-pause{background:#F3F4F6;color:#374151;border:.5px solid #D1D5DB;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.3;white-space:nowrap}
+.kh-bulk-pause:hover{background:#E5E7EB}
+.kh-bulk-pause[data-action="resume"]{background:#FEF3C7;color:#92400E;border-color:#FDE68A}
+.kh-bulk-pause[data-action="resume"]:hover{background:#FDE68A}
+.kh-bulk-pause:disabled{opacity:.6;cursor:wait}
+.kb-body{flex:1;background:#FAFAFA;padding:6px;overflow-y:auto;max-height:calc(100vh - 200px);min-height:80px}
+.kc.collapsed .kb-body{display:none}
+.kc.collapsed{min-width:200px;max-width:200px}
+.cd-move{display:none;width:100%;margin-top:6px;padding:5px 8px;border:.5px solid #D1D5DB;border-radius:5px;font-size:11px;font-family:inherit;background:#F9FAFB;color:var(--ink);cursor:pointer}
+.cd-move:focus{outline:none;border-color:var(--acc);background:#fff}
+
+.cd{background:#fff;border:.5px solid #E5E7EB;border-radius:6px;padding:9px 10px;margin-bottom:5px;cursor:pointer;transition:border-color .15s,transform .1s,box-shadow .15s;position:relative}
+.cd:hover{border-color:#D1D5DB}
+.cd.dragging{opacity:.5}
+.cd.selected{border-color:#3730A3;box-shadow:0 0 0 1.5px #3730A3}
+.cd-select{position:absolute;top:6px;right:6px;width:18px;height:18px;cursor:pointer;accent-color:#3730A3;z-index:5;margin:0}
+.cd-select-hit{position:absolute;top:0;right:0;width:34px;height:34px;cursor:pointer;z-index:4}
+.cd-idrow{display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:wrap}
+.cd-svid{font-family:'SF Mono',Consolas,Monaco,monospace;font-size:9.5px;color:#6B7280;background:#F3F4F6;padding:1px 6px;border-radius:4px;letter-spacing:.3px;display:inline-block}
+.cd-team-jb{font-size:9px;font-weight:700;color:#6D28D9;background:#EDE9FE;padding:1px 6px;border-radius:4px;letter-spacing:.4px;display:inline-block}
+.cd-name{font-size:13px;font-weight:600;color:#111827;margin-bottom:2px;padding-right:24px}
+.cd-phone{font-size:11px;color:#0F6E56;text-decoration:none;display:block;margin-bottom:4px;cursor:copy}
+.cd-phone:hover{text-decoration:underline}
+.cd-apptdate{font-size:10px;font-weight:600;color:#065F46;background:#D1FAE5;padding:1px 7px;border-radius:9px;display:inline-block;margin-bottom:4px}
+.cd-loc{font-size:11px;color:#6B7280;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-lastmsg{font-size:10.5px;color:#4B5563;font-style:italic;background:#FFFBEB;border-left:2px solid #F59E0B;padding:3px 6px;margin-bottom:5px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-row{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}
+.cd-tags{display:flex;gap:3px;flex-wrap:wrap}
+.cd-tag{padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;display:inline-flex;align-items:center;gap:3px}
+.cd-tag:hover{filter:brightness(.95)}
+.cd-tag-x{font-size:11px;line-height:1;font-weight:700;opacity:.55;margin-left:1px}
+.cd-tag:hover .cd-tag-x{opacity:1}
+.tag-needs_reply{background:#FEF3C7;color:#92400E}
+.tag-complaint{background:#FEE2E2;color:#991B1B}
+.tag-cancel_request{background:#FCE7F3;color:#9D174D}
+.tag-cold_lead{background:#E0F2FE;color:#075985}
+.tag-fu_paused{background:#E5E7EB;color:#374151}
+.cd-meta{display:flex;justify-content:space-between;gap:5px;align-items:center;flex-wrap:wrap}
+.cd-meta-l{display:flex;gap:5px;align-items:center;flex-wrap:wrap;min-width:0}
+.cd-meta-r{display:flex;gap:5px;align-items:center;flex-shrink:0}
+.cd-days{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#6B7280}
+.cd-days.warn{background:#FEF3C7;color:#92400E}
+.cd-days.err{background:#FEE2E2;color:#991B1B}
+.cd-days.green{background:#D1FAE5;color:#065F46}
+.cd-assignee{padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;background:#EEF2FF;color:#3730A3}
+.cd-wa{font-size:14px;color:#25D366;text-decoration:none;padding:1px 6px;border-radius:8px;background:#DCFCE7;display:inline-flex;align-items:center;gap:3px;font-weight:600}
+.cd-wa:hover{background:#BBF7D0}
+.cd-wa.disabled{color:#9CA3AF;background:#F3F4F6;cursor:not-allowed;pointer-events:none}
+.cd-fucount{font-size:9.5px;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#374151;font-weight:600;line-height:1.4;letter-spacing:.2px;white-space:nowrap}
+.cd-fucount.high{background:#FEF3C7;color:#92400E}
+.cd-pause{font-size:10px;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#374151;border:none;cursor:pointer;font-family:inherit;font-weight:600;line-height:1.4}
+.cd-setappt{font-size:10px;padding:1px 6px;border-radius:8px;background:#DBEAFE;color:#1E40AF;border:none;cursor:pointer;font-family:inherit;font-weight:600;line-height:1.4}
+.cd-setappt:hover{background:#BFDBFE}
+.cd-pause:hover{background:#E5E7EB}
+.cd-pause.paused{background:#FEF3C7;color:#92400E}
+.cd-pause.paused:hover{background:#FDE68A}
+.kc-empty{text-align:center;padding:18px 8px;color:var(--mt);font-size:11px;font-style:italic}
+
+/* Archive view */
+.archive-view{display:none;padding:12px 16px;background:#fff;min-height:calc(100vh - 100px)}
+.archive-view.on{display:block}
+.archive-view h2{font-size:16px;font-weight:700;margin-bottom:12px;color:var(--ink)}
+.archive-toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.archive-list{display:flex;flex-direction:column;gap:6px}
+.arch-row{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#fff;border:.5px solid var(--bdr);border-radius:7px}
+.arch-row-l{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.arch-row-name{font-size:13px;font-weight:600}
+.arch-row-meta{font-size:11px;color:var(--mt)}
+.arch-status-badge{padding:2px 7px;border-radius:9px;font-size:10px;font-weight:600;align-self:flex-start;margin-bottom:3px}
+.arch-status-Job-Complete{background:#D1FAE5;color:#065F46}
+.arch-status-Receipt-Sent{background:#A7F3D0;color:#064E3B}
+.arch-status-Lost{background:#FEE2E2;color:#991B1B}
+.arch-status-Cold-Lead{background:#E0F2FE;color:#075985}
+.arch-status-Rejected{background:#FECACA;color:#7F1D1D}
+.arch-status-Out-of-Area{background:#F3F4F6;color:#374151}
+.arch-status-Human-Handoff{background:#FED7AA;color:#9A3412}
+.arch-row-r{display:flex;gap:6px;align-items:center}
+.arch-restore{padding:5px 9px;background:#EEF2FF;color:#3730A3;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.arch-restore:hover{background:#C7D2FE}
+
+/* Floating multi-select action bar */
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:#111827;color:#fff;padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));display:none;align-items:center;gap:8px;flex-wrap:wrap;box-shadow:0 -4px 16px rgba(0,0,0,.25);z-index:600;font-size:13px}
+.action-bar.open{display:flex}
+.action-bar-count{font-weight:700;background:#3730A3;color:#fff;padding:5px 11px;border-radius:14px;font-size:12px;flex-shrink:0;white-space:nowrap}
+.action-bar-btn{background:#374151;color:#fff;border:none;padding:7px 11px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+.action-bar-btn:hover{background:#4B5563}
+.action-bar-btn:disabled{opacity:.55;cursor:wait}
+.action-bar-btn.bar-fu[data-action="resume"]{background:#FEF3C7;color:#92400E}
+.action-bar-btn.bar-fu[data-action="resume"]:hover{background:#FDE68A}
+.action-bar-btn.bar-clear{background:none;color:#9CA3AF;margin-left:auto;padding-right:0}
+.action-bar-btn.bar-clear:hover{color:#fff;background:none}
+
+/* Toast */
+.toast-container{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;z-index:1000;max-width:340px;pointer-events:none}
+.toast{padding:11px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:slideIn .25s ease-out;pointer-events:auto;display:flex;align-items:center;gap:8px}
+.toast.success{background:#10B981}
+.toast.error{background:#DC2626}
+.toast.info{background:#3B82F6}
+.toast.warn{background:#F59E0B}
+.toast.fade{animation:fadeOut .3s ease-out forwards}
+@keyframes slideIn{from{transform:translateX(380px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes fadeOut{to{opacity:0;transform:translateX(20px)}}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(17,17,17,.55);z-index:200;align-items:center;justify-content:center;padding:14px;animation:fadeIn .2s ease-out}
+.modal-overlay.open{display:flex}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal-h{padding:14px 18px;border-bottom:.5px solid var(--bdr);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;position:sticky;top:0;background:#fff;z-index:1}
+.modal-title{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:3px}
+.modal-sub{font-size:12px;color:var(--mt)}
+.modal-close{background:none;border:none;font-size:22px;color:var(--mt);cursor:pointer;padding:0;line-height:1;font-family:inherit}
+.modal-close:hover{color:var(--ink)}
+.modal-body{padding:14px 18px}
+.modal-status{display:inline-block;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:600;background:#EEF2FF;color:#3730A3;margin-bottom:6px}
+.modal-row{display:flex;flex-direction:column;gap:3px;margin-bottom:11px;padding-bottom:11px;border-bottom:.5px solid #F3F4F6}
+.modal-row:last-of-type{border-bottom:none}
+.modal-label{font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.modal-val{font-size:13px;color:var(--ink);word-break:break-word}
+.modal-val a{color:var(--acc);text-decoration:none}
+.modal-val a:hover{text-decoration:underline}
+.modal-input,.modal-select{width:100%;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;color:var(--ink);background:#FAFAFA}
+.modal-input:focus,.modal-select:focus{outline:none;border-color:var(--acc);background:#fff}
+.modal-textarea{width:100%;padding:8px 11px;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;min-height:60px;background:#FAFAFA}
+.modal-textarea:focus{outline:none;border-color:var(--acc);background:#fff}
+.modal-actions{padding:12px 18px;border-top:.5px solid var(--bdr);display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:#fff}
+.modal-btn{padding:8px 14px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.modal-btn-primary{background:var(--acc);color:#fff;flex:1}
+.modal-btn-primary:hover{background:#0F6E56}
+.modal-btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.modal-btn-secondary{background:#F3F4F6;color:var(--ink)}
+.modal-btn-secondary:hover{background:#E5E7EB}
+.modal-btn-info{background:#EEF2FF;color:#3730A3}
+.modal-btn-info:hover{background:#C7D2FE}
+
+/* Drag visuals */
+.cd.drag-ghost{opacity:.4}
+.kb-body.drag-over{background:#EEF2FF;outline:2px dashed #6366F1;outline-offset:-2px;border-radius:6px}
+
+/* Expired site visit signal */
+.cd.expired{border-left:3px solid #DC2626}
+.cd.urgent{border-left:3px solid #DC2626}
+.cd-expired-badge{display:inline-block;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;background:#FEE2E2;color:#991B1B;margin-bottom:5px;letter-spacing:.3px}
+.kh-expired{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#FEE2E2;color:#991B1B;margin-left:4px}
+
+/* Appointment modal */
+.appt-info{background:#F9FAFB;border-radius:8px;padding:10px 12px;margin-bottom:13px;font-size:12px}
+.appt-info-row{display:flex;justify-content:space-between;margin-bottom:3px}
+.appt-info-row:last-child{margin-bottom:0}
+.appt-info-label{color:var(--mt);font-weight:500}
+.appt-info-val{color:var(--ink);font-weight:600}
+.appt-current{background:#FEF3C7;border-left:3px solid #F59E0B;padding:8px 11px;border-radius:5px;margin-bottom:13px;font-size:12px;color:#92400E}
+.appt-section{margin-bottom:13px}
+.appt-section-h{font-size:11px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.appt-date-picker{width:100%;padding:9px 12px;border:.5px solid #D1D5DB;border-radius:6px;font-size:14px;font-family:inherit;background:#FAFAFA}
+.appt-date-picker:focus{outline:none;border-color:var(--acc);background:#fff}
+.appt-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:9px}
+.appt-slot{padding:9px 10px;border:.5px solid #D1D5DB;background:#fff;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s;color:var(--ink)}
+.appt-slot:hover:not(:disabled){border-color:var(--acc);background:#F0FDF4}
+.appt-slot.selected{background:var(--acc);color:#fff;border-color:var(--acc)}
+.appt-slot:disabled{opacity:.4;cursor:not-allowed;background:#F3F4F6;text-decoration:line-through}
+.appt-loading{padding:14px;text-align:center;color:var(--mt);font-size:13px}
+.appt-error{background:#FEE2E2;color:#991B1B;padding:9px 12px;border-radius:6px;font-size:12px;font-weight:500;margin-bottom:11px;display:none}
+.appt-error.on{display:block}
+
+/* Mobile */
+@media (max-width: 768px){
+  .hdr{padding:10px 14px}
+  .hdr-t{font-size:15px}
+  .hdr-btn{padding:6px 10px;font-size:11px}
+  .toolbar input{flex-basis:100%;order:1}
+  .toolbar select{flex:1}
+  .last-sync{display:none}
+  .kb{flex-direction:column;overflow-x:visible;padding:6px}
+  .kc{min-width:100%;max-width:100%}
+  .kc.collapsed{min-width:100%;max-width:100%}
+  .kb-body{max-height:none}
+  .cd-move{display:block}                       /* show move-to on mobile */
+  .kh-name{font-size:13px}
+  .kh-toggle{font-size:13px;padding:4px 8px}    /* bigger tap target */
+}
+.nl-row{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.nl-row label{font-size:12px;color:#6B7280;font-weight:600}
+.nl-row input,.nl-row select,.nl-row textarea{padding:7px 9px;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;background:#fff}
+.nl-row textarea{resize:vertical;min-height:48px}
+.nl-dup-warn{padding:8px 10px;border-radius:6px;font-size:12px;margin-bottom:10px;display:none;line-height:1.4}
+.nl-dup-warn.active-dup{display:block;background:#FEE2E2;color:#991B1B;border:.5px solid #FCA5A5}
+.nl-dup-warn.terminal-dup{display:block;background:#FEF3C7;color:#92400E;border:.5px solid #FCD34D}
+.nl-dup-warn .nl-copy-btn{display:inline-block;margin-top:6px;padding:4px 10px;background:#F59E0B;color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.nl-dup-warn .nl-copy-btn:hover{background:#D97706}
+.nl-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.nl-actions button{padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;border:none}
+.nl-btn-secondary{background:#F3F4F6;color:#111827}
+.nl-btn-secondary:hover{background:#E5E7EB}
+.nl-btn-primary{background:#10B981;color:#fff}
+.nl-btn-primary:hover{background:#059669}
+.nl-btn-primary:disabled{background:#9CA3AF;cursor:not-allowed}
+.btn-newlead{padding:7px 11px;background:#10B981;color:#fff;border:.5px solid #059669;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-newlead:hover{background:#059669}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-l">
+    <div class="hdr-t">📋 Team Kanban</div>
+  </div>
+  <div class="hdr-r">
+    <button class="hdr-btn" id="btnArchive">📦 Archive <span class="badge" id="archCount">0</span></button>
+  </div>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="searchInput" placeholder="🔍 Search name / phone / location...">
+  <select id="staffFilter">
+    <option value="">All staff</option>
+  </select>
+  <select id="tagFilter">
+    <option value="">All tags</option>
+    <option value="needs_reply">needs_reply</option>
+    <option value="complaint">complaint</option>
+    <option value="cancel_request">cancel_request</option>
+    <option value="cold_lead">cold_lead</option>
+  </select>
+  <select id="redFilter" title="Show only red-border (urgent) cards or non-red cards">
+    <option value="">All cards</option>
+    <option value="red">🔴 Red border only</option>
+    <option value="non-red">⚪ Non-red only</option>
+  </select>
+  <button class="refresh quickfilter" id="btnRepliesNeeded" title="Show only cards tagged needs_reply (combines with staff filter)">🔔 Replies needed</button>
+  <button class="refresh quickfilter" id="btnSilentOnly" title="Show only PSV/QS leads who have never sent any customer message — useful for bulk first-touch FU">🔇 Silent</button>
+  <button class="btn-newlead" id="btnNewLead" title="Create a new lead manually">+ New Lead</button>
+  <button class="refresh" id="btnRefresh">🔄 Refresh</button>
+  <span class="last-sync" id="lastSync">—</span>
+</div>
+
+<div class="err" id="err"></div>
+
+<div id="kanbanView">
+  <div class="kb" id="kanbanBoard">
+    <div class="ld" id="loading">
+      <div class="sp"></div>
+      <div>Loading leads...</div>
+    </div>
+  </div>
+</div>
+
+<div class="archive-view" id="archiveView">
+  <h2>📦 Archive</h2>
+  <div class="archive-toolbar">
+    <select id="archStatusFilter">
+      <option value="">All archived</option>
+      <option value="Job Complete">Job Complete</option>
+      <option value="Receipt Sent">Receipt Sent</option>
+      <option value="Lost">Lost</option>
+      <option value="Cold Lead">Cold Lead</option>
+      <option value="Rejected">Rejected</option>
+      <option value="Out of Area">Out of Area</option>
+      <option value="Human Handoff">Human Handoff</option>
+    </select>
+    <input type="text" id="archSearch" placeholder="🔍 Search archive...">
+  </div>
+  <div class="archive-list" id="archiveList"></div>
+</div>
+
+<!-- Toast notifications -->
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="action-bar" id="actionBar">
+  <span class="action-bar-count" id="actionBarCount">0 selected</span>
+  <button class="action-bar-btn" id="actionBarRefresh" onclick="actionRefreshMsgs()">🔄 Refresh msgs</button>
+  <button class="action-bar-btn" id="actionBarSendFu" onclick="actionSendFu()">📨 Send FU</button>
+  <button class="action-bar-btn bar-fu" id="actionBarFu" data-action="pause" onclick="actionTogglePauseFu()">⏸ Pause FU</button>
+  <select class="action-bar-btn" id="actionBarMove" onchange="actionBulkMoveStatus(this.value); this.value='';" title="Move all selected leads to a new phase">
+    <option value="">📋 Move to...</option>
+  </select>
+  <button class="action-bar-btn" id="actionBarSelectAll" onclick="actionSelectAllVisible()">Select all visible</button>
+  <button class="action-bar-btn bar-clear" id="actionBarClear" onclick="actionClearSelection()">✕ Clear</button>
+</div>
+
+<!-- Appointment edit modal -->
+<div class="modal-overlay" id="apptModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title" id="apptTitle">Set Site Visit Date</div>
+        <div class="modal-sub" id="apptSub">—</div>
+      </div>
+      <button class="modal-close" id="btnApptClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="appt-info" id="apptInfo"></div>
+      <div class="appt-current" id="apptCurrent" style="display:none"></div>
+      <div class="appt-error" id="apptError"></div>
+      <div class="appt-section">
+        <div class="appt-section-h">Pick date</div>
+        <input type="date" class="appt-date-picker" id="apptDate">
+      </div>
+      <div class="appt-section">
+        <div class="appt-section-h">Pick slot</div>
+        <div id="apptSlotsArea">
+          <div class="appt-loading">Pick a date to see available slots…</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-secondary" id="btnApptCancel">Cancel</button>
+      <button class="modal-btn modal-btn-primary" id="btnApptConfirm" disabled>Confirm Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lead detail modal -->
+<div class="modal-overlay" id="leadModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title" id="modalTitle">—</div>
+        <div class="modal-sub" id="modalSub">—</div>
+      </div>
+      <button class="modal-close" id="btnModalClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-info" id="btnEditAppt" style="display:none">Edit appointment</button>
+      <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Quotation</button>
+      <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
+      <button class="modal-btn modal-btn-secondary" id="btnModalCancel">Close</button>
+      <button class="modal-btn modal-btn-primary" id="btnModalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create New Lead modal -->
+<div class="modal-overlay" id="newLeadModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">Create New Lead</div>
+        <div class="modal-sub">Manual entry — bypasses ChatHero</div>
+      </div>
+      <button class="modal-close" id="btnNewLeadClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="nl-row"><label for="nlName">Name *</label><input id="nlName" type="text" autocomplete="off"></div>
+      <div class="nl-row"><label for="nlPhone">Phone *</label><input id="nlPhone" type="tel" autocomplete="off" placeholder="60123456789"></div>
+      <div class="nl-dup-warn" id="nlDupWarn"></div>
+      <div class="nl-row"><label for="nlStatus">Initial Status *</label>
+        <select id="nlStatus">
+          <option value="Pending Invitation">Pending Invitation</option>
+          <option value="Pending Site Visit" selected>Pending Site Visit</option>
+          <option value="Pending QT">Pending QT</option>
+          <option value="Pending I.Date">Pending Installation Date</option>
+          <option value="Pending Downpayment">Pending Downpayment</option>
+          <option value="Pending Balance">Pending Balance</option>
+          <option value="Completed with Complaint">Completed with Complaint</option>
+        </select>
+      </div>
+      <div class="nl-row"><label for="nlSource">Source *</label>
+        <select id="nlSource">
+          <option>Walk-in</option>
+          <option>Repeat Customer</option>
+          <option>Referral</option>
+          <option>Direct Call</option>
+          <option>Online</option>
+          <option>ChatHero</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="nl-row"><label for="nlLocation">Location</label><input id="nlLocation" type="text" placeholder="e.g. Klang"></div>
+      <div class="nl-row"><label for="nlProblem">Problem Type</label><input id="nlProblem" type="text" placeholder="e.g. Bathroom slab leaking"></div>
+      <div class="nl-row"><label for="nlAddress">Full Address</label><textarea id="nlAddress" rows="2"></textarea></div>
+      <div class="nl-row"><label for="nlNotes">Notes</label><textarea id="nlNotes" rows="2"></textarea></div>
+      <div class="nl-row"><label for="nlAssignee">Assigned To</label><select id="nlAssignee"><option value="">Unassigned</option></select></div>
+      <div class="nl-actions">
+        <button class="nl-btn-secondary" id="btnNewLeadCancel">Cancel</button>
+        <button class="nl-btn-primary" id="btnNewLeadSubmit">Create Lead</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// CONFIG
+// ================================================================
+const SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+const SHEET_NAME = 'Leak Guard Leads';
+const GVIZ_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+  '/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent(SHEET_NAME);
+
+// Apps Script Web App URL — must match deployed Code.gs's SHARED_SECRET
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SHARED_SECRET = 'ABC';
+
+// n8n webhooks (used by appointment modal)
+const N8N_AVAIL_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-availability';
+const N8N_BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
+
+// Slot times (matches booking page + lg-booking webhook)
+const SLOT_TIMES_KL = {
+  1: '9:00 AM - 10:00 AM',
+  2: '10:30 AM - 11:30 AM',
+  3: '12:00 PM - 1:00 PM',
+  4: '2:00 PM - 3:00 PM',
+  5: '3:30 PM - 4:30 PM'
+};
+const SLOT_TIMES_JB = {
+  1: '11:30 AM - 12:30 PM',
+  2: '2:00 PM - 3:00 PM'
+};
+function teamFromGroupName(groupName) {
+  return /^(SVJB|QTJB)-/i.test(String(groupName || '').trim()) ? 'JB' : 'KL';
+}
+function teamFromLead(lead) {
+  if (!lead) return 'KL';
+  // 1. Group Name prefix is the cleanest signal once SVJB- is in use
+  const groupName = String(lead['Group Name (AE)'] || '');
+  if (/^(SVJB|QTJB)-/i.test(groupName.trim())) return 'JB';
+  // 2. Fallback: Location column contains "JB" or "Johor"
+  const loc = String(lead['Location'] || '').trim().toUpperCase();
+  if (loc === 'JB' || /\bJB\b/.test(loc) || loc.includes('JOHOR')) return 'JB';
+  return 'KL';
+}
+function slotTimesFor(team) { return team === 'JB' ? SLOT_TIMES_JB : SLOT_TIMES_KL; }
+// Backward-compat alias — defaults to KL. Most callers should switch to slotTimesFor(team).
+const SLOT_TIMES = SLOT_TIMES_KL;
+
+// 9 active columns (left → right)
+const ACTIVE_STATUSES = [
+  'Pending Invitation',
+  'Pending Site Visit',
+  'Site Visit Confirmed',
+  'Pending QT',
+  'Quotation Sent',
+  'Pending I.Date',          // UI label below relabels this
+  'Pending Downpayment',
+  'Pending Balance',
+  'Completed with Complaint'
+];
+
+const STATUS_LABELS = {
+  'Pending I.Date': 'Pending Installation Date'
+  // others fall through to status name
+};
+
+// Statuses considered archived (not shown in main kanban)
+const ARCHIVED_STATUSES = [
+  'Job Complete', 'Receipt Sent',
+  'Lost', 'Cold Lead', 'Rejected', 'Out of Area', 'Human Handoff'
+];
+
+// Per-stage days-in-stage thresholds (yellow / red) in days
+const DAYS_THRESHOLDS = {
+  'Pending Invitation':         {yellow: 1, red: 3},
+  'Pending Site Visit':         {yellow: 2, red: 5},
+  'Site Visit Confirmed':       {yellow: 999, red: 999}, // green
+  'Pending QT':                 {yellow: 1, red: 3},
+  'Quotation Sent':             {yellow: 3, red: 7},
+  'Pending I.Date':             {yellow: 2, red: 7},
+  'Pending Downpayment':        {yellow: 2, red: 7},
+  'Pending Balance':            {yellow: 2, red: 7},
+  'Completed with Complaint':   {yellow: 1, red: 3}
+};
+
+// ================================================================
+// STATE
+// ================================================================
+let allLeads = [];           // parsed lead objects
+let headers = [];            // sheet header names in order
+let viewMode = 'kanban';     // 'kanban' | 'archive'
+let refreshTimer = null;
+const REFRESH_MS = 60000;
+const collapsedCols = new Set();  // status names that are currently collapsed (mobile UX)
+const selectedPhones = new Set(); // phones of multi-select-checked cards (in-memory only)
+
+function isMobile() { return window.innerWidth < 768; }
+
+function isVisitExpired(lead) {
+  if (String(lead['Status']||'') !== 'Site Visit Confirmed') return false;
+  const da = String(lead['Date Appt Confirmed']||'').slice(0,10);
+  if (!da) return false;
+  // Expired if appointment date end (23:59 MYT) is before now
+  const apptEnd = new Date(da + 'T23:59:59+08:00');
+  return apptEnd < new Date();
+}
+
+// ================================================================
+// gviz READ
+// ================================================================
+
+async function loadLeads() {
+  try {
+    const r = await fetch(GVIZ_URL + '&nocache=' + Date.now());
+    const t = await r.text();
+    const m = t.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+    if (!m) throw new Error('gviz parse failed');
+    const j = JSON.parse(m[1]);
+    parseGvizResponse(j);
+    render();
+  } catch (e) {
+    showError('Load failed: ' + e.message);
+  }
+}
+
+function parseGvizResponse(j) {
+  const cols = j.table.cols.map(c => (c.label || '').trim());
+  const rows = j.table.rows || [];
+  headers = cols;
+
+  allLeads = rows.map(r => {
+    const obj = {};
+    (r.c || []).forEach((cell, i) => {
+      const key = cols[i];
+      if (!key) return;
+      obj[key] = cell ? (cell.v != null ? cell.v : (cell.f || '')) : '';
+    });
+    return obj;
+  }).filter(l => l['Phone']); // skip empty rows
+}
+
+// ================================================================
+// RENDER
+// ================================================================
+
+function render() {
+  document.getElementById('lastSync').textContent =
+    'Updated ' + new Date().toLocaleTimeString('en-MY', {hour:'2-digit', minute:'2-digit'});
+
+  // Apply filters
+  const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  const staff = document.getElementById('staffFilter').value;
+  const tagFilter = document.getElementById('tagFilter').value;
+  const redFilter = document.getElementById('redFilter').value;
+  const repliesOnly = document.getElementById('btnRepliesNeeded').classList.contains('active');
+  const silentOnly = document.getElementById('btnSilentOnly').classList.contains('active');
+
+  // Mirror of the urgent-card flags computed in renderCard. Kept in sync if
+  // those conditions ever expand.
+  function isRedBorder(lead) {
+    const status = String(lead['Status'] || '');
+    const tags = String(lead['Tags'] || '').toLowerCase();
+    const lastMsgRaw = String(lead['Last Customer Msg (AM)'] || '').trim();
+    if (status === 'Pending Site Visit' && !!lastMsgRaw) return true;
+    if (status === 'Pending QT') return true;
+    if (status === 'Site Visit Confirmed' && tags.includes('cancel_request')) return true;
+    if (status === 'Site Visit Confirmed' && isVisitExpired(lead)) return true;
+    return false;
+  }
+
+  function passesFilters(lead) {
+    if (search) {
+      const blob = (
+        (lead['Name'] || '') + ' ' +
+        (lead['Phone'] || '') + ' ' +
+        (lead['Location'] || '') + ' ' +
+        (lead['Group Name (AE)'] || '')
+      ).toLowerCase();
+      if (!blob.includes(search)) return false;
+    }
+    if (staff && (lead['Assigned To'] || '') !== staff) return false;
+    if (tagFilter) {
+      const tags = String(lead['Tags'] || '').toLowerCase();
+      if (!tags.includes(tagFilter.toLowerCase())) return false;
+    }
+    if (redFilter === 'red' && !isRedBorder(lead)) return false;
+    if (redFilter === 'non-red' && isRedBorder(lead)) return false;
+    if (repliesOnly) {
+      const tags = String(lead['Tags'] || '').toLowerCase();
+      if (!tags.includes('needs_reply')) return false;
+    }
+    if (silentOnly) {
+      // Only narrows PSV/QS columns. Cards in other phases are unaffected.
+      const status = String(lead['Status'] || '');
+      if (status === 'Pending Site Visit' || status === 'Quotation Sent') {
+        const lastMsg = String(lead['Last Customer Msg (AM)'] || '').trim();
+        if (lastMsg) return false;
+      }
+    }
+    return true;
+  }
+
+  // Update staff filter dropdown options dynamically
+  populateStaffFilter();
+
+  // Update archive count
+  const archCount = allLeads.filter(l => ARCHIVED_STATUSES.includes(String(l['Status'] || ''))).length;
+  document.getElementById('archCount').textContent = archCount;
+
+  if (viewMode === 'kanban') {
+    renderKanban(allLeads.filter(passesFilters));
+  } else {
+    renderArchive(allLeads.filter(passesFilters));
+  }
+  updateActionBar();
+}
+
+function renderKanban(leads) {
+  const board = document.getElementById('kanbanBoard');
+  board.innerHTML = '';
+
+  const byStatus = {};
+  ACTIVE_STATUSES.forEach(s => byStatus[s] = []);
+  leads.forEach(l => {
+    const s = String(l['Status'] || '').trim();
+    if (byStatus[s]) byStatus[s].push(l);
+  });
+
+  // Sort Pending Site Visit: cards with a captured customer last-msg float to top
+  if (byStatus['Pending Site Visit']) {
+    byStatus['Pending Site Visit'].sort((a, b) => {
+      const aHas = !!String(a['Last Customer Msg (AM)'] || '').trim();
+      const bHas = !!String(b['Last Customer Msg (AM)'] || '').trim();
+      if (aHas && !bHas) return -1;
+      if (bHas && !aHas) return 1;
+      return 0;
+    });
+  }
+
+  // Sort Site Visit Confirmed:
+  //   1. cancel_request cards on top (admin must act now, regardless of appt date)
+  //   2. then expired-visit cards (oldest first)
+  //   3. then by appt date asc (oldest first)
+  if (byStatus['Site Visit Confirmed']) {
+    byStatus['Site Visit Confirmed'].sort((a, b) => {
+      const aCancel = String(a['Tags']||'').toLowerCase().includes('cancel_request');
+      const bCancel = String(b['Tags']||'').toLowerCase().includes('cancel_request');
+      if (aCancel && !bCancel) return -1;
+      if (bCancel && !aCancel) return 1;
+      const aExp = isVisitExpired(a), bExp = isVisitExpired(b);
+      if (aExp && !bExp) return -1;
+      if (bExp && !aExp) return 1;
+      const aDate = String(a['Date Appt Confirmed']||'').slice(0,10);
+      const bDate = String(b['Date Appt Confirmed']||'').slice(0,10);
+      return aDate.localeCompare(bDate);
+    });
+  }
+
+  ACTIVE_STATUSES.forEach(status => {
+    const col = document.createElement('div');
+    col.className = 'kc' + (collapsedCols.has(status) ? ' collapsed' : '');
+    col.dataset.status = status;
+
+    const head = document.createElement('div');
+    head.className = 'kh';
+    const isCollapsed = collapsedCols.has(status);
+    // Count expired leads in this column (only for Site Visit Confirmed)
+    const expiredCount = (status === 'Site Visit Confirmed')
+      ? byStatus[status].filter(isVisitExpired).length : 0;
+    // Per-column select-all state
+    const colLeads = byStatus[status];
+    const colPhones = colLeads.map(l => String(l['Phone'] || '')).filter(Boolean);
+    const colSelectedCount = colPhones.filter(p => selectedPhones.has(p)).length;
+    const allColSelected = colPhones.length > 0 && colSelectedCount === colPhones.length;
+    const someColSelected = colSelectedCount > 0 && colSelectedCount < colPhones.length;
+
+    head.innerHTML =
+      '<input type="checkbox" class="kh-select" data-status="' + escapeHtml(status) + '"' +
+        (allColSelected ? ' checked' : '') +
+        (colPhones.length === 0 ? ' disabled' : '') +
+        ' title="Select all in ' + escapeHtml(STATUS_LABELS[status] || status) + '">' +
+      '<span class="kh-name" data-toggle="' + status + '">' + (STATUS_LABELS[status] || status) + '</span>' +
+      '<span class="kh-right">' +
+        '<span class="kh-count">' + byStatus[status].length + '</span>' +
+        (expiredCount > 0 ? '<span class="kh-expired">⚠️ ' + expiredCount + '</span>' : '') +
+        '<button class="kh-toggle" data-toggle="' + status + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + '">' +
+          (isCollapsed ? '▶' : '▼') +
+        '</button>' +
+      '</span>';
+    // Indeterminate is a JS-only property — set after innerHTML
+    const colSelectCb = head.querySelector('.kh-select');
+    if (colSelectCb) colSelectCb.indeterminate = someColSelected;
+    col.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'kb-body';
+
+    if (byStatus[status].length === 0) {
+      body.innerHTML = '<div class="kc-empty">No leads</div>';
+    } else {
+      byStatus[status].forEach(l => body.appendChild(renderCard(l)));
+    }
+    col.appendChild(body);
+    board.appendChild(col);
+  });
+  wireSortable();
+  wireColumnToggles();
+  wireColumnSelectAll();
+}
+
+function wireColumnSelectAll() {
+  document.querySelectorAll('.kh-select').forEach(cb => {
+    cb.onclick = function(e) {
+      e.stopPropagation();
+      const status = cb.dataset.status;
+      if (!status) return;
+      const col = document.querySelector('.kc[data-status="' + status + '"]');
+      if (!col) return;
+      const phones = Array.from(col.querySelectorAll('.cd'))
+        .map(c => c.dataset.phone)
+        .filter(Boolean);
+      if (!phones.length) return;
+      const allSelected = phones.every(p => selectedPhones.has(p));
+      if (allSelected) {
+        phones.forEach(p => selectedPhones.delete(p));
+      } else {
+        phones.forEach(p => selectedPhones.add(p));
+      }
+      render();
+    };
+  });
+}
+
+function wireBulkPauseFu() {
+  const btn = document.getElementById('btnBulkPauseFu');
+  if (!btn) return;
+  btn.onclick = function(e) {
+    e.stopPropagation();
+    bulkPauseFu(btn);
+  };
+}
+
+function wireRefreshPsvMsgs() {
+  const btn = document.getElementById('btnRefreshPsvMsgs');
+  if (!btn) return;
+  btn.onclick = async function(e) {
+    e.stopPropagation();
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = '⏳ fetching…';
+    try {
+      const r = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-refresh-psv-msgs?secret=ABC', {
+        method: 'POST'
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json().catch(() => ({}));
+      const captured = data.captured || 0;
+      const skipped = data.skipped || 0;
+      const errs = (data.errors || []).length;
+      toast(`Refreshed: ${captured} new, ${skipped} silent, ${errs} errors`, errs > 0 ? 'warn' : 'success');
+      await loadLeads(); // reload + re-render with fresh AM values
+    } catch (e) {
+      toast('Refresh failed: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = orig;
+    }
+  };
+}
+
+function wireColumnToggles() {
+  document.querySelectorAll('.kh-toggle, .kh-name').forEach(el => {
+    el.onclick = function() {
+      const status = el.dataset.toggle;
+      if (!status) return;
+      if (collapsedCols.has(status)) collapsedCols.delete(status);
+      else collapsedCols.add(status);
+      render();
+    };
+  });
+}
+
+function renderCard(lead) {
+  const c = document.createElement('div');
+  c.className = 'cd';
+  c.dataset.phone = lead['Phone'];
+
+  const name = lead['Name'] || '(no name)';
+  const phone = String(lead['Phone'] || '');
+  const isSelected = selectedPhones.has(phone);
+  if (isSelected) c.classList.add('selected');
+  const loc = lead['Location'] || '';
+  const tags = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+  const assignee = lead['Assigned To'] || '';
+  const status = String(lead['Status'] || '');
+  const inviteLink = lead['Group Invite Link (AJ)'] || '';
+  const expired = isVisitExpired(lead);
+  const groupName = String(lead['Group Name (AE)'] || '');
+  const svMatch = groupName.match(/^((?:SVJB|SV)-\d{4}-\d{3})/);
+  const svId = svMatch ? svMatch[1] : '';
+  const cardTeam = teamFromLead(lead);
+  const apptDateStr = String(lead['Date Appt Confirmed'] || '').slice(0, 10);
+  const apptShort = (status === 'Site Visit Confirmed' && apptDateStr) ? formatApptShort(apptDateStr) : '';
+  const lastMsgRaw = String(lead['Last Customer Msg (AM)'] || '').trim();
+  const lastMsg = (status === 'Pending Site Visit' && lastMsgRaw)
+    ? (lastMsgRaw.length > 60 ? lastMsgRaw.slice(0, 60) + '…' : lastMsgRaw)
+    : '';
+  const fuCount = parseInt(String(lead['Follow Up Count (AK)'] || '0'), 10) || 0;
+  const fuLastAt = String(lead['Last Follow Up At (AL)'] || '').trim();
+
+  // "Urgent" cards get a red left-border:
+  //   - SVC expired (already handled below via `expired` class)
+  //   - SVC with cancel_request tag (customer wants to cancel — admin must act)
+  //   - PSV with a captured customer last-msg (admin needs to act)
+  //   - PQT (always — waiting on admin to send the QT)
+  const isUrgentPsv = (status === 'Pending Site Visit' && !!lastMsgRaw);
+  const isUrgentPqt = (status === 'Pending QT');
+  const isUrgentSvcCancel = (status === 'Site Visit Confirmed' && tags.includes('cancel_request'));
+  if (isUrgentPsv || isUrgentPqt || isUrgentSvcCancel) c.classList.add('urgent');
+
+  if (expired) c.classList.add('expired');
+
+  // Days in stage
+  const changedAt = lead['Status Changed At'];
+  const daysInfo = computeDaysInStage(changedAt, status);
+
+  // Build move-to select options (excludes current status)
+  const moveOptions = ACTIVE_STATUSES
+    .filter(s => s !== status)
+    .map(s => '<option value="' + s + '">' + (STATUS_LABELS[s] || s) + '</option>')
+    .join('');
+
+  c.innerHTML =
+    '<input type="checkbox" class="cd-select" data-phone="' + escapeHtml(phone) + '"' + (isSelected ? ' checked' : '') + ' onclick="event.stopPropagation();toggleCardSelect(this);">' +
+    (expired ? '<span class="cd-expired-badge">⚠️ VISIT DONE — DECIDE</span>' : '') +
+    (svId || cardTeam === 'JB' ?
+      '<div class="cd-idrow">' +
+        (svId ? '<span class="cd-svid">' + svId + '</span>' : '') +
+        (cardTeam === 'JB' ? '<span class="cd-team-jb">🏢 JB</span>' : '') +
+      '</div>'
+      : '') +
+    '<div class="cd-name">' + escapeHtml(name) + '</div>' +
+    '<span class="cd-phone" data-copy-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();copyPhone(this);">📞 ' + escapeHtml(phone) + '</span>' +
+    (apptShort ? '<div class="cd-apptdate">📅 ' + apptShort + '</div>' : '') +
+    (loc ? '<div class="cd-loc">📍 ' + escapeHtml(loc) + '</div>' : '') +
+    (lastMsg ? '<div class="cd-lastmsg" title="' + escapeHtml(lastMsgRaw) + '">💬 ' + escapeHtml(lastMsg) + '</div>' : '') +
+    '<div class="cd-row">' +
+      '<div class="cd-tags">' +
+        tags.map(t =>
+          '<span class="cd-tag tag-' + t + '" data-clear-tag="' + escapeHtml(t) + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();clearTagFromCard(this);" title="Click × to clear this tag">' +
+            t.replace(/_/g,' ') +
+            '<span class="cd-tag-x">×</span>' +
+          '</span>'
+        ).join('') +
+      '</div>' +
+      '<div class="cd-meta">' +
+        '<div class="cd-meta-l">' +
+          (daysInfo ? '<span class="cd-days ' + daysInfo.cls + '">' + daysInfo.label + '</span>' : '') +
+          (assignee ? '<span class="cd-assignee">' + escapeHtml(assignee) + '</span>' : '') +
+          (fuCount > 0
+            ? '<span class="cd-fucount' + (fuCount >= 3 ? ' high' : '') + '" title="' + (fuLastAt ? 'Last FU: ' + escapeHtml(fuLastAt) : 'Follow-up count') + '">📨 ' + fuCount + '</span>'
+            : '') +
+        '</div>' +
+        '<div class="cd-meta-r">' +
+          (status === 'Pending Site Visit'
+            ? '<button class="cd-setappt" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();setApptFromCard(this);" title="Set site visit appointment for this lead">📅 Set</button>'
+            : '') +
+          '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume auto follow-up' : 'Pause auto follow-up') + '">' + (tags.includes('fu_paused') ? '▶ FU' : '⏸ FU') + '</button>' +
+          (inviteLink
+            ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
+            : '<span class="cd-wa disabled" title="No invite link saved for this lead">💬 WA</span>') +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<select class="cd-move" data-phone="' + escapeHtml(String(phone)) + '" data-current="' + escapeHtml(status) + '" onclick="event.stopPropagation()">' +
+      '<option value="">Move to ▾</option>' +
+      moveOptions +
+    '</select>';
+
+  // Card click → detail modal (but not when interacting with the select)
+  c.onclick = (e) => {
+    if (e.target.classList && e.target.classList.contains('cd-move')) return;
+    openLeadDetail(lead);
+  };
+
+  // Wire the select
+  const sel = c.querySelector('.cd-move');
+  sel.onchange = function(e) {
+    e.stopPropagation();
+    const newStatus = sel.value;
+    if (!newStatus) return;
+    const phoneVal = sel.dataset.phone;
+    const currentStatus = sel.dataset.current;
+    sel.value = ''; // reset
+    moveCardFromButton(phoneVal, newStatus, currentStatus);
+  };
+
+  return c;
+}
+
+function computeDaysInStage(changedAtStr, status) {
+  if (!changedAtStr) return null;
+  let changedDate;
+  try {
+    changedDate = new Date(changedAtStr);
+    if (isNaN(changedDate.getTime())) return null;
+  } catch (_e) { return null; }
+  const days = Math.floor((Date.now() - changedDate.getTime()) / 86400000);
+
+  const t = DAYS_THRESHOLDS[status];
+  let cls = 'green';
+  if (t) {
+    if (days >= t.red) cls = 'err';
+    else if (days >= t.yellow) cls = 'warn';
+  }
+  if (status === 'Site Visit Confirmed') cls = 'green';
+  return {label: days + 'd', cls: cls};
+}
+
+function populateStaffFilter() {
+  const select = document.getElementById('staffFilter');
+  const current = select.value;
+  const staff = new Set();
+  allLeads.forEach(l => {
+    const a = (l['Assigned To'] || '').trim();
+    if (a) staff.add(a);
+  });
+  const sorted = Array.from(staff).sort();
+  // rebuild only if changed
+  const existing = Array.from(select.options).slice(1).map(o => o.value);
+  if (JSON.stringify(existing) !== JSON.stringify(sorted)) {
+    select.innerHTML = '<option value="">All staff</option>' +
+      sorted.map(s => '<option value="' + s + '"' + (s === current ? ' selected' : '') + '>' + s + '</option>').join('');
+  }
+}
+
+function renderArchive(leads) {
+  const archived = leads.filter(l => ARCHIVED_STATUSES.includes(String(l['Status'] || '').trim()));
+
+  const statusFilter = document.getElementById('archStatusFilter').value;
+  const archSearch = (document.getElementById('archSearch').value || '').toLowerCase().trim();
+  const filtered = archived.filter(l => {
+    if (statusFilter && String(l['Status'] || '').trim() !== statusFilter) return false;
+    if (archSearch) {
+      const blob = ((l['Name']||'') + ' ' + (l['Phone']||'') + ' ' + (l['Location']||'')).toLowerCase();
+      if (!blob.includes(archSearch)) return false;
+    }
+    return true;
+  });
+
+  const list = document.getElementById('archiveList');
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="kc-empty">No archived leads match your filter.</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(l => {
+    const status = String(l['Status'] || '');
+    const statusClass = 'arch-status-' + status.replace(/\s+/g, '-');
+    const phone = l['Phone'] || '';
+    const restoreOptions = '<option value="">Restore to ▾</option>' +
+      ACTIVE_STATUSES.map(s => '<option value="' + s + '">' + (STATUS_LABELS[s] || s) + '</option>').join('');
+    return '<div class="arch-row">' +
+      '<div class="arch-row-l">' +
+        '<span class="arch-status-badge ' + statusClass + '">' + status + '</span>' +
+        '<span class="arch-row-name">' + escapeHtml(l['Name'] || '(no name)') + ' · ' + escapeHtml(String(phone)) + '</span>' +
+        '<span class="arch-row-meta">' + escapeHtml(l['Location'] || '') + (l['Group Name (AE)'] ? ' · ' + escapeHtml(l['Group Name (AE)']) : '') + '</span>' +
+      '</div>' +
+      '<div class="arch-row-r">' +
+        '<select class="arch-restore" data-phone="' + escapeHtml(String(phone)) + '" onchange="if(this.value){restoreLead(this.dataset.phone, this.value); this.value=\'\';}">' + restoreOptions + '</select>' +
+        (l['Group Invite Link (AJ)'] ? '<a class="cd-wa" href="' + l['Group Invite Link (AJ)'] + '" target="_blank">💬</a>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ================================================================
+// API HELPER
+// ================================================================
+
+async function apiCall(action, payload) {
+  if (!WEBAPP_URL) {
+    return { status: 'error', message: 'WEBAPP_URL not set' };
+  }
+  try {
+    const r = await fetch(WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // text/plain avoids CORS preflight
+      body: JSON.stringify(Object.assign({}, payload, { action: action, secret: SHARED_SECRET }))
+    });
+    return await r.json();
+  } catch (e) {
+    return { status: 'error', message: e.message || String(e) };
+  }
+}
+
+// ================================================================
+// TOAST
+// ================================================================
+
+function toast(message, type) {
+  type = type || 'info';
+  const c = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = message;
+  c.appendChild(el);
+  setTimeout(function(){
+    el.classList.add('fade');
+    setTimeout(function(){ el.remove(); }, 300);
+  }, 3500);
+}
+
+// ================================================================
+// CARD HELPERS — date formatter, phone copy
+// ================================================================
+
+const SHORT_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function formatApptShort(yyyymmdd) {
+  // "2026-04-30" → "Thu 30 Apr"
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(yyyymmdd)) return '';
+  const dt = new Date(yyyymmdd + 'T12:00:00+08:00');
+  if (isNaN(dt.getTime())) return '';
+  return SHORT_DAYS[dt.getDay()] + ' ' + dt.getDate() + ' ' + SHORT_MONTHS[dt.getMonth()];
+}
+
+function copyPhone(el) {
+  const phone = el.dataset.copyPhone || '';
+  if (!phone) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(phone).then(
+      () => toast('Copied ' + phone, 'success'),
+      () => toast('Copy failed — long-press to select', 'warn')
+    );
+  } else {
+    // Fallback: temporary input + execCommand
+    const ta = document.createElement('textarea');
+    ta.value = phone; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('Copied ' + phone, 'success'); }
+    catch (_e) { toast('Copy failed', 'error'); }
+    document.body.removeChild(ta);
+  }
+}
+
+// ================================================================
+// MULTI-SELECT (checkbox + floating action bar)
+// ================================================================
+
+function toggleCardSelect(cb) {
+  const phone = cb.dataset.phone || '';
+  if (!phone) return;
+  const card = cb.closest('.cd');
+  if (cb.checked) {
+    selectedPhones.add(phone);
+    if (card) card.classList.add('selected');
+  } else {
+    selectedPhones.delete(phone);
+    if (card) card.classList.remove('selected');
+  }
+  updateActionBar();
+}
+
+function updateActionBar() {
+  const bar = document.getElementById('actionBar');
+  const count = selectedPhones.size;
+  if (count === 0) {
+    bar.classList.remove('open');
+    return;
+  }
+  bar.classList.add('open');
+  document.getElementById('actionBarCount').textContent = count + ' selected';
+
+  // Smart pause/resume label: if every selected lead already has fu_paused → resume
+  const fuBtn = document.getElementById('actionBarFu');
+  let allPaused = true;
+  for (const p of selectedPhones) {
+    const lead = (allLeads || []).find(l => String(l['Phone'] || '') === p);
+    if (!lead) continue;
+    if (!String(lead['Tags'] || '').toLowerCase().includes('fu_paused')) { allPaused = false; break; }
+  }
+  fuBtn.dataset.action = allPaused ? 'resume' : 'pause';
+  fuBtn.textContent = allPaused ? '▶ Resume FU' : '⏸ Pause FU';
+}
+
+function actionSelectAllVisible() {
+  document.querySelectorAll('.cd .cd-select').forEach(cb => {
+    const phone = cb.dataset.phone;
+    if (!phone) return;
+    cb.checked = true;
+    selectedPhones.add(phone);
+    const card = cb.closest('.cd');
+    if (card) card.classList.add('selected');
+  });
+  updateActionBar();
+}
+
+function actionClearSelection() {
+  selectedPhones.clear();
+  document.querySelectorAll('.cd.selected').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('.cd-select').forEach(cb => { cb.checked = false; });
+  updateActionBar();
+}
+
+async function actionRefreshMsgs() {
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) return;
+  const btn = document.getElementById('actionBarRefresh');
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ fetching…';
+  try {
+    const r = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-refresh-psv-msgs?secret=ABC', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // text/plain to skip CORS preflight
+      body: JSON.stringify({ phones })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(() => ({}));
+    const captured = data.captured || 0;
+    const skipped = data.skipped || 0;
+    const errs = (data.errors || []).length;
+    toast('Refreshed: ' + captured + ' new, ' + skipped + ' silent' + (errs ? ', ' + errs + ' errors' : ''),
+      errs > 0 ? 'warn' : 'success');
+    await loadLeads();
+  } catch (e) {
+    toast('Refresh failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function actionSendFu() {
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) return;
+  // Build preview from cache
+  const targets = phones
+    .map(p => (allLeads || []).find(l => String(l['Phone'] || '') === p))
+    .filter(Boolean)
+    .filter(l => {
+      const s = String(l['Status'] || '');
+      return s === 'Pending Site Visit' || s === 'Quotation Sent';
+    });
+  if (!targets.length) {
+    toast('No PSV/QS leads in selection — manual FU only fires for those', 'warn');
+    return;
+  }
+  const names = targets.map(l => l['Name'] || l['Phone']).filter(Boolean);
+  const preview = names.slice(0, 3).join(', ') + (names.length > 3 ? ', +' + (names.length - 3) + ' more' : '');
+  if (!confirm('Send manual follow-up to ' + targets.length + ' leads?\n\n' + preview)) return;
+
+  const btn = document.getElementById('actionBarSendFu');
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ sending…';
+  try {
+    const r = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-manual-fu-send?secret=ABC', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ phones: targets.map(l => String(l['Phone'] || '')) })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(() => ({}));
+    const sent = data.sent || 0;
+    const failed = data.failed || 0;
+    toast('Sent FU to ' + sent + ' / ' + (sent + failed) + ' leads', failed > 0 ? 'warn' : 'success');
+    await loadLeads();
+  } catch (e) {
+    toast('Send FU failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+// Round 32 — bulk move selected leads to a new status
+async function actionBulkMoveStatus(newStatus) {
+  if (!newStatus) return;
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) { toast('No leads selected', 'warn'); return; }
+  const label = STATUS_LABELS[newStatus] || newStatus;
+  if (!confirm('Move ' + phones.length + ' lead' + (phones.length > 1 ? 's' : '') + ' to "' + label + '"?')) return;
+  const sel = document.getElementById('actionBarMove');
+  sel.disabled = true;
+  try {
+    const r = await fetch(WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'bulkMoveStatus', secret: 'ABC', phones: phones, newStatus: newStatus })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(function() { return {}; });
+    if (data.status !== 'ok') throw new Error(data.message || 'unknown error');
+    const miss = (data.missing && data.missing.length) ? (' (' + data.missing.length + ' not found)') : '';
+    toast('Moved ' + data.updated + ' lead' + (data.updated > 1 ? 's' : '') + ' to ' + label + miss, 'success');
+    actionClearSelection();
+    await loadLeads();
+  } catch (e) {
+    toast('Bulk move failed: ' + e.message, 'error');
+  } finally {
+    sel.disabled = false;
+  }
+}
+
+async function actionTogglePauseFu() {
+  const fuBtn = document.getElementById('actionBarFu');
+  const action = fuBtn.dataset.action;
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) return;
+
+  const targets = phones
+    .map(p => (allLeads || []).find(l => String(l['Phone'] || '') === p))
+    .filter(Boolean)
+    .filter(l => {
+      const has = String(l['Tags'] || '').toLowerCase().includes('fu_paused');
+      return action === 'pause' ? !has : has;
+    });
+
+  if (!targets.length) {
+    toast('All ' + (action === 'pause' ? 'already paused' : 'already active'), 'info');
+    return;
+  }
+
+  const verb = action === 'pause' ? 'Pause' : 'Resume';
+  const names = targets.map(l => l['Name'] || l['Phone']).filter(Boolean);
+  const preview = names.slice(0, 3).join(', ') + (names.length > 3 ? ', +' + (names.length - 3) + ' more' : '');
+  if (!confirm(verb + ' FU for ' + targets.length + ' leads?\n\n' + preview)) return;
+
+  fuBtn.disabled = true;
+  const orig = fuBtn.textContent;
+  fuBtn.textContent = '⏳ ' + verb + 'ing…';
+
+  const calls = targets.map(l => {
+    const phone = String(l['Phone'] || '');
+    const current = String(l['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+    const next = action === 'pause'
+      ? (current.includes('fu_paused') ? current : [...current, 'fu_paused'])
+      : current.filter(t => t !== 'fu_paused');
+    return apiCall('updateTag', { phone: phone, tags: next.join(',') })
+      .then(r => ({ ok: r && r.status === 'ok', phone, lead: l, next }));
+  });
+
+  const results = await Promise.all(calls);
+  const okCount = results.filter(r => r.ok).length;
+  results.forEach(r => { if (r.ok) r.lead['Tags'] = r.next.join(','); });
+  toast(verb + 'd ' + okCount + ' / ' + targets.length, okCount === targets.length ? 'success' : 'warn');
+
+  fuBtn.disabled = false;
+  fuBtn.textContent = orig;
+  if (typeof render === 'function') render();
+}
+
+// Round 32 — open the existing appointment modal from a PSV card
+async function setApptFromCard(btn) {
+  const phone = btn.dataset.phone || '';
+  if (!phone) return;
+  const lead = (allLeads || []).find(l => String(l['Phone'] || '') === phone);
+  if (!lead) { toast('Lead not found in cache — refresh', 'error'); return; }
+  if (String(lead['Status'] || '') !== 'Pending Site Visit') {
+    toast('Set Appointment is only for PSV leads', 'warn'); return;
+  }
+  // openApptModal auto-detects isReschedule = (status === SVC); for PSV it
+  // shows "Set Site Visit Date" + action='new'. After successful booking,
+  // LG-Booking flips Status to SVC and the kanban refresh moves the card.
+  const result = await openApptModal(lead);
+  if (result && result.confirmed) {
+    toast('Appointment set — card moving to Site Visit Confirmed', 'success');
+    await loadLeads();
+  }
+}
+
+async function togglePauseFu(btn) {
+  const phone = btn.dataset.phone || '';
+  if (!phone) return;
+  const lead = (allLeads || []).find(l => String(l['Phone'] || '') === phone);
+  if (!lead) { toast('Lead not found in cache — refresh', 'error'); return; }
+
+  const current = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+  const isPaused = current.includes('fu_paused');
+  const next = isPaused ? current.filter(t => t !== 'fu_paused') : [...current, 'fu_paused'];
+
+  // Optimistic UI
+  btn.disabled = true;
+  const wasLabel = btn.textContent;
+  btn.textContent = isPaused ? '⏸ FU' : '▶ FU';
+  btn.classList.toggle('paused', !isPaused);
+  btn.title = isPaused ? 'Pause auto follow-up' : 'Resume auto follow-up';
+
+  const r = await apiCall('updateTag', { phone: phone, tags: next.join(',') });
+  btn.disabled = false;
+  if (r && r.status === 'ok') {
+    lead['Tags'] = next.join(',');
+    toast(isPaused ? 'Resumed FU for ' + (lead['Name'] || phone) : 'Paused FU for ' + (lead['Name'] || phone), 'success');
+    // Re-render so the chip in the tags row also updates
+    if (typeof render === 'function') render();
+  } else {
+    toast('Failed to update — refresh', 'error');
+    btn.textContent = wasLabel;
+    btn.classList.toggle('paused', isPaused);
+  }
+}
+
+async function bulkPauseFu(btn) {
+  const action = btn.dataset.action; // 'pause' or 'resume'
+  // Re-derive visible PSV leads at click time (filters may have changed since render)
+  const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  const staff = document.getElementById('staffFilter').value;
+  const tagFilter = document.getElementById('tagFilter').value;
+  const repliesOnly = document.getElementById('btnRepliesNeeded').classList.contains('active');
+  const visiblePsv = (allLeads || []).filter(l => {
+    if (String(l['Status'] || '') !== 'Pending Site Visit') return false;
+    if (search) {
+      const blob = ((l['Name']||'')+' '+(l['Phone']||'')+' '+(l['Location']||'')+' '+(l['Group Name (AE)']||'')).toLowerCase();
+      if (!blob.includes(search)) return false;
+    }
+    if (staff && (l['Assigned To'] || '') !== staff) return false;
+    if (tagFilter) {
+      const t = String(l['Tags']||'').toLowerCase();
+      if (!t.includes(tagFilter.toLowerCase())) return false;
+    }
+    if (repliesOnly) {
+      const t = String(l['Tags']||'').toLowerCase();
+      if (!t.includes('needs_reply')) return false;
+    }
+    return true;
+  });
+
+  if (!visiblePsv.length) { toast('No visible PSV leads', 'warn'); return; }
+
+  // Filter to only those that actually need the change (idempotent)
+  const targets = visiblePsv.filter(l => {
+    const has = String(l['Tags']||'').toLowerCase().includes('fu_paused');
+    return action === 'pause' ? !has : has;
+  });
+
+  if (!targets.length) {
+    toast('All ' + (action === 'pause' ? 'already paused' : 'already active'), 'info');
+    return;
+  }
+
+  const names = targets.map(l => l['Name'] || l['Phone']).filter(Boolean);
+  const preview = names.slice(0, 3).join(', ') + (names.length > 3 ? ', +' + (names.length - 3) + ' more' : '');
+  const verb = action === 'pause' ? 'Pause' : 'Resume';
+  if (!confirm(verb + ' FU for ' + targets.length + ' leads?\n\n' + preview)) return;
+
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ ' + verb + 'ing…';
+
+  const calls = targets.map(l => {
+    const phone = String(l['Phone'] || '');
+    const current = String(l['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+    const next = action === 'pause'
+      ? (current.includes('fu_paused') ? current : [...current, 'fu_paused'])
+      : current.filter(t => t !== 'fu_paused');
+    return apiCall('updateTag', { phone: phone, tags: next.join(',') })
+      .then(r => ({ ok: r && r.status === 'ok', phone, lead: l, next }));
+  });
+
+  const results = await Promise.all(calls);
+  const okCount = results.filter(r => r.ok).length;
+  // Sync local cache so re-render reflects
+  results.forEach(r => { if (r.ok) r.lead['Tags'] = r.next.join(','); });
+  toast(verb + 'd ' + okCount + ' / ' + targets.length + ' leads', okCount === targets.length ? 'success' : 'warn');
+  btn.disabled = false;
+  btn.textContent = orig;
+  if (typeof render === 'function') render();
+}
+
+async function clearTagFromCard(el) {
+  const tagToRemove = el.dataset.clearTag || '';
+  const phone = el.dataset.phone || '';
+  if (!tagToRemove || !phone) return;
+  // Find the lead in current state to get the existing tag list
+  const lead = (allLeads || []).find(l => String(l['Phone'] || '') === phone);
+  if (!lead) { toast('Lead not found in cache — refresh', 'error'); return; }
+  const current = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+  const next = current.filter(t => t !== tagToRemove);
+  // Optimistic UI: remove the chip immediately
+  el.style.transition = 'opacity .15s';
+  el.style.opacity = '0';
+  setTimeout(() => { try { el.remove(); } catch(_e){} }, 150);
+  const r = await apiCall('updateTag', { phone: phone, tags: next.join(',') });
+  if (r && r.status === 'ok') {
+    lead['Tags'] = next.join(',');
+    toast('Cleared "' + tagToRemove.replace(/_/g,' ') + '"', 'success');
+  } else {
+    toast('Failed to clear tag — refresh', 'error');
+    // Re-render to restore the chip
+    if (typeof render === 'function') render();
+  }
+}
+
+// ================================================================
+// SORTABLEJS — drag and drop
+// ================================================================
+
+let sortableInstances = [];
+
+function wireSortable() {
+  // Destroy old instances
+  sortableInstances.forEach(s => { try { s.destroy(); } catch(_e){} });
+  sortableInstances = [];
+
+  // Mobile uses the move-to select instead of drag-and-drop
+  const dragDisabled = isMobile();
+
+  document.querySelectorAll('#kanbanBoard .kc').forEach(col => {
+    const body = col.querySelector('.kb-body');
+    if (!body) return;
+    const inst = Sortable.create(body, {
+      group: 'kanban',
+      animation: 180,
+      ghostClass: 'drag-ghost',
+      delay: 150,
+      delayOnTouchOnly: true,
+      disabled: dragDisabled,
+      onAdd: handleDragAdd,
+      onEnd: function(evt) {
+        // onAdd handles cross-column. onEnd handles same-column reorder (no-op for us).
+      }
+    });
+    sortableInstances.push(inst);
+  });
+}
+
+// Welcome resend when a lead lands in PSV from another phase. Prompts admin
+// for confirmation first (symmetric with the SVC-leaving prompt) so the bot
+// never DMs a customer without explicit human approval.
+// Skipped silently when the previous status was already PSV (drag-drop no-ops).
+// Webhook is also a no-op if lead has no Group ID yet.
+function maybeResendWelcomeOnPsvEntry(lead, newStatus, prevStatus) {
+  if (newStatus !== 'Pending Site Visit') return;
+  if (prevStatus === 'Pending Site Visit') return;
+  if (!lead) return;
+  const phone = String(lead['Phone'] || '');
+  if (!phone) return;
+  const name = lead['Name'] || phone;
+  const groupName = lead['Group Name (AE)'] || '(no group name)';
+  if (!confirm(
+    'Send welcome msg to ' + name + '?\n\n' +
+    'A welcome WhatsApp msg will go to:\n' + groupName + '\n\n' +
+    'It includes the booking link for the waterproofing site inspection.\n\n' +
+    'OK = send\nCancel = skip (status still moves)'
+  )) return;
+  // Async — don't block UI. Log result to toast on completion.
+  fetch('https://leakguard.app.n8n.cloud/webhook/lg-resend-welcome', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ secret: 'ABC', phone })
+  }).then(r => r.json()).then(data => {
+    if (data && data.success) {
+      toast('Welcome msg resent to ' + name, 'success');
+    } else if (data && data.error) {
+      toast('Welcome resend skipped: ' + data.error, 'warn');
+    }
+  }).catch(() => {/* silent fail — admin can manually resend if needed */});
+}
+
+// Pre-move gate when leaving Site Visit Confirmed: confirm (if appt is
+// today/future), call cleanup webhook to delete the calendar event +
+// clear appt fields + set new status atomically.
+// Returns { ok, handled }: ok=false → abort move; handled=true → webhook
+// already updated CRM, caller should skip the normal updateStatus call.
+async function preMoveSvcGate(lead, newStatus) {
+  if (!lead) return { ok: true };
+  const currentStatus = String(lead['Status'] || '');
+  if (currentStatus !== 'Site Visit Confirmed') return { ok: true };
+  if (newStatus === 'Site Visit Confirmed') return { ok: true };
+
+  const calEventId = String(lead['Cal Event ID (AH)'] || '').trim();
+  if (!calEventId) return { ok: true }; // nothing to delete
+
+  const dateApptStr = String(lead['Date Appt Confirmed'] || '').slice(0, 10);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const apptDate = new Date(dateApptStr + 'T12:00:00+08:00');
+  const isFutureOrToday = !isNaN(apptDate.getTime()) && apptDate >= today;
+
+  if (isFutureOrToday) {
+    const slotChosen = String(lead['Slot Chosen'] || '');
+    const apptDisplay = slotChosen || dateApptStr || '(unknown date)';
+    const name = lead['Name'] || lead['Phone'] || '';
+    if (!confirm(
+      'Move and delete calendar event?\n\n' +
+      name + '\'s appointment:\n' + apptDisplay + '\n\n' +
+      'It will be removed from the calendar so the slot frees up for others.\n\n' +
+      'OK = move and delete\nCancel = keep as-is'
+    )) {
+      return { ok: false, reason: 'cancelled' };
+    }
+  }
+
+  try {
+    const r = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-svc-leaving', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        secret: 'ABC',
+        phone: String(lead['Phone'] || ''),
+        calEventId: calEventId,
+        team: teamFromLead(lead),
+        newStatus: newStatus,
+        changedBy: 'Kanban'
+      })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.success === false) {
+      const why = data.error || ('HTTP ' + r.status);
+      toast('Calendar delete failed (' + why + ') — move blocked, retry', 'error');
+      return { ok: false, reason: 'cal_delete_failed' };
+    }
+    // Sync local cache so the next render reflects the cleanup
+    lead['Status'] = newStatus;
+    lead['Status Changed At'] = new Date().toISOString();
+    lead['Slot Chosen'] = '';
+    lead['Date Appt Confirmed'] = '';
+    lead['Cal Event ID (AH)'] = '';
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus) + ' — calendar event deleted', 'success');
+    return { ok: true, handled: true };
+  } catch (e) {
+    toast('Calendar delete failed: ' + e.message + ' — move blocked', 'error');
+    return { ok: false, reason: 'network' };
+  }
+}
+
+// Mobile move-to handler (mirrors handleDragAdd; no SortableJS event)
+async function moveCardFromButton(phone, newStatus, currentStatus) {
+  if (newStatus === currentStatus) return;
+  const lead = allLeads.find(l => String(l['Phone']) === phone);
+
+  // GATED: moving to Site Visit Confirmed → must set appointment first
+  if (newStatus === 'Site Visit Confirmed') {
+    if (!lead) return;
+    const result = await openApptModal(lead);
+    if (!result.confirmed) return;
+    lead['Status'] = 'Site Visit Confirmed';
+    lead['Status Changed At'] = new Date().toISOString();
+    lead['Slot Chosen'] = result.slotChosen;
+    lead['Date Appt Confirmed'] = result.date;
+    lead['Cal Event ID (AH)'] = result.calEventId;
+    toast('Appointment set: ' + result.displayDate + ', ' + result.displayTime, 'success');
+    render();
+    return;
+  }
+
+  // GATED: leaving Site Visit Confirmed → confirm + delete cal event via webhook
+  const svcGate = await preMoveSvcGate(lead, newStatus);
+  if (!svcGate.ok) return;
+  if (svcGate.handled) {
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, currentStatus);
+    render();
+    return;
+  }
+
+  if (newStatus === 'Pending I.Date') {
+    toast('Moved to Pending Installation Date — installation booking flow coming later', 'warn');
+  }
+
+  const r = await apiCall('updateStatus', {
+    phone: phone,
+    status: newStatus,
+    changedBy: 'Kanban'
+  });
+  if (r.status === 'ok') {
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus), 'success');
+    if (lead) {
+      lead['Status'] = newStatus;
+      lead['Status Changed At'] = new Date().toISOString();
+    }
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, currentStatus);
+    render();
+  } else {
+    toast('Move failed: ' + (r.message || 'unknown'), 'error');
+  }
+}
+
+async function handleDragAdd(evt) {
+  const card = evt.item;
+  const newCol = evt.to.closest('.kc');
+  const oldCol = evt.from.closest('.kc');
+  if (!newCol || !oldCol) return;
+
+  const newStatus = newCol.dataset.status;
+  const oldStatus = oldCol.dataset.status;
+  const phone = card.dataset.phone;
+
+  if (newStatus === oldStatus) return;
+
+  const lead = allLeads.find(l => String(l['Phone']) === phone);
+
+  // GATED: drag onto Site Visit Confirmed → must set appointment first
+  if (newStatus === 'Site Visit Confirmed') {
+    const result = await openApptModal(lead);
+    if (!result.confirmed) {
+      // Revert card
+      evt.from.appendChild(card);
+      return;
+    }
+    // lg-booking already updated CRM (status, date, slot, calEventId, sent WA notification)
+    if (lead) {
+      lead['Status'] = 'Site Visit Confirmed';
+      lead['Status Changed At'] = new Date().toISOString();
+      lead['Slot Chosen'] = result.slotChosen;
+      lead['Date Appt Confirmed'] = result.date;
+      lead['Cal Event ID (AH)'] = result.calEventId;
+    }
+    toast('Appointment set: ' + result.displayDate + ', ' + result.displayTime, 'success');
+    return;
+  }
+
+  // GATED: leaving Site Visit Confirmed → confirm + delete cal event via webhook
+  const svcGate = await preMoveSvcGate(lead, newStatus);
+  if (!svcGate.ok) {
+    evt.from.appendChild(card); // revert drag
+    return;
+  }
+  if (svcGate.handled) {
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, oldStatus);
+    return; // card already in new column; lead state synced; toast emitted
+  }
+
+  // Pending I.Date — proper installation booking flow not built yet (S4 backlog)
+  if (newStatus === 'Pending I.Date') {
+    toast('Moved to Pending Installation Date — installation date booking flow coming later', 'warn');
+  }
+
+  // Standard status change
+  const r = await apiCall('updateStatus', {
+    phone: phone,
+    status: newStatus,
+    changedBy: 'Kanban'
+  });
+
+  if (r.status === 'ok') {
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus), 'success');
+    if (lead) {
+      lead['Status'] = newStatus;
+      lead['Status Changed At'] = new Date().toISOString();
+    }
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, oldStatus);
+  } else {
+    evt.from.appendChild(card);
+    toast('Move failed: ' + (r.message || 'unknown'), 'error');
+  }
+}
+
+// ================================================================
+// APPOINTMENT MODAL
+// ================================================================
+
+let apptModalState = null; // {lead, isReschedule, availability, selectedDate, selectedSlot, resolveFn}
+
+function openApptModal(lead) {
+  return new Promise(function(resolve) {
+    const isReschedule = String(lead['Status'] || '') === 'Site Visit Confirmed';
+    apptModalState = {
+      lead: lead,
+      isReschedule: isReschedule,
+      team: teamFromLead(lead),
+      availability: {},
+      existingAppt: null,
+      selectedDate: null,
+      selectedSlot: null,
+      resolveFn: resolve
+    };
+
+    // Populate header
+    document.getElementById('apptTitle').textContent =
+      isReschedule ? 'Reschedule Appointment' : 'Set Site Visit Date';
+    document.getElementById('apptSub').textContent =
+      (lead['Name'] || '(no name)') + ' · ' + lead['Phone'];
+
+    // Lead info block
+    document.getElementById('apptInfo').innerHTML =
+      '<div class="appt-info-row"><span class="appt-info-label">Group</span>' +
+      '<span class="appt-info-val">' + escapeHtml(lead['Group Name (AE)'] || '—') + '</span></div>' +
+      '<div class="appt-info-row"><span class="appt-info-label">Location</span>' +
+      '<span class="appt-info-val">' + escapeHtml(lead['Location'] || '—') + '</span></div>';
+
+    // Existing appointment banner
+    if (isReschedule && lead['Slot Chosen']) {
+      document.getElementById('apptCurrent').textContent = 'Current: ' + lead['Slot Chosen'];
+      document.getElementById('apptCurrent').style.display = 'block';
+    } else {
+      document.getElementById('apptCurrent').style.display = 'none';
+    }
+
+    // Reset error
+    document.getElementById('apptError').classList.remove('on');
+
+    // Set date min = today, max = +60 days. Server's Build Availability
+    // skips past slots for today, so the slot grid will only show ones still
+    // bookable.
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const max = new Date(today.getTime() + 60*86400000);
+    const dateInput = document.getElementById('apptDate');
+    dateInput.min = isoDate(today);
+    dateInput.max = isoDate(max);
+    dateInput.value = '';
+
+    // Reset slots — disabled until availability loads
+    document.getElementById('apptSlotsArea').innerHTML =
+      '<div class="appt-loading">⏳ Loading calendar availability…</div>';
+
+    // Reset confirm button
+    document.getElementById('btnApptConfirm').disabled = true;
+
+    // Disable date input until availability fetch completes (prevents race
+    // where user picks a date before the fetch lands and sees all slots disabled)
+    dateInput.disabled = true;
+
+    // Show modal
+    document.getElementById('apptModal').classList.add('open');
+
+    // Fetch availability — re-enables date input when done
+    loadApptAvailability();
+  });
+}
+
+function isoDate(d) {
+  return d.getFullYear() + '-' +
+    String(d.getMonth()+1).padStart(2,'0') + '-' +
+    String(d.getDate()).padStart(2,'0');
+}
+
+async function loadApptAvailability() {
+  if (!apptModalState) return;
+  const lead = apptModalState.lead;
+  const phone = lead['Phone'] || '';
+  const groupName = lead['Group Name (AE)'] || '';
+  const oldEventId = lead['Cal Event ID (AH)'] || '';
+
+  const params = [];
+  if (phone) params.push('phone=' + encodeURIComponent(phone));
+  if (groupName) params.push('group=' + encodeURIComponent(groupName));
+  if (oldEventId && apptModalState.isReschedule) params.push('oldEventId=' + encodeURIComponent(oldEventId));
+  // Pass client-detected team — server uses this when group prefix doesn't disambiguate
+  if (apptModalState.team) params.push('team=' + encodeURIComponent(apptModalState.team));
+
+  try {
+    const r = await fetch(N8N_AVAIL_URL + '?' + params.join('&'));
+    const data = await r.json();
+    apptModalState.availability = data.availability || {};
+    apptModalState.existingAppt = data.existingAppt || null;
+    // Server is authoritative on team — override the prefix-derived guess
+    if (data.team) apptModalState.team = data.team;
+    // Re-enable date input + reset slot area placeholder
+    const dateInput = document.getElementById('apptDate');
+    if (dateInput) dateInput.disabled = false;
+    const slotsArea = document.getElementById('apptSlotsArea');
+    if (slotsArea && slotsArea.querySelector('.appt-loading')) {
+      slotsArea.innerHTML = '<div class="appt-loading">Pick a date to see available slots…</div>';
+    }
+  } catch (e) {
+    showApptError('Failed to load availability: ' + e.message);
+    // Re-enable date input even on error so user can retry
+    const dateInput = document.getElementById('apptDate');
+    if (dateInput) dateInput.disabled = false;
+  }
+}
+
+function onApptDateChange() {
+  if (!apptModalState) return;
+  const date = document.getElementById('apptDate').value;
+  apptModalState.selectedDate = date;
+  apptModalState.selectedSlot = null;
+  document.getElementById('btnApptConfirm').disabled = true;
+
+  const freeSlots = apptModalState.availability[date] || [];
+  const slotsArea = document.getElementById('apptSlotsArea');
+  slotsArea.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'appt-slots';
+  const slotMap = slotTimesFor(apptModalState.team || 'KL');
+  const slotIds = Object.keys(slotMap).map(Number);
+  for (const s of slotIds) {
+    const btn = document.createElement('button');
+    btn.className = 'appt-slot';
+    btn.textContent = slotMap[s];
+    btn.dataset.slot = s;
+    if (!freeSlots.includes(s)) {
+      btn.disabled = true;
+      btn.title = 'Slot taken';
+    }
+    btn.onclick = function() { onApptSlotPick(s, btn); };
+    grid.appendChild(btn);
+  }
+  slotsArea.appendChild(grid);
+
+  if (freeSlots.length === 0) {
+    showApptError('No slots available on this date — pick another');
+  } else {
+    document.getElementById('apptError').classList.remove('on');
+  }
+}
+
+function onApptSlotPick(slot, btn) {
+  apptModalState.selectedSlot = slot;
+  document.querySelectorAll('.appt-slot').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  document.getElementById('btnApptConfirm').disabled = false;
+  document.getElementById('apptError').classList.remove('on');
+}
+
+function showApptError(msg) {
+  const el = document.getElementById('apptError');
+  el.textContent = msg;
+  el.classList.add('on');
+}
+
+async function confirmApptModal() {
+  if (!apptModalState) return;
+  const s = apptModalState;
+  if (!s.selectedDate || !s.selectedSlot) {
+    showApptError('Pick a date and slot first');
+    return;
+  }
+
+  // Same-slot guard (server enforces too, but UI sanity)
+  if (s.isReschedule && s.lead['Date Appt Confirmed']) {
+    const oldDate = String(s.lead['Date Appt Confirmed']).slice(0,10);
+    const oldSlot = parseSlotFromChosen(s.lead['Slot Chosen'], s.team);
+    if (oldDate === s.selectedDate && oldSlot === s.selectedSlot) {
+      showApptError('Same date and slot as current — pick a different one');
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btnApptConfirm');
+  btn.disabled = true;
+  btn.textContent = 'Booking...';
+
+  const lead = s.lead;
+  const payload = {
+    phone: String(lead['Phone'] || ''),
+    group: String(lead['Group Name (AE)'] || ''),
+    name: String(lead['Name'] || ''),
+    date: s.selectedDate,
+    slot: s.selectedSlot,
+    action: s.isReschedule ? 'reschedule' : 'new',
+    team: s.team || 'KL'
+  };
+  if (s.isReschedule) {
+    payload.oldDate = String(lead['Date Appt Confirmed'] || '').slice(0,10);
+    payload.oldSlot = parseSlotFromChosen(lead['Slot Chosen'], s.team);
+    payload.oldCalEventId = String(lead['Cal Event ID (AH)'] || '');
+  }
+
+  try {
+    const r = await fetch(N8N_BOOKING_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await r.json();
+
+    btn.disabled = false;
+    btn.textContent = 'Confirm Booking';
+
+    if (result.success) {
+      const slotLabel = slotTimesFor(s.team)[s.selectedSlot];
+      // Build slotChosen string the same way lg-booking does
+      const dt = new Date(s.selectedDate + 'T12:00:00+08:00');
+      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const slotChosen = days[dt.getDay()] + ', ' + dt.getDate() + ' ' + months[dt.getMonth()] + ' ' + dt.getFullYear() + ', ' + slotLabel;
+
+      document.getElementById('apptModal').classList.remove('open');
+      apptModalState.resolveFn({
+        confirmed: true,
+        date: s.selectedDate,
+        slot: s.selectedSlot,
+        slotChosen: slotChosen,
+        displayDate: result.displayDate || dt.toDateString(),
+        displayTime: result.displayTime || slotLabel,
+        calEventId: result.calEventId || ''
+      });
+      apptModalState = null;
+    } else {
+      const errMap = {
+        'slot_taken': 'That slot was just taken — pick another',
+        'same_slot': 'Same date and slot as current — pick a different one',
+      };
+      showApptError(errMap[result.error] || (result.message || 'Booking failed'));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Confirm Booking';
+    showApptError('Booking failed: ' + e.message);
+  }
+}
+
+function cancelApptModal() {
+  if (!apptModalState) {
+    document.getElementById('apptModal').classList.remove('open');
+    return;
+  }
+  document.getElementById('apptModal').classList.remove('open');
+  const r = apptModalState.resolveFn;
+  apptModalState = null;
+  r({ confirmed: false });
+}
+
+function parseSlotFromChosen(slotChosen, team) {
+  if (!slotChosen) return 0;
+  // 11:30 AM is JB-only, so check JB first if team unspecified
+  const jbMap = {'11:30 AM':1, '2:00 PM':2};
+  const klMap = {'9:00 AM':1, '10:30 AM':2, '12:00 PM':3, '2:00 PM':4, '3:30 PM':5};
+  const map = (team === 'JB') ? jbMap
+            : (team === 'KL') ? klMap
+            : (slotChosen.indexOf('11:30 AM') !== -1 ? jbMap : klMap);
+  for (const k in map) if (slotChosen.indexOf(k) !== -1) return map[k];
+  return 0;
+}
+
+// ================================================================
+// LEAD DETAIL MODAL
+// ================================================================
+
+let currentModalLead = null;
+let modalOriginalAssignee = '';
+let modalOriginalNotes = '';
+
+function openLeadDetail(lead) {
+  currentModalLead = lead;
+  modalOriginalAssignee = lead['Assigned To'] || '';
+  modalOriginalNotes = lead['Notes'] || '';
+
+  document.getElementById('modalTitle').textContent = lead['Name'] || '(no name)';
+  document.getElementById('modalSub').innerHTML = '<a href="tel:' + lead['Phone'] + '">📞 ' + lead['Phone'] + '</a>';
+
+  const status = lead['Status'] || '';
+  const statusLabel = STATUS_LABELS[status] || status;
+
+  // Build staff dropdown — include current value if not blank
+  const staffOptions = ['Unassigned','Ken','Admin','Alvin','Osment','William','Team KL','Team JB'];
+  const currentAssignee = lead['Assigned To'] || '';
+  if (currentAssignee && staffOptions.indexOf(currentAssignee) === -1) staffOptions.unshift(currentAssignee);
+
+  const groupLink = lead['Group Invite Link (AJ)'] || '';
+  const fmtVal = v => v ? escapeHtml(String(v)) : '<span style="color:#9CA3AF">—</span>';
+
+  document.getElementById('modalBody').innerHTML =
+    '<span class="modal-status">' + escapeHtml(statusLabel) + '</span>' +
+    rowDisplay('Group', lead['Group Name (AE)'] ? escapeHtml(lead['Group Name (AE)']) +
+      (groupLink ? ' · <a href="' + groupLink + '" target="_blank">💬 open</a>' : '') : '—') +
+    rowDisplay('Problem', fmtVal(lead['Problem Type'])) +
+    rowDisplay('Location', fmtVal(lead['Location'])) +
+    rowDisplay('Full address', fmtVal(lead['Full Address'])) +
+    rowDisplay('Slab size', fmtVal(lead['Slab Size (sqft)'])) +
+    rowDisplay('Source', fmtVal(lead['Source'])) +
+    rowDisplay('Slot chosen', fmtVal(lead['Slot Chosen'])) +
+    rowDisplay('Date confirmed', fmtVal(lead['Date Appt Confirmed'])) +
+    rowDisplay('Tags', lead['Tags'] ? escapeHtml(String(lead['Tags'])) : '—') +
+    rowDisplay('Last bot msg', fmtVal(lead['Last Bot Msg Time (AD)'])) +
+    rowEdit('Assigned to', '<select class="modal-select" id="modalAssignee">' +
+      staffOptions.map(s => '<option value="' + escapeHtml(s) + '"' +
+        (s === currentAssignee ? ' selected' : '') + '>' + escapeHtml(s) + '</option>').join('') +
+      '</select>') +
+    rowEdit('Notes', '<textarea class="modal-textarea" id="modalNotes" placeholder="Add notes...">' +
+      escapeHtml(lead['Notes'] || '') + '</textarea>');
+
+  // Show "Edit appointment" only if lead has a confirmed booking
+  const showEditAppt = (status === 'Site Visit Confirmed');
+  document.getElementById('btnEditAppt').style.display = showEditAppt ? '' : 'none';
+
+  // Show "Generate Quotation" only if lead is in Pending QT
+  const showGenQt = (status === 'Pending QT');
+  document.getElementById('btnGenQt').style.display = showGenQt ? '' : 'none';
+
+  document.getElementById('leadModal').classList.add('open');
+}
+
+async function editApptFromDetail() {
+  if (!currentModalLead) return;
+  const lead = currentModalLead;
+  // Close detail modal first; appt modal opens on top
+  closeLeadDetail();
+  const result = await openApptModal(lead);
+  if (result.confirmed) {
+    // Update in-memory
+    lead['Slot Chosen'] = result.slotChosen;
+    lead['Date Appt Confirmed'] = result.date;
+    lead['Cal Event ID (AH)'] = result.calEventId;
+    lead['Status Changed At'] = new Date().toISOString();
+    toast('Appointment rescheduled: ' + result.displayDate + ', ' + result.displayTime, 'success');
+    render();
+  }
+}
+
+function rowDisplay(label, valHtml) {
+  return '<div class="modal-row"><div class="modal-label">' + label + '</div>' +
+    '<div class="modal-val">' + valHtml + '</div></div>';
+}
+function rowEdit(label, inputHtml) {
+  return '<div class="modal-row"><div class="modal-label">' + label + '</div>' + inputHtml + '</div>';
+}
+
+function closeLeadDetail() {
+  document.getElementById('leadModal').classList.remove('open');
+  currentModalLead = null;
+}
+
+async function saveLeadDetail() {
+  if (!currentModalLead) return;
+  const phone = currentModalLead['Phone'];
+  const newAssignee = document.getElementById('modalAssignee').value;
+  const newNotes = document.getElementById('modalNotes').value;
+
+  const saveBtn = document.getElementById('btnModalSave');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving...';
+
+  let allOk = true;
+  const updates = [];
+
+  if (newAssignee !== modalOriginalAssignee) {
+    const r = await apiCall('updateAssignee', { phone: phone, assignee: newAssignee });
+    if (r.status === 'ok') updates.push('assignee'); else { allOk = false; toast('Assignee save failed: ' + r.message, 'error'); }
+  }
+  if (newNotes !== modalOriginalNotes) {
+    const r = await apiCall('updateNotes', { phone: phone, notes: newNotes });
+    if (r.status === 'ok') updates.push('notes'); else { allOk = false; toast('Notes save failed: ' + r.message, 'error'); }
+  }
+
+  saveBtn.disabled = false;
+  saveBtn.textContent = 'Save';
+
+  if (updates.length === 0) {
+    toast('No changes to save', 'info');
+    return;
+  }
+  if (allOk) {
+    toast('Saved: ' + updates.join(' + '), 'success');
+    // Update in-memory lead so subsequent renders reflect changes
+    if (newAssignee !== modalOriginalAssignee) currentModalLead['Assigned To'] = newAssignee;
+    if (newNotes !== modalOriginalNotes) currentModalLead['Notes'] = newNotes;
+    modalOriginalAssignee = newAssignee;
+    modalOriginalNotes = newNotes;
+    render();
+  }
+}
+
+async function sendRescheduleFromModal() {
+  if (!currentModalLead) return;
+  const phone = currentModalLead['Phone'];
+  const groupId = currentModalLead['Group ID (AB)'] || '';
+
+  const btn = document.getElementById('btnSendReschedule');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  const r = await apiCall('sendRescheduleLink', { phone: phone, groupId: groupId });
+
+  btn.disabled = false;
+  btn.textContent = 'Send reschedule link';
+
+  if (r.status === 'ok') {
+    toast('Reschedule link sent to ' + (currentModalLead['Name'] || phone), 'success');
+  } else {
+    toast('Send failed: ' + (r.message || 'unknown'), 'error');
+  }
+}
+
+// ================================================================
+// CREATE NEW LEAD
+// ================================================================
+
+let nlAllowDuplicate = false;       // set true when user accepted a terminal-only match
+let nlDupCheckTimer = null;
+
+function openNewLeadModal() {
+  // Reset form
+  ['nlName','nlPhone','nlLocation','nlProblem','nlAddress','nlNotes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('nlStatus').value = 'Pending Site Visit';
+  document.getElementById('nlSource').value = 'Walk-in';
+  document.getElementById('nlDupWarn').className = 'nl-dup-warn';
+  document.getElementById('nlDupWarn').innerHTML = '';
+  nlAllowDuplicate = false;
+  document.getElementById('btnNewLeadSubmit').disabled = false;
+  document.getElementById('btnNewLeadSubmit').textContent = 'Create Lead';
+
+  // Populate assignee dropdown from current staff list
+  const sel = document.getElementById('nlAssignee');
+  const staff = new Set();
+  allLeads.forEach(l => { const a = (l['Assigned To'] || '').trim(); if (a) staff.add(a); });
+  const sorted = Array.from(staff).sort();
+  sel.innerHTML = '<option value="">Unassigned</option>' +
+    sorted.map(s => '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>').join('');
+
+  document.getElementById('newLeadModal').classList.add('open');
+  setTimeout(() => document.getElementById('nlName').focus(), 50);
+}
+
+function closeNewLeadModal() {
+  document.getElementById('newLeadModal').classList.remove('open');
+}
+
+function checkNewLeadDuplicate() {
+  const phoneRaw = document.getElementById('nlPhone').value || '';
+  const phoneDigits = phoneRaw.replace(/\D/g, '');
+  const warn = document.getElementById('nlDupWarn');
+  const submitBtn = document.getElementById('btnNewLeadSubmit');
+
+  warn.className = 'nl-dup-warn';
+  warn.innerHTML = '';
+  nlAllowDuplicate = false;
+  submitBtn.disabled = false;
+
+  if (phoneDigits.length < 8) return;
+  const last8 = phoneDigits.slice(-8);
+
+  const matches = allLeads.filter(l => {
+    const p = String(l['Phone'] || '').replace(/\D/g, '');
+    return p.length >= 8 && p.endsWith(last8);
+  });
+  if (matches.length === 0) return;
+
+  const activeMatch = matches.find(l => ACTIVE_STATUSES.includes(String(l['Status'] || '').trim()));
+  if (activeMatch) {
+    const name = escapeHtml(activeMatch['Name'] || '(no name)');
+    const status = escapeHtml(activeMatch['Status'] || '');
+    warn.className = 'nl-dup-warn active-dup';
+    warn.innerHTML = '⚠️ <b>Active lead exists</b> for ' + name + ' — Status: ' + status +
+      '. Cannot create duplicate while active.';
+    submitBtn.disabled = true;
+    return;
+  }
+
+  // All matches are terminal — allow with copy-from-existing offer
+  // Pick most recent (last in append order)
+  const prev = matches[matches.length - 1];
+  const name = escapeHtml(prev['Name'] || '(no name)');
+  const status = escapeHtml(prev['Status'] || '');
+  warn.className = 'nl-dup-warn terminal-dup';
+  warn.innerHTML = 'ℹ️ Previous lead found for <b>' + name + '</b> (last status: ' + status + '). ' +
+    'You can continue creating a new lead.<br>' +
+    '<button type="button" class="nl-copy-btn" id="nlCopyBtn">Copy info from previous</button>';
+  nlAllowDuplicate = true;
+
+  // Wire up copy button (re-rendered each time)
+  setTimeout(() => {
+    const btn = document.getElementById('nlCopyBtn');
+    if (btn) btn.onclick = () => {
+      if (prev['Name']) document.getElementById('nlName').value = prev['Name'];
+      if (prev['Location']) document.getElementById('nlLocation').value = prev['Location'];
+      if (prev['Problem Type']) document.getElementById('nlProblem').value = prev['Problem Type'];
+      if (prev['Full Address']) document.getElementById('nlAddress').value = prev['Full Address'];
+      toast('Copied info from ' + (prev['Name'] || 'previous lead'), 'success');
+    };
+  }, 0);
+}
+
+async function submitNewLead() {
+  const name    = (document.getElementById('nlName').value || '').trim();
+  const phone   = (document.getElementById('nlPhone').value || '').trim();
+  const status  = document.getElementById('nlStatus').value;
+  const source  = document.getElementById('nlSource').value;
+  const location    = (document.getElementById('nlLocation').value || '').trim();
+  const problemType = (document.getElementById('nlProblem').value || '').trim();
+  const address     = (document.getElementById('nlAddress').value || '').trim();
+  const notes       = (document.getElementById('nlNotes').value || '').trim();
+  const assignedTo  = document.getElementById('nlAssignee').value || '';
+
+  if (!name)   { toast('Name is required', 'error'); return; }
+  if (!phone)  { toast('Phone is required', 'error'); return; }
+  if (!status) { toast('Status is required', 'error'); return; }
+
+  // Final phone digit-check (last-8 minimum)
+  const phoneDigits = phone.replace(/\D/g, '');
+  if (phoneDigits.length < 8) { toast('Phone looks too short', 'error'); return; }
+
+  const submitBtn = document.getElementById('btnNewLeadSubmit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Creating...';
+
+  const r = await apiCall('createLead', {
+    name: name,
+    phone: phoneDigits,
+    status: status,
+    source: source,
+    location: location,
+    address: address,
+    problemType: problemType,
+    notes: notes,
+    assignedTo: assignedTo,
+    allowDuplicate: nlAllowDuplicate,
+    changedBy: 'Kanban (create)'
+  });
+
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Create Lead';
+
+  if (r.status === 'ok') {
+    toast('Lead created at row ' + r.rowNum, 'success');
+    closeNewLeadModal();
+    await loadLeads();
+  } else if (r.code === 'active_duplicate') {
+    toast('Active lead already exists at row ' + r.existingRow + ' (' + r.existingStatus + ')', 'error');
+  } else {
+    toast('Create failed: ' + (r.message || 'unknown'), 'error');
+  }
+}
+
+// ================================================================
+// ARCHIVE — restore action
+// ================================================================
+
+async function restoreLead(phone, newStatus) {
+  const lead = allLeads.find(l => String(l['Phone']) === phone);
+  const prevStatus = lead ? String(lead['Status'] || '') : '';
+  const r = await apiCall('updateStatus', {
+    phone: phone,
+    status: newStatus,
+    changedBy: 'Kanban (restore)'
+  });
+  if (r.status === 'ok') {
+    toast('Restored to ' + newStatus, 'success');
+    if (lead) { lead['Status'] = newStatus; lead['Status Changed At'] = new Date().toISOString(); }
+    maybeResendWelcomeOnPsvEntry(lead, newStatus, prevStatus);
+    render();
+  } else {
+    toast('Restore failed: ' + (r.message || 'unknown'), 'error');
+  }
+}
+
+// ================================================================
+// HELPERS
+// ================================================================
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function showError(msg) {
+  const el = document.getElementById('err');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+// ================================================================
+// EVENT WIRING
+// ================================================================
+
+document.getElementById('btnRefresh').onclick = loadLeads;
+document.getElementById('btnNewLead').onclick = openNewLeadModal;
+document.getElementById('btnNewLeadClose').onclick = closeNewLeadModal;
+document.getElementById('btnNewLeadCancel').onclick = closeNewLeadModal;
+document.getElementById('btnNewLeadSubmit').onclick = submitNewLead;
+document.getElementById('nlPhone').oninput = function() {
+  if (nlDupCheckTimer) clearTimeout(nlDupCheckTimer);
+  nlDupCheckTimer = setTimeout(checkNewLeadDuplicate, 250);
+};
+document.getElementById('searchInput').oninput = debounce(render, 200);
+document.getElementById('staffFilter').onchange = render;
+document.getElementById('tagFilter').onchange = render;
+// Red-border filter: persist choice in localStorage so it survives reload
+(function initRedFilter() {
+  var sel = document.getElementById('redFilter');
+  try { sel.value = localStorage.getItem('kanbanRedFilter') || ''; } catch (_e) {}
+  sel.onchange = function() {
+    try { localStorage.setItem('kanbanRedFilter', this.value); } catch (_e) {}
+    render();
+  };
+})();
+document.getElementById('btnRepliesNeeded').onclick = function() {
+  this.classList.toggle('active');
+  render();
+};
+document.getElementById('btnSilentOnly').onclick = function() {
+  this.classList.toggle('active');
+  render();
+};
+document.getElementById('archStatusFilter').onchange = render;
+document.getElementById('archSearch').oninput = debounce(render, 200);
+
+document.getElementById('btnArchive').onclick = () => {
+  viewMode = (viewMode === 'kanban') ? 'archive' : 'kanban';
+  document.getElementById('kanbanView').style.display = (viewMode === 'kanban') ? 'block' : 'none';
+  document.getElementById('archiveView').classList.toggle('on', viewMode === 'archive');
+  document.getElementById('btnArchive').innerHTML = viewMode === 'archive'
+    ? '← Back to Kanban'
+    : '📦 Archive <span class="badge" id="archCount">' + document.getElementById('archCount').textContent + '</span>';
+  render();
+};
+
+function debounce(fn, ms) {
+  let t;
+  return function(){ clearTimeout(t); t = setTimeout(fn, ms); };
+}
+
+// ================================================================
+// AUTO-REFRESH (60s, paused when tab hidden)
+// ================================================================
+
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (document.getElementById('leadModal').classList.contains('open')) return; // pause while modal open
+    loadLeads();
+  }, REFRESH_MS);
+}
+
+// ================================================================
+// MODAL EVENT WIRING
+// ================================================================
+
+document.getElementById('btnModalClose').onclick = closeLeadDetail;
+document.getElementById('btnModalCancel').onclick = closeLeadDetail;
+document.getElementById('btnModalSave').onclick = saveLeadDetail;
+document.getElementById('btnSendReschedule').onclick = sendRescheduleFromModal;
+document.getElementById('btnEditAppt').onclick = editApptFromDetail;
+document.getElementById('btnGenQt').onclick = function() {
+  if (!currentModalLead) return;
+  const phone = currentModalLead['Phone'];
+  window.open('quotation_builder.html?phone=' + encodeURIComponent(phone), '_blank');
+};
+document.getElementById('leadModal').addEventListener('click', function(e){
+  if (e.target.id === 'leadModal') closeLeadDetail();
+});
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    if (document.getElementById('apptModal').classList.contains('open')) cancelApptModal();
+    else closeLeadDetail();
+  }
+});
+
+// Appointment modal events
+document.getElementById('btnApptClose').onclick = cancelApptModal;
+document.getElementById('btnApptCancel').onclick = cancelApptModal;
+document.getElementById('btnApptConfirm').onclick = confirmApptModal;
+document.getElementById('apptDate').onchange = onApptDateChange;
+document.getElementById('apptModal').addEventListener('click', function(e){
+  if (e.target.id === 'apptModal') cancelApptModal();
+});
+
+// ================================================================
+// BOOT
+// ================================================================
+
+// On mobile, start with all phases collapsed so user sees just the list of
+// column headers and taps the one(s) they want to expand.
+if (isMobile()) {
+  ACTIVE_STATUSES.forEach(s => collapsedCols.add(s));
+}
+
+// Round 32 — populate the bulk Move-to dropdown with all active phases
+(function initBulkMoveDropdown() {
+  var sel = document.getElementById('actionBarMove');
+  if (!sel) return;
+  ACTIVE_STATUSES.forEach(function(s) {
+    var opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = STATUS_LABELS[s] || s;
+    sel.appendChild(opt);
+  });
+})();
+
+loadLeads();
+startAutoRefresh();
+</script>
+</body>
+</html>
