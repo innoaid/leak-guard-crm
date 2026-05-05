@@ -278,8 +278,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <option value="red">🔴 Red border only</option>
     <option value="non-red">⚪ Non-red only</option>
   </select>
-  <button class="refresh quickfilter" id="btnRepliesNeeded" title="Show only cards tagged needs_reply (combines with staff filter)">🔔 Replies needed</button>
-  <button class="refresh quickfilter" id="btnSilentOnly" title="Show only PSV/QS leads who have never sent any customer message — useful for bulk first-touch FU">🔇 Silent</button>
   <button class="btn-newlead" id="btnNewLead" title="Create a new lead manually">+ New Lead</button>
   <button class="refresh" id="btnBulkLink" title="Auto-link pre-CRM WA groups to CRM rows (bot stays silent)" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">🔗 Bulk Link</button>
   <button class="refresh" id="btnRefresh">🔄 Refresh</button>
@@ -686,8 +684,6 @@ function render() {
   const staff = document.getElementById('staffFilter').value;
   const tagFilter = document.getElementById('tagFilter').value;
   const redFilter = document.getElementById('redFilter').value;
-  const repliesOnly = document.getElementById('btnRepliesNeeded').classList.contains('active');
-  const silentOnly = document.getElementById('btnSilentOnly').classList.contains('active');
 
   // Mirror of the urgent-card flags computed in renderCard. Kept in sync if
   // those conditions ever expand.
@@ -719,18 +715,6 @@ function render() {
     }
     if (redFilter === 'red' && !isRedBorder(lead)) return false;
     if (redFilter === 'non-red' && isRedBorder(lead)) return false;
-    if (repliesOnly) {
-      const tags = String(lead['Tags'] || '').toLowerCase();
-      if (!tags.includes('needs_reply')) return false;
-    }
-    if (silentOnly) {
-      // Only narrows PSV/QS columns. Cards in other phases are unaffected.
-      const status = String(lead['Status'] || '');
-      if (status === 'Pending Site Visit' || status === 'Quotation Sent') {
-        const lastMsg = String(lead['Last Customer Msg (AM)'] || '').trim();
-        if (lastMsg) return false;
-      }
-    }
     return true;
   }
 
@@ -1442,7 +1426,6 @@ async function bulkPauseFu(btn) {
   const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
   const staff = document.getElementById('staffFilter').value;
   const tagFilter = document.getElementById('tagFilter').value;
-  const repliesOnly = document.getElementById('btnRepliesNeeded').classList.contains('active');
   const visiblePsv = (allLeads || []).filter(l => {
     if (String(l['Status'] || '') !== 'Pending Site Visit') return false;
     if (search) {
@@ -1453,10 +1436,6 @@ async function bulkPauseFu(btn) {
     if (tagFilter) {
       const t = String(l['Tags']||'').toLowerCase();
       if (!t.includes(tagFilter.toLowerCase())) return false;
-    }
-    if (repliesOnly) {
-      const t = String(l['Tags']||'').toLowerCase();
-      if (!t.includes('needs_reply')) return false;
     }
     return true;
   });
@@ -2942,14 +2921,6 @@ document.getElementById('tagFilter').onchange = render;
     render();
   };
 })();
-document.getElementById('btnRepliesNeeded').onclick = function() {
-  this.classList.toggle('active');
-  render();
-};
-document.getElementById('btnSilentOnly').onclick = function() {
-  this.classList.toggle('active');
-  render();
-};
 document.getElementById('archStatusFilter').onchange = render;
 document.getElementById('archSearch').oninput = debounce(render, 200);
 
