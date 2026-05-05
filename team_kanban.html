@@ -1852,6 +1852,8 @@ async function loadApptAvailability() {
   if (oldEventId && apptModalState.isReschedule) params.push('oldEventId=' + encodeURIComponent(oldEventId));
   // Pass client-detected team — server uses this when group prefix doesn't disambiguate
   if (apptModalState.team) params.push('team=' + encodeURIComponent(apptModalState.team));
+  // Round 46: kanban admin can still book KL slot 3 (12-1pm) + Sundays — bypass public block
+  params.push('adminOverride=1');
 
   try {
     const r = await fetch(N8N_AVAIL_URL + '?' + params.join('&'));
