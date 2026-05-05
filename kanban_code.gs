@@ -52,6 +52,7 @@ function doPost(e) {
       case 'setPending':         return handleSetPending(body);  // round 12 — v2 agent pending-confirmation slot
       case 'bulkMoveStatus':     return handleBulkMoveStatus(body);  // round 32 — kanban bulk move-to-phase
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
+      case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -480,6 +481,36 @@ function handleBulkMoveStatus(body) {
     updated++;
   });
   return jsonResponse({status: 'ok', updated: updated, missing: missing, newStatus: newStatus});
+}
+
+// ================================================================
+// Round 45 — Cancel an existing appointment (SVC -> PSV)
+// Body: {phone, secret, changedBy}
+// Effect: clears Cal Event ID + slot/date + pending fields, flips Status to
+// 'Pending Site Visit'. Calendar-event deletion + WA messages happen in the
+// n8n LG - Cancel Appointment workflow that calls this handler.
+// ================================================================
+
+function handleCancelAppointment(body) {
+  const phone = String(body.phone || '').trim();
+  if (!phone) return jsonResponse({status: 'error', message: 'phone required'});
+
+  const sheet = getSheet();
+  const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({status: 'error', message: 'lead not found', phone: phone});
+
+  const ts = new Date().toISOString();
+  try { setCellByHeader(sheet, row, 'Status',                    'Pending Site Visit'); } catch (_) {}
+  try { setCellByHeader(sheet, row, 'Cal Event ID (AH)',         ''); } catch (_) {}
+  try { setCellByHeader(sheet, row, 'Slot Chosen',               ''); } catch (_) {}
+  try { setCellByHeader(sheet, row, 'Date Appt Confirmed',       ''); } catch (_) {}
+  try { setCellByHeader(sheet, row, 'Pending Date (AF)',         ''); } catch (_) {}
+  try { setCellByHeader(sheet, row, 'Pending Slot (AG)',         ''); } catch (_) {}
+  try { setCellByHeader(sheet, row, 'Pending Confirmation (AI)', ''); } catch (_) {}
+  try { setCellByHeader(sheet, row, 'Status Changed At',         ts); } catch (_) {}
+  try { setCellByHeader(sheet, row, 'Changed By',                body.changedBy || 'Kanban_CancelAppt'); } catch (_) {}
+
+  return jsonResponse({status: 'ok', row: row, newStatus: 'Pending Site Visit'});
 }
 
 // ================================================================

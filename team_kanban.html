@@ -355,7 +355,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       </div>
     </div>
     <div class="modal-actions">
-      <button class="modal-btn modal-btn-secondary" id="btnApptCancel">Cancel</button>
+      <button class="modal-btn modal-btn-info" id="btnApptCancelAppointment" style="display:none;background:#FEE2E2;color:#991B1B">🚫 Cancel Appointment</button>
+      <button class="modal-btn modal-btn-secondary" id="btnApptCancel">Close</button>
       <button class="modal-btn modal-btn-primary" id="btnApptConfirm" disabled>Confirm Booking</button>
     </div>
   </div>
@@ -1788,6 +1789,9 @@ function openApptModal(lead) {
       '<div class="appt-info-row"><span class="appt-info-label">Location</span>' +
       '<span class="appt-info-val">' + escapeHtml(lead['Location'] || '—') + '</span></div>';
 
+    // Round 45: show cancel-appointment button only when there's an existing booking
+    document.getElementById('btnApptCancelAppointment').style.display = isReschedule ? '' : 'none';
+
     // Existing appointment banner
     if (isReschedule && lead['Slot Chosen']) {
       document.getElementById('apptCurrent').textContent = 'Current: ' + lead['Slot Chosen'];
@@ -2011,6 +2015,57 @@ function cancelApptModal() {
   const r = apptModalState.resolveFn;
   apptModalState = null;
   r({ confirmed: false });
+}
+
+// Round 45: cancel an existing appointment from inside the appt modal.
+// Calls n8n lg-cancel-appointment which deletes the cal event, flips CRM
+// status back to 'Pending Site Visit', and sends a cancellation msg + new
+// booking link to the WA group.
+async function cancelExistingAppointment() {
+  if (!apptModalState || !apptModalState.lead) return;
+  const lead = apptModalState.lead;
+  const phone = lead['Phone'];
+  const name = lead['Name'] || '(no name)';
+  if (!confirm('Cancel ' + name + '’s appointment?\n\n• Calendar event will be deleted\n• Lead returns to Pending Site Visit\n• Customer gets a cancellation message + new booking link in their WA group')) return;
+
+  const btn = document.getElementById('btnApptCancelAppointment');
+  btn.disabled = true;
+  btn.textContent = 'Cancelling...';
+
+  let ok = false, errMsg = '';
+  try {
+    const r = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-cancel-appointment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: SHARED_SECRET, phone: phone })
+    });
+    const j = await r.json().catch(function(){ return {}; });
+    ok = !!(r.ok && j && j.status === 'ok');
+    if (!ok) errMsg = (j && j.message) || ('HTTP ' + r.status);
+  } catch (e) { errMsg = e.message || String(e); }
+
+  btn.disabled = false;
+  btn.textContent = '🚫 Cancel Appointment';
+
+  if (!ok) {
+    toast('Cancel failed: ' + errMsg, 'error');
+    return;
+  }
+
+  // Update in-memory lead so kanban re-renders without the SVC card
+  lead['Status'] = 'Pending Site Visit';
+  lead['Cal Event ID (AH)'] = '';
+  lead['Slot Chosen'] = '';
+  lead['Date Appt Confirmed'] = '';
+
+  document.getElementById('apptModal').classList.remove('open');
+  const r = apptModalState.resolveFn;
+  apptModalState = null;
+  r({ confirmed: false, cancelled: true });
+
+  toast('Appointment cancelled — lead back to PSV, customer notified', 'success');
+  render();
+  loadLeads();
 }
 
 function parseSlotFromChosen(slotChosen, team) {
@@ -2701,6 +2756,7 @@ document.addEventListener('keydown', function(e){
 document.getElementById('btnApptClose').onclick = cancelApptModal;
 document.getElementById('btnApptCancel').onclick = cancelApptModal;
 document.getElementById('btnApptConfirm').onclick = confirmApptModal;
+document.getElementById('btnApptCancelAppointment').onclick = cancelExistingAppointment;
 document.getElementById('apptDate').onchange = onApptDateChange;
 document.getElementById('apptModal').addEventListener('click', function(e){
   if (e.target.id === 'apptModal') cancelApptModal();
