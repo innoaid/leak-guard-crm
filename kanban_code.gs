@@ -51,6 +51,7 @@ function doPost(e) {
       case 'resetTestLead':      return handleResetTestLead(body);
       case 'setPending':         return handleSetPending(body);  // round 12 — v2 agent pending-confirmation slot
       case 'bulkMoveStatus':     return handleBulkMoveStatus(body);  // round 32 — kanban bulk move-to-phase
+      case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -450,6 +451,47 @@ function handleBulkMoveStatus(body) {
     updated++;
   });
   return jsonResponse({status: 'ok', updated: updated, missing: missing, newStatus: newStatus});
+}
+
+// ================================================================
+// Task 2 — Edit lead details from kanban modal
+// Body: {action, secret, phone, name?, location?, fullAddress?, problemType?, slabSize?, source?, newGroupName?, changedBy?}
+// Phone is the lookup key (immutable). Only fields present in body are written.
+// ================================================================
+
+function handleUpdateLeadDetails(body) {
+  const phone = String(body.phone || '').trim();
+  if (!phone) return jsonResponse({status: 'error', message: 'phone required'});
+
+  const sheet = getSheet();
+  const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({status: 'error', message: 'lead not found', phone: phone});
+
+  const mapping = {
+    'name':         'Name',
+    'location':     'Location',
+    'fullAddress':  'Full Address',
+    'problemType':  'Problem Type',
+    'slabSize':     'Slab Size (sqft)',
+    'source':       'Source',
+    'newGroupName': 'Group Name (AE)'
+  };
+
+  const updated = [];
+  Object.keys(mapping).forEach(function(bodyKey) {
+    const v = body[bodyKey];
+    if (v === undefined || v === null) return;
+    const header = mapping[bodyKey];
+    try {
+      setCellByHeader(sheet, row, header, String(v));
+      updated.push(header);
+    } catch (_e) {}
+  });
+
+  try { setCellByHeader(sheet, row, 'Status Changed At', new Date().toISOString()); } catch (_e) {}
+  try { setCellByHeader(sheet, row, 'Changed By', body.changedBy || 'Kanban_Edit'); } catch (_e) {}
+
+  return jsonResponse({status: 'ok', row: row, updated: updated});
 }
 
 // ================================================================

@@ -321,7 +321,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <span class="action-bar-count" id="actionBarCount">0 selected</span>
   <button class="action-bar-btn" id="actionBarRefresh" onclick="actionRefreshMsgs()">🔄 Refresh msgs</button>
   <button class="action-bar-btn" id="actionBarSendFu" onclick="actionSendFu()">📨 Send FU</button>
-  <button class="action-bar-btn bar-fu" id="actionBarFu" data-action="pause" onclick="actionTogglePauseFu()">⏸ Pause FU</button>
+  <button class="action-bar-btn bar-fu" id="actionBarFu" data-action="pause" onclick="actionTogglePauseFu()" title="Pause bot (silent in group + no FU)">⏸ Pause Bot</button>
   <select class="action-bar-btn" id="actionBarMove" onchange="actionBulkMoveStatus(this.value); this.value='';" title="Move all selected leads to a new phase">
     <option value="">📋 Move to...</option>
   </select>
@@ -375,9 +375,47 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <div class="modal-actions">
       <button class="modal-btn modal-btn-info" id="btnEditAppt" style="display:none">Edit appointment</button>
       <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Quotation</button>
+      <button class="modal-btn modal-btn-info" id="btnEditDetails">✏️ Edit details</button>
       <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
       <button class="modal-btn modal-btn-secondary" id="btnModalCancel">Close</button>
       <button class="modal-btn modal-btn-primary" id="btnModalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Lead Details modal (Task 2) -->
+<div class="modal-overlay" id="editLeadModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">Edit Lead Details</div>
+        <div class="modal-sub" id="elSub">—</div>
+      </div>
+      <button class="modal-close" id="btnEditLeadClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="nl-row"><label for="elName">Name</label><input id="elName" type="text" autocomplete="off"></div>
+      <div class="nl-row"><label for="elLocation">Location</label><input id="elLocation" type="text" placeholder="e.g. Klang"></div>
+      <div class="nl-row"><label for="elFullAddress">Full Address</label><textarea id="elFullAddress" rows="2"></textarea></div>
+      <div class="nl-row"><label for="elProblem">Problem Type</label><input id="elProblem" type="text" placeholder="e.g. Bathroom slab leaking"></div>
+      <div class="nl-row"><label for="elSlab">Slab Size (sqft)</label><input id="elSlab" type="text" placeholder="e.g. 25"></div>
+      <div class="nl-row"><label for="elSource">Source</label>
+        <select id="elSource">
+          <option value="">— keep current —</option>
+          <option>Walk-in</option>
+          <option>Repeat Customer</option>
+          <option>Referral</option>
+          <option>Direct Call</option>
+          <option>Online</option>
+          <option>ChatHero</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="nl-dup-warn" id="elRenameNote" style="display:none">ℹ️ Name or Location changed — WhatsApp group will be renamed too.</div>
+      <div class="nl-actions">
+        <button class="nl-btn-secondary" id="btnEditLeadCancel">Cancel</button>
+        <button class="nl-btn-primary" id="btnEditLeadSubmit">Save changes</button>
+      </div>
     </div>
   </div>
 </div>
@@ -895,7 +933,7 @@ function renderCard(lead) {
           (status === 'Pending Site Visit'
             ? '<button class="cd-setappt" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();setApptFromCard(this);" title="Set site visit appointment for this lead">📅 Set</button>'
             : '') +
-          '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume auto follow-up' : 'Pause auto follow-up') + '">' + (tags.includes('fu_paused') ? '▶ FU' : '⏸ FU') + '</button>' +
+          '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume bot (group + FU)' : 'Pause bot (silent in group + no FU)') + '">' + (tags.includes('fu_paused') ? '▶ Bot' : '⏸ Bot') + '</button>' +
           (inviteLink
             ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
             : '<span class="cd-wa disabled" title="No invite link saved for this lead">💬 WA</span>') +
@@ -1112,7 +1150,7 @@ function updateActionBar() {
     if (!String(lead['Tags'] || '').toLowerCase().includes('fu_paused')) { allPaused = false; break; }
   }
   fuBtn.dataset.action = allPaused ? 'resume' : 'pause';
-  fuBtn.textContent = allPaused ? '▶ Resume FU' : '⏸ Pause FU';
+  fuBtn.textContent = allPaused ? '▶ Resume Bot' : '⏸ Pause Bot';
 }
 
 function actionSelectAllVisible() {
@@ -1315,7 +1353,7 @@ async function togglePauseFu(btn) {
   // Optimistic UI
   btn.disabled = true;
   const wasLabel = btn.textContent;
-  btn.textContent = isPaused ? '⏸ FU' : '▶ FU';
+  btn.textContent = isPaused ? '⏸ Bot' : '▶ Bot';
   btn.classList.toggle('paused', !isPaused);
   btn.title = isPaused ? 'Pause auto follow-up' : 'Resume auto follow-up';
 
@@ -2097,6 +2135,162 @@ async function sendRescheduleFromModal() {
 }
 
 // ================================================================
+// EDIT LEAD DETAILS (Task 2)
+// ================================================================
+
+let elOriginal = null;          // snapshot of original values for diff
+let elGroupNameOriginal = '';   // existing Group Name (AE) — used to derive new name
+
+function openEditLeadModal() {
+  if (!currentModalLead) return;
+  const lead = currentModalLead;
+  elOriginal = {
+    name:        String(lead['Name'] || ''),
+    location:    String(lead['Location'] || ''),
+    fullAddress: String(lead['Full Address'] || ''),
+    problemType: String(lead['Problem Type'] || ''),
+    slabSize:    String(lead['Slab Size (sqft)'] || ''),
+    source:      String(lead['Source'] || '')
+  };
+  elGroupNameOriginal = String(lead['Group Name (AE)'] || '');
+
+  document.getElementById('elSub').textContent = '📞 ' + (lead['Phone'] || '');
+  document.getElementById('elName').value        = elOriginal.name;
+  document.getElementById('elLocation').value    = elOriginal.location;
+  document.getElementById('elFullAddress').value = elOriginal.fullAddress;
+  document.getElementById('elProblem').value     = elOriginal.problemType;
+  document.getElementById('elSlab').value        = elOriginal.slabSize;
+  // Source dropdown: if original isn't in the predefined list, inject it so it can be preserved
+  const elSrc = document.getElementById('elSource');
+  const srcOpts = Array.from(elSrc.options).map(function(o){ return o.value; });
+  if (elOriginal.source && srcOpts.indexOf(elOriginal.source) === -1) {
+    const opt = document.createElement('option');
+    opt.value = elOriginal.source;
+    opt.textContent = elOriginal.source + ' (current)';
+    elSrc.insertBefore(opt, elSrc.options[1] || null);
+  }
+  elSrc.value = elOriginal.source || '';
+  updateRenameNote();
+  document.getElementById('editLeadModal').classList.add('open');
+}
+
+function closeEditLeadModal() {
+  document.getElementById('editLeadModal').classList.remove('open');
+  elOriginal = null;
+  elGroupNameOriginal = '';
+}
+
+function updateRenameNote() {
+  const note = document.getElementById('elRenameNote');
+  if (!elOriginal || !currentModalLead) { note.style.display = 'none'; return; }
+  const groupId = String(currentModalLead['Group ID (AB)'] || '').trim();
+  if (!groupId) { note.style.display = 'none'; return; }
+  const nameChanged = document.getElementById('elName').value.trim() !== elOriginal.name.trim();
+  const locChanged  = document.getElementById('elLocation').value.trim() !== elOriginal.location.trim();
+  note.style.display = (nameChanged || locChanged) ? '' : 'none';
+}
+
+// Build new group name from existing pattern: "<PREFIX>-MMYY-NNN <Name> - <Location>"
+// If existing pattern is non-standard, return null and skip rename.
+function deriveNewGroupName(existingGroupName, newName, newLocation) {
+  if (!existingGroupName) return null;
+  const m = String(existingGroupName).match(/^((?:SV|SVJB|QT|QTJB)-\d{4}-\d{3})\b/i);
+  if (!m) return null;
+  const prefix = m[1];
+  const safeName = String(newName || '').trim() || '(no name)';
+  const safeLoc  = String(newLocation || '').trim();
+  return safeLoc ? prefix + ' ' + safeName + ' - ' + safeLoc : prefix + ' ' + safeName;
+}
+
+async function saveEditLeadModal() {
+  if (!currentModalLead || !elOriginal) return;
+  const phone = currentModalLead['Phone'];
+
+  const next = {
+    name:        document.getElementById('elName').value.trim(),
+    location:    document.getElementById('elLocation').value.trim(),
+    fullAddress: document.getElementById('elFullAddress').value.trim(),
+    problemType: document.getElementById('elProblem').value.trim(),
+    slabSize:    document.getElementById('elSlab').value.trim(),
+    source:      document.getElementById('elSource').value.trim()
+  };
+
+  // Diff — only send changed fields. Treat empty Source ('— keep current —') as no-change.
+  const payload = { phone: phone, changedBy: 'Kanban_Edit' };
+  const diff = [];
+  Object.keys(next).forEach(function(k){
+    if (k === 'source' && next.source === '' && elOriginal.source !== '') return;
+    if (next[k] !== elOriginal[k]) { payload[k] = next[k]; diff.push(k); }
+  });
+
+  // Group rename if Name or Location changed AND lead has a Group ID
+  const groupId = String(currentModalLead['Group ID (AB)'] || '').trim();
+  const willRename = groupId && (next.name !== elOriginal.name || next.location !== elOriginal.location);
+  let newGroupName = null;
+  if (willRename) {
+    newGroupName = deriveNewGroupName(elGroupNameOriginal, next.name, next.location);
+    if (newGroupName) payload.newGroupName = newGroupName;
+  }
+
+  if (diff.length === 0) {
+    toast('No changes to save', 'info');
+    return;
+  }
+
+  const btn = document.getElementById('btnEditLeadSubmit');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  // 1) Apps Script — update CRM cells
+  const r = await apiCall('updateLeadDetails', payload);
+  if (r.status !== 'ok') {
+    btn.disabled = false;
+    btn.textContent = 'Save changes';
+    toast('Save failed: ' + (r.message || 'unknown'), 'error');
+    return;
+  }
+
+  // 2) Whapi rename via n8n (best-effort — CRM is already updated)
+  let renameOk = true;
+  if (willRename && newGroupName) {
+    try {
+      const rn = await fetch('https://leakguard.app.n8n.cloud/webhook/lg-rename-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: SHARED_SECRET, phone: phone, groupId: groupId, newGroupName: newGroupName })
+      });
+      const rj = await rn.json().catch(function(){ return {}; });
+      if (!rn.ok || rj.status === 'error') renameOk = false;
+    } catch (_e) { renameOk = false; }
+  }
+
+  // Update in-memory lead so kanban re-renders correctly
+  if (payload.name        !== undefined) currentModalLead['Name']             = payload.name;
+  if (payload.location    !== undefined) currentModalLead['Location']         = payload.location;
+  if (payload.fullAddress !== undefined) currentModalLead['Full Address']     = payload.fullAddress;
+  if (payload.problemType !== undefined) currentModalLead['Problem Type']     = payload.problemType;
+  if (payload.slabSize    !== undefined) currentModalLead['Slab Size (sqft)'] = payload.slabSize;
+  if (payload.source      !== undefined) currentModalLead['Source']           = payload.source;
+  if (newGroupName)                       currentModalLead['Group Name (AE)']  = newGroupName;
+
+  btn.disabled = false;
+  btn.textContent = 'Save changes';
+
+  closeEditLeadModal();
+  closeLeadDetail();
+
+  if (willRename && !renameOk) {
+    toast('CRM saved (' + diff.join(', ') + '); group rename failed — check n8n', 'warn');
+  } else if (willRename) {
+    toast('Saved: ' + diff.join(', ') + ' + group renamed', 'success');
+  } else {
+    toast('Saved: ' + diff.join(', '), 'success');
+  }
+  render();
+  loadLeads();
+}
+
+// ================================================================
 // CREATE NEW LEAD
 // ================================================================
 
@@ -2350,6 +2544,16 @@ document.getElementById('btnModalCancel').onclick = closeLeadDetail;
 document.getElementById('btnModalSave').onclick = saveLeadDetail;
 document.getElementById('btnSendReschedule').onclick = sendRescheduleFromModal;
 document.getElementById('btnEditAppt').onclick = editApptFromDetail;
+document.getElementById('btnEditDetails').onclick = openEditLeadModal;
+document.getElementById('btnEditLeadClose').onclick = closeEditLeadModal;
+document.getElementById('btnEditLeadCancel').onclick = closeEditLeadModal;
+document.getElementById('btnEditLeadSubmit').onclick = saveEditLeadModal;
+['elName','elLocation'].forEach(function(id){
+  document.getElementById(id).addEventListener('input', updateRenameNote);
+});
+document.getElementById('editLeadModal').addEventListener('click', function(e){
+  if (e.target.id === 'editLeadModal') closeEditLeadModal();
+});
 document.getElementById('btnGenQt').onclick = function() {
   if (!currentModalLead) return;
   const phone = currentModalLead['Phone'];
