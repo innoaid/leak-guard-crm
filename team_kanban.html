@@ -377,8 +377,40 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Quotation</button>
       <button class="modal-btn modal-btn-info" id="btnEditDetails">✏️ Edit details</button>
       <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
+      <button class="modal-btn modal-btn-info" id="btnArchiveLead" style="background:#FEE2E2;color:#991B1B">🗄 Archive</button>
       <button class="modal-btn modal-btn-secondary" id="btnModalCancel">Close</button>
       <button class="modal-btn modal-btn-primary" id="btnModalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Archive Lead modal -->
+<div class="modal-overlay" id="archiveLeadModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">Archive Lead</div>
+        <div class="modal-sub" id="alSub">—</div>
+      </div>
+      <button class="modal-close" id="btnArchiveClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="nl-row"><label for="alReason">Reason</label>
+        <select id="alReason">
+          <option value="Out of Area">Out of Area (outskirt — too far)</option>
+          <option value="Lost">Lost / No Response</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Cold Lead">Cold Lead</option>
+          <option value="Human Handoff">Human Handoff</option>
+        </select>
+      </div>
+      <div class="nl-row"><label for="alNote">Note (optional)</label>
+        <textarea id="alNote" rows="2" placeholder="e.g. customer in Penang, too far from KL/JB"></textarea>
+      </div>
+      <div class="nl-actions">
+        <button class="nl-btn-secondary" id="btnArchiveCancel">Cancel</button>
+        <button class="nl-btn-primary" id="btnArchiveConfirm" style="background:#DC2626">Archive</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2143,6 +2175,62 @@ async function sendRescheduleFromModal() {
 }
 
 // ================================================================
+// ARCHIVE LEAD (with reason)
+// ================================================================
+
+function openArchiveLeadModal() {
+  if (!currentModalLead) return;
+  document.getElementById('alSub').textContent =
+    (currentModalLead['Name'] || '(no name)') + ' · 📞 ' + (currentModalLead['Phone'] || '');
+  document.getElementById('alReason').value = 'Out of Area';
+  document.getElementById('alNote').value = '';
+  document.getElementById('archiveLeadModal').classList.add('open');
+}
+
+function closeArchiveLeadModal() {
+  document.getElementById('archiveLeadModal').classList.remove('open');
+}
+
+async function confirmArchiveLead() {
+  if (!currentModalLead) return;
+  const phone = currentModalLead['Phone'];
+  const archiveStatus = document.getElementById('alReason').value;
+  const archiveNote = document.getElementById('alNote').value.trim();
+
+  const btn = document.getElementById('btnArchiveConfirm');
+  btn.disabled = true;
+  btn.textContent = 'Archiving...';
+
+  const r = await apiCall('archiveLead', {
+    phone: phone,
+    archiveStatus: archiveStatus,
+    archiveNote: archiveNote,
+    changedBy: 'Kanban_Archive'
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Archive';
+
+  if (r.status !== 'ok') {
+    toast('Archive failed: ' + (r.message || 'unknown'), 'error');
+    return;
+  }
+
+  // Update in-memory so kanban re-renders without the card
+  currentModalLead['Status'] = archiveStatus;
+  const existingTags = String(currentModalLead['Tags'] || '').trim();
+  const tagSet = new Set(existingTags.split(',').map(s => s.trim()).filter(Boolean));
+  tagSet.add('archived');
+  currentModalLead['Tags'] = Array.from(tagSet).join(',');
+
+  closeArchiveLeadModal();
+  closeLeadDetail();
+  toast('Archived: ' + archiveStatus + (archiveNote ? ' — note saved' : ''), 'success');
+  render();
+  loadLeads();
+}
+
+// ================================================================
 // EDIT LEAD DETAILS (Task 2)
 // ================================================================
 
@@ -2577,6 +2665,13 @@ document.getElementById('btnModalSave').onclick = saveLeadDetail;
 document.getElementById('btnSendReschedule').onclick = sendRescheduleFromModal;
 document.getElementById('btnEditAppt').onclick = editApptFromDetail;
 document.getElementById('btnEditDetails').onclick = openEditLeadModal;
+document.getElementById('btnArchiveLead').onclick = openArchiveLeadModal;
+document.getElementById('btnArchiveClose').onclick = closeArchiveLeadModal;
+document.getElementById('btnArchiveCancel').onclick = closeArchiveLeadModal;
+document.getElementById('btnArchiveConfirm').onclick = confirmArchiveLead;
+document.getElementById('archiveLeadModal').addEventListener('click', function(e){
+  if (e.target.id === 'archiveLeadModal') closeArchiveLeadModal();
+});
 document.getElementById('btnEditLeadClose').onclick = closeEditLeadModal;
 document.getElementById('btnEditLeadCancel').onclick = closeEditLeadModal;
 document.getElementById('btnEditLeadSubmit').onclick = saveEditLeadModal;

@@ -179,12 +179,41 @@ function handleUpdateQuotation(body) {
 }
 
 function handleArchive(body) {
-  // body: {phone, archiveStatus, secret}  — archiveStatus = Lost / Cold Lead / etc.
-  return handleUpdateStatus({
+  // body: {phone, archiveStatus, archiveNote, secret}
+  //   archiveStatus = Lost / Cold Lead / Rejected / Out of Area / Human Handoff
+  //   archiveNote   = optional admin reason; appended to Notes with date prefix
+  const archiveStatus = body.archiveStatus || 'Lost';
+  const sheet = getSheet();
+  const rowNum = findRowByPhone(sheet, body.phone);
+  if (!rowNum) return jsonResponse({status: 'error', message: 'lead not found'});
+
+  // 1) Status flip + audit cols (reuses handleUpdateStatus path)
+  handleUpdateStatus({
     phone: body.phone,
-    status: body.archiveStatus || 'Lost',
+    status: archiveStatus,
     changedBy: body.changedBy || 'Kanban (archive)'
   });
+
+  // 2) Tag with `archived` so v2 chat bot stays silent (defense-in-depth)
+  try {
+    const existingTags = String(sheet.getRange(rowNum, getHeaders(sheet).colByName['Tags'] || 0).getValue() || '').trim();
+    const tagSet = new Set(existingTags.split(',').map(s => s.trim()).filter(Boolean));
+    tagSet.add('archived');
+    setCellByHeader(sheet, rowNum, 'Tags', Array.from(tagSet).join(','));
+  } catch (_) {}
+
+  // 3) Append archive note to Notes column
+  if (body.archiveNote && String(body.archiveNote).trim()) {
+    try {
+      const existing = String(sheet.getRange(rowNum, getHeaders(sheet).colByName['Notes'] || 0).getValue() || '').trim();
+      const datePrefix = new Date().toISOString().slice(0, 10);
+      const entry = `[${datePrefix}] Archived (${archiveStatus}): ${String(body.archiveNote).trim()}`;
+      const merged = existing ? (existing + '\n' + entry) : entry;
+      setCellByHeader(sheet, rowNum, 'Notes', merged);
+    } catch (_) {}
+  }
+
+  return jsonResponse({status: 'ok', rowNum: rowNum, archivedAs: archiveStatus});
 }
 
 function handleRestore(body) {
