@@ -53,6 +53,7 @@ function doPost(e) {
       case 'bulkMoveStatus':     return handleBulkMoveStatus(body);  // round 32 — kanban bulk move-to-phase
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
+      case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -481,6 +482,139 @@ function handleBulkMoveStatus(body) {
     updated++;
   });
   return jsonResponse({status: 'ok', updated: updated, missing: missing, newStatus: newStatus});
+}
+
+// ================================================================
+// Round 48 — Bulk-link pre-CRM WhatsApp groups
+// Body: {
+//   action, secret, dryRun: bool, changedBy?,
+//   groups: [
+//     { kind: 'link_existing', phone, groupId, groupName, inviteLink, newStatus? },
+//     { kind: 'create_orphan',  phone, name, status, groupId, groupName, inviteLink }
+//   ]
+// }
+// Returns: { status:'ok', linked, created, skipped, errors:[{reason,payload}] }
+// Per-row try/catch — partial failure surfaces in `errors`, not as 500.
+// Idempotent: any groupId already present in CRM goes to `skipped` regardless of kind.
+// ================================================================
+
+function handleBulkLinkGroups(body) {
+  if (!Array.isArray(body.groups)) {
+    return jsonResponse({status: 'error', message: 'groups[] required'});
+  }
+  const result = { status: 'ok', linked: 0, created: 0, skipped: 0, errors: [] };
+
+  // Dry-run: validate shape, count classifications, no writes.
+  if (body.dryRun === true) {
+    body.groups.forEach(function(g) {
+      if (!g || !g.kind || !g.groupId) { result.errors.push({reason: 'invalid entry', payload: g}); return; }
+      if (g.kind === 'link_existing') result.linked++;
+      else if (g.kind === 'create_orphan') result.created++;
+      else result.errors.push({reason: 'unknown kind: ' + g.kind, payload: g});
+    });
+    result.dryRun = true;
+    return jsonResponse(result);
+  }
+
+  const sheet = getSheet();
+  const ts = new Date().toISOString();
+  const todayStr = ts.slice(0, 10);
+  const changedBy = body.changedBy || 'Kanban_BulkLink';
+  const headers = getHeaders(sheet);
+  const gidCol = headers.colByName['Group ID (AB)'];
+  if (!gidCol) return jsonResponse({status: 'error', message: 'Group ID (AB) column not found'});
+
+  // Pre-fetch existing Group IDs once for idempotent skip.
+  const allData = sheet.getDataRange().getValues();
+  const existingGids = new Set();
+  for (let i = 1; i < allData.length; i++) {
+    const v = String(allData[i][gidCol - 1] || '').trim();
+    if (v) existingGids.add(v);
+  }
+
+  body.groups.forEach(function(g) {
+    try {
+      if (!g || !g.kind || !g.groupId) {
+        result.errors.push({reason: 'invalid entry', payload: g});
+        return;
+      }
+      // Idempotent skip: any groupId already linked anywhere → skip.
+      if (existingGids.has(g.groupId)) { result.skipped++; return; }
+
+      if (g.kind === 'link_existing') {
+        if (!g.phone) { result.errors.push({reason: 'phone required for link_existing', groupId: g.groupId}); return; }
+        const row = findRowByPhone(sheet, g.phone);
+        if (!row) {
+          result.errors.push({reason: 'lead not found at write-time', phone: g.phone, groupId: g.groupId});
+          return;
+        }
+        // Defensive: don't overwrite if row already has a different Group ID.
+        const existingGid = String(sheet.getRange(row, gidCol).getValue() || '').trim();
+        if (existingGid && existingGid !== g.groupId) {
+          result.skipped++;
+          return;
+        }
+        setCellByHeader(sheet, row, 'Group ID (AB)', g.groupId);
+        if (g.groupName)  setCellByHeader(sheet, row, 'Group Name (AE)', g.groupName);
+        if (g.inviteLink) setCellByHeader(sheet, row, 'Group Invite Link (AJ)', g.inviteLink);
+        if (g.newStatus) {
+          setCellByHeader(sheet, row, 'Status', g.newStatus);
+          setCellByHeader(sheet, row, 'Status Changed At', ts);
+        }
+        setCellByHeader(sheet, row, 'Changed By', changedBy);
+        result.linked++;
+        existingGids.add(g.groupId);
+
+      } else if (g.kind === 'create_orphan') {
+        if (!g.phone || !g.name || !g.status) {
+          result.errors.push({reason: 'orphan needs phone+name+status', payload: g});
+          return;
+        }
+        // Server-side dup gate (race-safe — row may have appeared since Preview).
+        const matches = findAllMatchesByPhone(sheet, g.phone);
+        const ACTIVE = ['New Lead','Pending Invitation','Pending Site Visit','Site Visit Confirmed','Pending QT','Quotation Sent','Follow Up','Pending I.Date','I.Date Confirmed','Job In Progress'];
+        const activeMatch = matches.find(function(m) { return ACTIVE.indexOf(m.status) !== -1; });
+        if (activeMatch) {
+          // Convert to link_existing on the fly.
+          const row = activeMatch.rowNum;
+          const existingGid = String(sheet.getRange(row, gidCol).getValue() || '').trim();
+          if (!existingGid) {
+            setCellByHeader(sheet, row, 'Group ID (AB)', g.groupId);
+            if (g.groupName)  setCellByHeader(sheet, row, 'Group Name (AE)', g.groupName);
+            if (g.inviteLink) setCellByHeader(sheet, row, 'Group Invite Link (AJ)', g.inviteLink);
+            setCellByHeader(sheet, row, 'Changed By', changedBy);
+            result.linked++;
+          } else {
+            result.skipped++;
+          }
+          existingGids.add(g.groupId);
+          return;
+        }
+        // Truly orphan — append new row, mirror handleCreateLead's column set.
+        const newRow = sheet.getLastRow() + 1;
+        setCellByHeader(sheet, newRow, 'Timestamp', ts);
+        setCellByHeader(sheet, newRow, 'Phone', g.phone);
+        setCellByHeader(sheet, newRow, 'Name', g.name);
+        setCellByHeader(sheet, newRow, 'Status', g.status);
+        setCellByHeader(sheet, newRow, 'Status Changed At', ts);
+        setCellByHeader(sheet, newRow, 'Changed By', changedBy);
+        setCellByHeader(sheet, newRow, 'Date Lead In', todayStr);
+        setCellByHeader(sheet, newRow, 'Source', 'Bulk Link (Pre-CRM)');
+        setCellByHeader(sheet, newRow, 'Group ID (AB)', g.groupId);
+        if (g.groupName)  setCellByHeader(sheet, newRow, 'Group Name (AE)', g.groupName);
+        if (g.inviteLink) setCellByHeader(sheet, newRow, 'Group Invite Link (AJ)', g.inviteLink);
+        result.created++;
+        existingGids.add(g.groupId);
+
+      } else {
+        result.errors.push({reason: 'unknown kind: ' + g.kind, payload: g});
+      }
+    } catch (e) {
+      result.errors.push({reason: String(e.message || e), payload: g});
+    }
+  });
+
+  return jsonResponse(result);
 }
 
 // ================================================================

@@ -281,6 +281,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <button class="refresh quickfilter" id="btnRepliesNeeded" title="Show only cards tagged needs_reply (combines with staff filter)">🔔 Replies needed</button>
   <button class="refresh quickfilter" id="btnSilentOnly" title="Show only PSV/QS leads who have never sent any customer message — useful for bulk first-touch FU">🔇 Silent</button>
   <button class="btn-newlead" id="btnNewLead" title="Create a new lead manually">+ New Lead</button>
+  <button class="refresh" id="btnBulkLink" title="Auto-link pre-CRM WA groups to CRM rows (bot stays silent)" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">🔗 Bulk Link</button>
   <button class="refresh" id="btnRefresh">🔄 Refresh</button>
   <span class="last-sync" id="lastSync">—</span>
 </div>
@@ -381,6 +382,29 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       <button class="modal-btn modal-btn-info" id="btnArchiveLead" style="background:#FEE2E2;color:#991B1B">🗄 Archive</button>
       <button class="modal-btn modal-btn-secondary" id="btnModalCancel">Close</button>
       <button class="modal-btn modal-btn-primary" id="btnModalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Link Groups modal (Round 48) -->
+<div class="modal-overlay" id="bulkLinkModal">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">🔗 Bulk Link Groups</div>
+        <div class="modal-sub">Auto-links pre-CRM WA groups to CRM by phone. Bot stays silent — no rename, no message.</div>
+      </div>
+      <button class="modal-close" id="btnBulkLinkClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" id="bulkLinkBody" style="max-height:65vh;overflow-y:auto">
+      <div id="bulkLinkLoading" style="text-align:center;padding:40px 20px;color:#6B7280">⏳ Fetching groups & matching to CRM…</div>
+      <div id="bulkLinkContent" style="display:none"></div>
+      <div id="bulkLinkError" style="display:none;padding:14px;background:#FEE2E2;color:#991B1B;border-radius:6px;margin:8px 0"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-secondary" id="btnBulkLinkCloseFooter">Close</button>
+      <button class="modal-btn modal-btn-info" id="btnBulkLinkRefetch" disabled>↻ Re-fetch</button>
+      <button class="modal-btn modal-btn-primary" id="btnBulkLinkRun" disabled>✓ Run Bulk Link</button>
     </div>
   </div>
 </div>
@@ -2288,6 +2312,243 @@ async function confirmArchiveLead() {
 }
 
 // ================================================================
+// BULK LINK GROUPS (Round 48) — auto-discovery from Whapi → CRM
+// ================================================================
+
+const BULK_LINK_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-bulk-link-groups';
+const STATUS_OPTIONS_BL = [
+  'Pending Invitation',
+  'Pending Site Visit',
+  'Site Visit Confirmed',
+  'Pending QT',
+  'Quotation Sent',
+  'Pending Downpayment',
+  'Pending Balance',
+  'Pending I.Date',
+  'I.Date Confirmed',
+  'Job In Progress'
+];
+
+let bulkLinkState = null; // { matched, orphan, ambiguous, skipped, totals, perRow:{groupId: {...}} }
+
+function openBulkLinkModal() {
+  bulkLinkState = null;
+  document.getElementById('bulkLinkContent').style.display = 'none';
+  document.getElementById('bulkLinkError').style.display = 'none';
+  document.getElementById('bulkLinkLoading').style.display = '';
+  document.getElementById('bulkLinkLoading').textContent = '⏳ Fetching groups & matching to CRM…';
+  document.getElementById('btnBulkLinkRefetch').disabled = true;
+  document.getElementById('btnBulkLinkRun').disabled = true;
+  document.getElementById('btnBulkLinkRun').textContent = '✓ Run Bulk Link';
+  document.getElementById('bulkLinkModal').classList.add('open');
+  fetchBulkLinkPreview();
+}
+
+function closeBulkLinkModal() {
+  document.getElementById('bulkLinkModal').classList.remove('open');
+  bulkLinkState = null;
+}
+
+async function fetchBulkLinkPreview() {
+  document.getElementById('bulkLinkContent').style.display = 'none';
+  document.getElementById('bulkLinkError').style.display = 'none';
+  document.getElementById('bulkLinkLoading').style.display = '';
+  try {
+    const r = await fetch(BULK_LINK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: SHARED_SECRET, dryRun: true })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.message || 'preview failed');
+    bulkLinkState = data;
+    bulkLinkState.perRow = {};
+    // Default per-row state for matched: keep current status, don't skip
+    (data.matched || []).forEach(function(m){
+      bulkLinkState.perRow[m.groupId] = { kind: 'link_existing', newStatus: '', skip: false };
+    });
+    // Default per-row state for orphan: editable name, status=Pending Site Visit
+    (data.orphan || []).forEach(function(o){
+      bulkLinkState.perRow[o.groupId] = { kind: 'create_orphan', name: o.defaultName || '', status: 'Pending Site Visit', skip: false };
+    });
+    renderBulkLinkReport();
+    document.getElementById('btnBulkLinkRefetch').disabled = false;
+    document.getElementById('btnBulkLinkRun').disabled = false;
+  } catch (e) {
+    document.getElementById('bulkLinkLoading').style.display = 'none';
+    const errDiv = document.getElementById('bulkLinkError');
+    errDiv.textContent = '⚠️ Fetch failed: ' + (e.message || e);
+    errDiv.style.display = '';
+  }
+}
+
+function renderBulkLinkReport() {
+  const c = document.getElementById('bulkLinkContent');
+  const t = bulkLinkState.totals || {};
+  let html = '';
+
+  // Summary bar
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px">';
+  html += '<div style="padding:8px;background:#D1FAE5;border-radius:6px;text-align:center;font-size:11px"><b style="display:block;font-size:18px;color:#065F46">' + (t.matched||0) + '</b>matched</div>';
+  html += '<div style="padding:8px;background:#DBEAFE;border-radius:6px;text-align:center;font-size:11px"><b style="display:block;font-size:18px;color:#1E3A8A">' + (t.orphan||0) + '</b>orphan</div>';
+  html += '<div style="padding:8px;background:#FEF3C7;border-radius:6px;text-align:center;font-size:11px"><b style="display:block;font-size:18px;color:#92400E">' + (t.ambiguous||0) + '</b>ambiguous</div>';
+  html += '<div style="padding:8px;background:#F3F4F6;border-radius:6px;text-align:center;font-size:11px"><b style="display:block;font-size:18px;color:#6B7280">' + (t.skipped_already_linked||0) + '</b>already linked</div>';
+  html += '<div style="padding:8px;background:#FEE2E2;border-radius:6px;text-align:center;font-size:11px"><b style="display:block;font-size:18px;color:#991B1B">' + (t.errored||0) + '</b>errored</div>';
+  html += '</div>';
+  html += '<div style="font-size:11px;color:#6B7280;margin-bottom:14px">Total visible to bot: <b>' + (t.whapi_total||0) + '</b> groups</div>';
+
+  // Matched section
+  if ((bulkLinkState.matched||[]).length) {
+    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6B7280;letter-spacing:.5px;margin:16px 0 8px">✅ Matched (' + bulkLinkState.matched.length + ') — link to existing CRM rows</div>';
+    bulkLinkState.matched.forEach(function(m){
+      html += renderMatchedCard(m);
+    });
+  }
+
+  // Orphan section
+  if ((bulkLinkState.orphan||[]).length) {
+    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6B7280;letter-spacing:.5px;margin:20px 0 8px">🆕 Orphan (' + bulkLinkState.orphan.length + ') — no CRM match, will create new rows</div>';
+    bulkLinkState.orphan.forEach(function(o){
+      html += renderOrphanCard(o);
+    });
+  }
+
+  // Ambiguous section (read-only — admin handles via -admin <digits>)
+  if ((bulkLinkState.ambiguous||[]).length) {
+    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#92400E;letter-spacing:.5px;margin:20px 0 8px">⚠️ Ambiguous (' + bulkLinkState.ambiguous.length + ') — multiple CRM candidates; resolve manually with -admin &lt;digits&gt; command</div>';
+    bulkLinkState.ambiguous.forEach(function(a){
+      const cands = (a.candidates||[]).map(function(c){ return escapeHtml(c.name||'') + ' (' + escapeHtml(c.phone||'') + ', ' + escapeHtml(c.status||'') + ')'; }).join(' · ');
+      html += '<div style="border:1px solid #FDE68A;border-left:4px solid #F59E0B;background:#FFFBEB;border-radius:6px;padding:10px 12px;margin-bottom:8px">'
+            + '<div style="font-weight:600;font-size:13px">' + escapeHtml(a.groupName||'(no name)') + '</div>'
+            + '<div style="font-size:11px;color:#92400E;margin-top:4px">' + cands + '</div></div>';
+    });
+  }
+
+  c.innerHTML = html;
+  document.getElementById('bulkLinkLoading').style.display = 'none';
+  c.style.display = '';
+
+  // Update Run button label with applied count
+  updateBulkLinkRunCount();
+  // Wire per-row inputs
+  c.querySelectorAll('[data-bl-input]').forEach(function(el){
+    el.addEventListener('change', onBulkLinkRowChange);
+    el.addEventListener('input', onBulkLinkRowChange);
+  });
+}
+
+function renderMatchedCard(m) {
+  const gid = m.groupId;
+  const cur = m.currentStatus || '';
+  const opts = ['<option value="">Keep current (' + escapeHtml(cur) + ')</option>']
+    .concat(STATUS_OPTIONS_BL.map(function(s){ return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>'; }))
+    .join('');
+  return '<div style="border:1px solid #E5E7EB;border-left:4px solid #10B981;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#fff">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+    + '<div style="font-weight:600;font-size:13px">' + escapeHtml(m.groupName||'(no name)') + '</div>'
+    + '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#D1FAE5;color:#065F46">✅ MATCHED</span>'
+    + '</div>'
+    + '<div style="font-size:11px;color:#6B7280;margin-bottom:8px">'
+    + 'Lead: <b style="color:#111827">' + escapeHtml(m.leadName||'') + '</b> · ' + escapeHtml(m.phone||'')
+    + ' · current status: <span style="padding:2px 6px;background:#F3F4F6;border-radius:4px;font-size:10px">' + escapeHtml(cur) + '</span></div>'
+    + '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding-top:6px;border-top:1px dashed #E5E7EB">'
+    + '<label style="font-size:11px;font-weight:600;color:#6B7280">New status:</label>'
+    + '<select data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="newStatus" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:4px;font-size:12px">' + opts + '</select>'
+    + '<label style="font-size:11px;color:#6B7280;display:flex;align-items:center;gap:4px;cursor:pointer">'
+    + '<input type="checkbox" data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="skip"> Skip</label>'
+    + '</div></div>';
+}
+
+function renderOrphanCard(o) {
+  const gid = o.groupId;
+  const opts = STATUS_OPTIONS_BL.map(function(s){
+    const sel = (s === 'Pending Site Visit') ? ' selected' : '';
+    return '<option value="' + escapeHtml(s) + '"' + sel + '>' + escapeHtml(s) + '</option>';
+  }).join('');
+  return '<div style="border:1px solid #E5E7EB;border-left:4px solid #3B82F6;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#fff">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+    + '<div style="font-weight:600;font-size:13px">' + escapeHtml(o.groupName||'(no name)') + '</div>'
+    + '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#DBEAFE;color:#1E3A8A">🆕 ORPHAN</span>'
+    + '</div>'
+    + '<div style="font-size:11px;color:#6B7280;margin-bottom:8px">'
+    + 'Customer: ' + escapeHtml(o.candidatePhone||'') + ' · ' + (o.participantsCount||1) + ' participant(s) · no matching CRM row — will create new'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:auto 1fr 1fr auto;gap:8px;align-items:center;padding-top:6px;border-top:1px dashed #E5E7EB">'
+    + '<label style="font-size:11px;font-weight:600;color:#6B7280">Name:</label>'
+    + '<input type="text" data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="name" value="' + escapeHtml(o.defaultName||'') + '" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:4px;font-size:12px">'
+    + '<select data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="status" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:4px;font-size:12px">' + opts + '</select>'
+    + '<label style="font-size:11px;color:#6B7280;display:flex;align-items:center;gap:4px;cursor:pointer">'
+    + '<input type="checkbox" data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="skip"> Skip</label>'
+    + '</div></div>';
+}
+
+function onBulkLinkRowChange(e) {
+  const el = e.target;
+  const gid = el.getAttribute('data-bl-gid');
+  const field = el.getAttribute('data-bl-field');
+  const val = (el.type === 'checkbox') ? !!el.checked : el.value;
+  if (!bulkLinkState.perRow[gid]) return;
+  bulkLinkState.perRow[gid][field] = val;
+  if (field === 'skip') updateBulkLinkRunCount();
+}
+
+function updateBulkLinkRunCount() {
+  if (!bulkLinkState) return;
+  let count = 0;
+  Object.values(bulkLinkState.perRow || {}).forEach(function(c){ if (!c.skip) count++; });
+  document.getElementById('btnBulkLinkRun').textContent = '✓ Run Bulk Link (' + count + ' rows)';
+}
+
+async function runBulkLinkApply() {
+  if (!bulkLinkState) return;
+  const groupsConfig = [];
+  Object.keys(bulkLinkState.perRow).forEach(function(gid){
+    const c = bulkLinkState.perRow[gid];
+    if (c.skip) return;
+    if (c.kind === 'link_existing') {
+      const entry = { groupId: gid, kind: 'link_existing' };
+      if (c.newStatus) entry.newStatus = c.newStatus;
+      groupsConfig.push(entry);
+    } else if (c.kind === 'create_orphan') {
+      groupsConfig.push({ groupId: gid, kind: 'create_orphan', name: c.name || '', status: c.status || 'Pending Site Visit' });
+    }
+  });
+
+  if (groupsConfig.length === 0) {
+    toast('Nothing to do — every row is skipped', 'info');
+    return;
+  }
+
+  const runBtn = document.getElementById('btnBulkLinkRun');
+  runBtn.disabled = true;
+  runBtn.textContent = '⏳ Applying ' + groupsConfig.length + ' rows…';
+  document.getElementById('btnBulkLinkRefetch').disabled = true;
+
+  try {
+    const r = await fetch(BULK_LINK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: SHARED_SECRET, dryRun: false, changedBy: 'Kanban_BulkLink', groups: groupsConfig })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.message || 'apply failed');
+    const ag = data.aggregate || {};
+    const errs = (ag.errors || []).length;
+    const msg = 'Linked ' + (ag.linked||0) + ' · Created ' + (ag.created||0) + ' · Skipped ' + (ag.skipped||0) + (errs ? (' · ' + errs + ' error(s)') : '');
+    toast(msg, errs ? 'warn' : 'success');
+    closeBulkLinkModal();
+    loadLeads();
+  } catch (e) {
+    runBtn.disabled = false;
+    runBtn.textContent = '✓ Run Bulk Link';
+    document.getElementById('btnBulkLinkRefetch').disabled = false;
+    toast('Apply failed: ' + (e.message || e), 'error');
+  }
+}
+
+// ================================================================
 // EDIT LEAD DETAILS (Task 2)
 // ================================================================
 
@@ -2654,6 +2915,14 @@ function showError(msg) {
 
 document.getElementById('btnRefresh').onclick = loadLeads;
 document.getElementById('btnNewLead').onclick = openNewLeadModal;
+document.getElementById('btnBulkLink').onclick = openBulkLinkModal;
+document.getElementById('btnBulkLinkClose').onclick = closeBulkLinkModal;
+document.getElementById('btnBulkLinkCloseFooter').onclick = closeBulkLinkModal;
+document.getElementById('btnBulkLinkRefetch').onclick = fetchBulkLinkPreview;
+document.getElementById('btnBulkLinkRun').onclick = runBulkLinkApply;
+document.getElementById('bulkLinkModal').addEventListener('click', function(e){
+  if (e.target.id === 'bulkLinkModal') closeBulkLinkModal();
+});
 document.getElementById('btnNewLeadClose').onclick = closeNewLeadModal;
 document.getElementById('btnNewLeadCancel').onclick = closeNewLeadModal;
 document.getElementById('btnNewLeadSubmit').onclick = submitNewLead;
