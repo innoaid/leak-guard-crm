@@ -721,9 +721,11 @@ function render() {
   // Update staff filter dropdown options dynamically
   populateStaffFilter();
 
-  // Update archive count
-  const archCount = allLeads.filter(l => ARCHIVED_STATUSES.includes(String(l['Status'] || ''))).length;
-  document.getElementById('archCount').textContent = archCount;
+  // Update archive count — guard against the span being absent in archive view
+  // (where the toggle replaces btnArchive innerHTML with "← Back to Kanban").
+  const archCount = allLeads.filter(l => ARCHIVED_STATUSES.includes(String(l['Status'] || '').trim())).length;
+  const archCountEl = document.getElementById('archCount');
+  if (archCountEl) archCountEl.textContent = archCount;
 
   if (viewMode === 'kanban') {
     renderKanban(allLeads.filter(passesFilters));
@@ -2928,9 +2930,12 @@ document.getElementById('btnArchive').onclick = () => {
   viewMode = (viewMode === 'kanban') ? 'archive' : 'kanban';
   document.getElementById('kanbanView').style.display = (viewMode === 'kanban') ? 'block' : 'none';
   document.getElementById('archiveView').classList.toggle('on', viewMode === 'archive');
+  // Re-derive count from allLeads instead of reading a span that may not exist in the
+  // archive-view button (which has no #archCount inside "← Back to Kanban").
+  const archCountVal = (allLeads || []).filter(l => ARCHIVED_STATUSES.includes(String(l['Status'] || '').trim())).length;
   document.getElementById('btnArchive').innerHTML = viewMode === 'archive'
     ? '← Back to Kanban'
-    : '📦 Archive <span class="badge" id="archCount">' + document.getElementById('archCount').textContent + '</span>';
+    : '📦 Archive <span class="badge" id="archCount">' + archCountVal + '</span>';
   render();
 };
 
