@@ -402,6 +402,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <div class="modal-actions">
       <button class="modal-btn modal-btn-secondary" id="btnBulkLinkCloseFooter">Close</button>
       <button class="modal-btn modal-btn-info" id="btnBulkLinkRefetch" disabled>↻ Re-fetch</button>
+      <button class="modal-btn modal-btn-info" id="btnBulkLinkRunMatched" disabled title="Skip all orphans and link only the matched leads">▶ Run Matched Only</button>
       <button class="modal-btn modal-btn-primary" id="btnBulkLinkRun" disabled>✓ Run Bulk Link</button>
     </div>
   </div>
@@ -2321,6 +2322,8 @@ function openBulkLinkModal() {
   document.getElementById('btnBulkLinkRefetch').disabled = true;
   document.getElementById('btnBulkLinkRun').disabled = true;
   document.getElementById('btnBulkLinkRun').textContent = '✓ Run Bulk Link';
+  document.getElementById('btnBulkLinkRunMatched').disabled = true;
+  document.getElementById('btnBulkLinkRunMatched').textContent = '▶ Run Matched Only';
   document.getElementById('bulkLinkModal').classList.add('open');
   fetchBulkLinkPreview();
 }
@@ -2477,8 +2480,45 @@ function onBulkLinkRowChange(e) {
 function updateBulkLinkRunCount() {
   if (!bulkLinkState) return;
   let count = 0;
-  Object.values(bulkLinkState.perRow || {}).forEach(function(c){ if (!c.skip) count++; });
+  let matchedCount = 0;
+  Object.values(bulkLinkState.perRow || {}).forEach(function(c){
+    if (c.skip) return;
+    count++;
+    if (c.kind === 'link_existing') matchedCount++;
+  });
   document.getElementById('btnBulkLinkRun').textContent = '✓ Run Bulk Link (' + count + ' rows)';
+  // Round 52: matched-only button shows live matched count
+  const mBtn = document.getElementById('btnBulkLinkRunMatched');
+  if (mBtn) {
+    mBtn.textContent = '▶ Run Matched Only (' + matchedCount + ')';
+    mBtn.disabled = matchedCount === 0;
+  }
+}
+
+// Round 52: Skip all orphans then auto-run. Single-click "ignore the orphans"
+// path for when admin doesn't want to create new CRM rows for unmatched groups.
+async function runBulkLinkMatchedOnly() {
+  if (!bulkLinkState) return;
+  const orphanGids = Object.keys(bulkLinkState.perRow || {}).filter(function(gid){
+    const c = bulkLinkState.perRow[gid];
+    return c && c.kind === 'create_orphan' && !c.skip;
+  });
+  const matchedCount = Object.values(bulkLinkState.perRow || {}).filter(function(c){
+    return c && c.kind === 'link_existing' && !c.skip;
+  }).length;
+  if (matchedCount === 0) {
+    toast('No matched rows to link', 'info');
+    return;
+  }
+  const orphanLine = orphanGids.length
+    ? 'Skip ' + orphanGids.length + ' orphan group' + (orphanGids.length > 1 ? 's' : '') + ' (no new CRM rows created) and '
+    : '';
+  if (!confirm(orphanLine + 'link ' + matchedCount + ' matched lead' + (matchedCount > 1 ? 's' : '') + ' now?')) return;
+  // Mark orphans skipped in state
+  orphanGids.forEach(function(gid){ bulkLinkState.perRow[gid].skip = true; });
+  // Re-render so the UI reflects the change before the apply request
+  renderBulkLinkReport();
+  await runBulkLinkApply();
 }
 
 async function runBulkLinkApply() {
@@ -2502,7 +2542,9 @@ async function runBulkLinkApply() {
   }
 
   const runBtn = document.getElementById('btnBulkLinkRun');
+  const matchedBtn = document.getElementById('btnBulkLinkRunMatched');
   runBtn.disabled = true;
+  matchedBtn.disabled = true;
   runBtn.textContent = '⏳ Applying ' + groupsConfig.length + ' rows…';
   document.getElementById('btnBulkLinkRefetch').disabled = true;
 
@@ -2524,6 +2566,7 @@ async function runBulkLinkApply() {
   } catch (e) {
     runBtn.disabled = false;
     runBtn.textContent = '✓ Run Bulk Link';
+    matchedBtn.disabled = false;
     document.getElementById('btnBulkLinkRefetch').disabled = false;
     toast('Apply failed: ' + (e.message || e), 'error');
   }
@@ -2901,6 +2944,7 @@ document.getElementById('btnBulkLinkClose').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkCloseFooter').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkRefetch').onclick = fetchBulkLinkPreview;
 document.getElementById('btnBulkLinkRun').onclick = runBulkLinkApply;
+document.getElementById('btnBulkLinkRunMatched').onclick = runBulkLinkMatchedOnly;
 document.getElementById('bulkLinkModal').addEventListener('click', function(e){
   if (e.target.id === 'bulkLinkModal') closeBulkLinkModal();
 });
