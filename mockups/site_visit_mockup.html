@@ -224,6 +224,42 @@ function toast(msg,type){
   setTimeout(function(){ el.style.opacity='0'; setTimeout(function(){ el.remove(); },250); },3500);
 }
 
+// ========= TESSERACT (lazy-loaded) =========
+let _tesseractPromise = null;
+function loadTesseract() {
+  if (_tesseractPromise) return _tesseractPromise;
+  _tesseractPromise = new Promise(function(resolve, reject) {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = function(){ resolve(window.Tesseract); };
+    s.onerror = function(){ _tesseractPromise = null; reject(new Error('Tesseract load failed')); };
+    document.head.appendChild(s);
+  });
+  return _tesseractPromise;
+}
+
+async function ocrPhoto(dataUrl, onProgress) {
+  const Tesseract = await loadTesseract();
+  const { data } = await Tesseract.recognize(dataUrl, 'eng', {
+    logger: function(m){ if (onProgress && m.status === 'recognizing text') onProgress(m.progress); }
+  });
+  return data.text || '';
+}
+
+// Parse iScanner's typical output. Examples handled:
+//   "Area = 63.87 kaki²"      (BM)
+//   "Area = 63.87 sqft"
+//   "Area = 63.87 ft²"
+//   "Panjang Keseluruhan = 38.35 kaki"
+//   "Total Perimeter = 38.35 ft"
+function parseIScanner(text) {
+  const t = String(text || '');
+  const areaMatch = t.match(/area\s*[=:]\s*([\d.,]+)\s*(?:kaki|sqft|ft|sq\s*ft)/i);
+  const perimMatch = t.match(/(?:panjang\s+keseluruhan|total\s+(?:perimeter|length)|perimeter)\s*[=:]\s*([\d.,]+)\s*(?:kaki|ft|m)/i);
+  const num = function(s){ if (!s) return null; const n = parseFloat(String(s).replace(/,/g, '')); return isNaN(n) ? null : n; };
+  return { areaSqft: num(areaMatch && areaMatch[1]), perimeterFt: num(perimMatch && perimMatch[1]) };
+}
+
 // ========= STATE =========
 function newSlab(name){
   return { id:uuid(), name:name||('Slab '+(state.slabs.length+1)), mode:'slab', floorSqft:0, upturns:[], extras:[], photos:[], manualFloor:[] };
@@ -314,25 +350,144 @@ async function handlePhotoFiles(slabId, files){
   const slab = state.slabs.find(function(s){ return s.id===slabId; });
   if (!slab) return;
   const ov = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
   ov.classList.add('on');
   let added = 0;
+  const newPhotos = [];
   for (const f of Array.from(files)) {
-    document.getElementById('uploadText').textContent = 'Compressing… ('+(added+1)+'/'+files.length+')';
+    ut.textContent = 'Compressing… ('+(added+1)+'/'+files.length+')';
     try {
       const okb = Math.round(f.size/1024);
       const dataUrl = await compressImage(f,1280);
-      slab.photos.push({ id:uuid(), dataUrl, originalKB:okb, compressedKB:dataUrlSizeKB(dataUrl) });
+      const photo = { id:uuid(), dataUrl, originalKB:okb, compressedKB:dataUrlSizeKB(dataUrl), ocr:null };
+      slab.photos.push(photo);
+      newPhotos.push(photo);
       added++;
     } catch(_){ toast('Failed to read one photo','error'); }
   }
-  ov.classList.remove('on');
   if (added) toast('Added '+added+' photo'+(added>1?'s':''),'success');
+  ov.classList.remove('on');
   renderAll();
+
+  // Round v3.2: try OCR on each new photo. Fire-and-forget per photo so the
+  // user can keep filling the form while OCR runs in background.
+  for (const p of newPhotos) {
+    runOcrOnPhoto(slab, p);  // no await — parallel
+  }
+}
+
+async function runOcrOnPhoto(slab, photo) {
+  // Mark as in-progress
+  photo.ocr = { status: 'running' };
+  renderSlabBanner(slab.id);
+  try {
+    const text = await ocrPhoto(photo.dataUrl, function(progress){
+      photo.ocr = { status: 'running', progress: progress };
+      renderSlabBanner(slab.id);
+    });
+    const parsed = parseIScanner(text);
+    if (parsed.areaSqft !== null || parsed.perimeterFt !== null) {
+      photo.ocr = { status: 'detected', areaSqft: parsed.areaSqft, perimeterFt: parsed.perimeterFt, rawText: text.slice(0, 400) };
+    } else {
+      photo.ocr = { status: 'no-match', rawText: text.slice(0, 200) };
+    }
+  } catch (e) {
+    photo.ocr = { status: 'error', error: String(e.message || e) };
+  }
+  renderSlabBanner(slab.id);
+  renderAll();  // updates photo card overlays
 }
 
 // ========= RENDER =========
 function renderAll(){
   renderSlabs(); renderSiteExtras(); renderSiteChips(); renderGrand(); updateSubmitState();
+}
+
+// Round v3.2: OCR banner inside floor-area subsection. Aggregates results
+// from all photos in the slab — most-recent detection wins.
+function ocrBannerHtml(s) {
+  const photos = (s.photos || []).slice().reverse();
+  // Find any in-progress OCR
+  const running = photos.find(function(p){ return p.ocr && p.ocr.status === 'running'; });
+  if (running) {
+    const pct = running.ocr.progress != null ? Math.round(running.ocr.progress * 100) + '%' : '';
+    return '<div style="margin-bottom:8px;padding:8px 10px;background:#EFF6FF;border:.5px solid #BFDBFE;border-radius:6px;color:#1E3A8A;font-size:11px">'+
+      '⏳ Reading iScanner photo… '+pct+' (first time loads ~20MB OCR engine, cached after)'+
+      '</div>';
+  }
+  // Find latest with detected values
+  const detected = photos.find(function(p){ return p.ocr && p.ocr.status === 'detected'; });
+  if (detected) {
+    const a = detected.ocr.areaSqft;
+    const pft = detected.ocr.perimeterFt;
+    let body = '';
+    if (a != null) body += '<b>Area: '+a.toFixed(2)+' sqft</b>';
+    if (a != null && pft != null) body += ' · ';
+    if (pft != null) body += 'Perimeter: '+pft.toFixed(2)+' ft';
+    return '<div style="margin-bottom:8px;padding:8px 10px;background:#F0FDF4;border:.5px solid #BBF7D0;border-radius:6px;color:#065F46;font-size:11px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap">'+
+        '<span>📐 Detected from iScanner photo: '+body+'</span>'+
+        (a != null
+          ? '<button class="add-row" type="button" data-apply-ocr="'+s.id+'|'+a+'" style="width:auto;padding:5px 10px;margin:0;border-color:var(--acc);background:#fff;color:var(--acc);font-weight:700">↑ Apply '+a.toFixed(1)+' sqft</button>'
+          : '') +
+      '</div>'+
+      '</div>';
+  }
+  // Find latest with no-match
+  const noMatch = photos.find(function(p){ return p.ocr && p.ocr.status === 'no-match'; });
+  if (noMatch) {
+    return '<div style="margin-bottom:8px;padding:7px 10px;background:#FEF3C7;border:.5px solid #FDE68A;border-radius:6px;color:#92400E;font-size:11px">'+
+      '⚠️ Couldn\'t auto-detect Area from latest photo. Type manually or use the L × W panel below.'+
+      '</div>';
+  }
+  return '';
+}
+
+function renderSlabBanner(slabId) {
+  // Surgical update of just the banner inside this slab card to avoid
+  // re-rendering the entire slab (which would lose input focus).
+  const s = state.slabs.find(function(x){ return x.id===slabId; });
+  if (!s) return;
+  const nameInput = document.querySelector('[data-slab-name="'+slabId+'"]');
+  if (!nameInput) return;
+  const slabEl = nameInput.closest('.slab');
+  if (!slabEl) return;
+  const floorSubsection = slabEl.querySelector('.subsection .input-with-suffix');
+  if (!floorSubsection) return;
+  // Banner sits as the immediate previous sibling of the input-with-suffix wrapper.
+  // Strategy: find any existing banner with our marker classes and replace, else insert.
+  const newBannerHtml = ocrBannerHtml(s);
+  // Find the existing banner — it's the element right before the .input-with-suffix
+  let prev = floorSubsection.previousElementSibling;
+  // Existing banner has inline style starting with margin-bottom; check via background sniffing
+  const isBanner = prev && prev.tagName === 'DIV' && /margin-bottom:8px/.test(prev.style.cssText || '');
+  if (newBannerHtml === '') {
+    if (isBanner) prev.remove();
+    return;
+  }
+  const tmp = document.createElement('div');
+  tmp.innerHTML = newBannerHtml;
+  const newEl = tmp.firstElementChild;
+  if (isBanner) {
+    prev.replaceWith(newEl);
+  } else {
+    floorSubsection.parentNode.insertBefore(newEl, floorSubsection);
+  }
+  // Wire the apply button
+  const applyBtn = newEl.querySelector('[data-apply-ocr]');
+  if (applyBtn) applyBtn.addEventListener('click', onApplyOcr);
+}
+
+function onApplyOcr(e) {
+  const parts = e.currentTarget.dataset.applyOcr.split('|');
+  const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+  if (!s) return;
+  const val = parseFloat(parts[1]);
+  if (!isFinite(val) || val <= 0) return;
+  s.floorSqft = val;
+  saveState();
+  renderAll();
+  toast('Floor area set to ' + val.toFixed(1) + ' sqft from iScanner', 'success');
 }
 
 function renderSlabs(){
@@ -346,7 +501,11 @@ function renderSlabs(){
     let photosHtml = '';
     if (s.photos.length) {
       photosHtml = '<div class="slab-photos">'+s.photos.map(function(p,i){
+        let badge = '';
+        if (p.ocr && p.ocr.status === 'detected') badge = '<div style="position:absolute;top:5px;left:5px;background:rgba(29,158,117,.92);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">📐 iScanner</div>';
+        else if (p.ocr && p.ocr.status === 'running') badge = '<div style="position:absolute;top:5px;left:5px;background:rgba(59,130,246,.92);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">⏳ OCR…</div>';
         return '<div class="photo-slot"><img src="'+p.dataUrl+'" alt="">'+
+               badge +
                '<button class="photo-slot-del" type="button" data-del-photo="'+s.id+'|'+p.id+'" aria-label="Remove">×</button>'+
                '<div class="photo-slot-meta">#'+(i+1)+' · '+p.compressedKB+'KB</div></div>';
       }).join('')+'</div>';
@@ -410,6 +569,7 @@ function renderSlabs(){
       (isFlashing ? '' :
         '<div class="subsection">'+
           '<div class="subsection-h">Floor area</div>'+
+          ocrBannerHtml(s)+
           '<div class="input-with-suffix">'+
             '<input class="input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="From iScanner — e.g. 35.5" value="'+(s.floorSqft||'')+'" data-slab="'+s.id+'" data-slab-field="floorSqft">'+
             '<span class="suffix">sqft</span>'+
@@ -667,6 +827,7 @@ function wireSlabHandlers(list){
   list.querySelectorAll('input[data-add-photo]').forEach(function(el){
     el.onchange = function(){ handlePhotoFiles(el.dataset.addPhoto, el.files); el.value=''; };
   });
+  list.querySelectorAll('[data-apply-ocr]').forEach(function(b){ b.onclick = onApplyOcr; });
   list.querySelectorAll('[data-del-photo]').forEach(function(b){
     b.onclick = function(e){
       e.preventDefault(); e.stopPropagation();
