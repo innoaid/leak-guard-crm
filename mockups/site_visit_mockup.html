@@ -226,9 +226,12 @@ function toast(msg,type){
 
 // ========= STATE =========
 function newSlab(name){
-  return { id:uuid(), name:name||('Slab '+(state.slabs.length+1)), mode:'slab', floorSqft:0, upturns:[], extras:[], photos:[] };
+  return { id:uuid(), name:name||('Slab '+(state.slabs.length+1)), mode:'slab', floorSqft:0, upturns:[], extras:[], photos:[], manualFloor:[] };
 }
 function newUpturn(){ return { id:uuid(), label:'', runFt:0, upturnFt:0 }; }
+function newManualRow(){ return { id:uuid(), label:'', length:0, width:0 }; }
+function manualRowSqft(r){ return (Number(r.length)||0)*(Number(r.width)||0); }
+function slabManualFloorTotal(s){ return (s.manualFloor||[]).reduce(function(sum,r){ return sum+manualRowSqft(r); },0); }
 function newExtra(preset){ return { id:uuid(), label:(preset&&preset.label)||'', qty:(preset&&preset.qty)||1, unit:(preset&&preset.unit)||'job', price:(preset&&preset.price)||0 }; }
 
 function loadState(){
@@ -245,7 +248,8 @@ function loadState(){
             floorSqft:Number(s.floorSqft)||0,
             upturns:(s.upturns||[]).map(function(u){ return {id:u.id||uuid(),label:u.label||'',runFt:Number(u.runFt)||0,upturnFt:Number(u.upturnFt)||0}; }),
             extras:(s.extras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; }),
-            photos:[]
+            photos:[],
+            manualFloor:(s.manualFloor||[]).map(function(r){ return {id:r.id||uuid(),label:r.label||'',length:Number(r.length)||0,width:Number(r.width)||0}; })
           };
         });
         state.siteExtras = (parsed.siteExtras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; });
@@ -262,7 +266,7 @@ function saveState(){
   try {
     const slim = {
       submittedBy:state.submittedBy, notes:state.notes,
-      slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras}; }),
+      slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor}; }),
       siteExtras:state.siteExtras
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
@@ -396,9 +400,10 @@ function renderSlabs(){
       '</div>'+
 
       '<div class="subsection">'+
-        '<div class="subsection-h">Photos ('+s.photos.length+')</div>'+
+        '<div class="subsection-h">Photos &amp; iScanner result ('+s.photos.length+')</div>'+
+        '<div class="field-hint" style="margin-bottom:7px">💡 First photo: <b>iScanner screenshot</b> showing area + perimeter. Then site condition photos.</div>'+
         photosHtml+
-        '<label class="add-photo-btn"><span style="font-size:16px">📷</span><span>Tap to take or upload</span>'+
+        '<label class="add-photo-btn"><span style="font-size:16px">📐📷</span><span>Tap to take iScanner screenshot or site photo</span>'+
           '<input type="file" accept="image/*" capture="environment" data-add-photo="'+s.id+'" multiple></label>'+
       '</div>'+
 
@@ -409,7 +414,30 @@ function renderSlabs(){
             '<input class="input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="From iScanner — e.g. 35.5" value="'+(s.floorSqft||'')+'" data-slab="'+s.id+'" data-slab-field="floorSqft">'+
             '<span class="suffix">sqft</span>'+
           '</div>'+
-          '<div class="field-hint">Use phone iScanner app to measure → key the area here.</div>'+
+          '<div class="field-hint">Key the iScanner Area value here. If iScanner failed → use manual L × W below.</div>'+
+
+          // Manual fallback calculator (Round v3.1)
+          '<div style="margin-top:9px;padding:9px;background:#FAFAFA;border:.5px dashed #D1D5DB;border-radius:6px">'+
+            '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'+
+              '<span>📏 Manual L × W (iScanner failed)</span>'+
+              '<span style="font-weight:600;color:var(--acc)">Sum: '+sqft(slabManualFloorTotal(s))+'</span>'+
+            '</div>'+
+            (s.manualFloor||[]).map(function(r){
+              return '<div class="row" data-mfloor="'+r.id+'" style="margin-bottom:5px">'+
+                '<div class="row-label"><span>Section</span><button class="row-x" data-del-mfloor="'+s.id+'|'+r.id+'" type="button" aria-label="Remove">×</button></div>'+
+                '<div class="row-fields">'+
+                  '<input type="text" placeholder="e.g. Main floor" value="'+escapeHtml(r.label)+'" data-mf-field="label" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+                  '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Length ft" value="'+(r.length||'')+'" data-mf-field="length" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+                  '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Width ft" value="'+(r.width||'')+'" data-mf-field="width" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+                  '<span class="fld-out" data-mf-out="'+r.id+'">= '+sqft(manualRowSqft(r))+'</span>'+
+                '</div>'+
+              '</div>';
+            }).join('')+
+            '<div style="display:flex;gap:6px;margin-top:5px">'+
+              '<button class="add-row" type="button" data-add-mfloor="'+s.id+'" style="flex:1;margin-top:0">+ Add section</button>'+
+              ((s.manualFloor||[]).length ? '<button class="add-row" type="button" data-apply-mfloor="'+s.id+'" style="flex:1;margin-top:0;border-color:var(--acc);background:#F0FDF4;color:var(--acc);font-weight:700">↑ Apply '+sqft(slabManualFloorTotal(s))+' to floor area</button>' : '')+
+            '</div>'+
+          '</div>'+
         '</div>'
       )+
 
@@ -549,6 +577,56 @@ function wireSlabHandlers(list){
     el.addEventListener('input', update);
     el.addEventListener('change', update);
   });
+  // Manual floor calc — add row
+  list.querySelectorAll('[data-add-mfloor]').forEach(function(b){
+    b.onclick = function(){
+      const s = state.slabs.find(function(x){ return x.id===b.dataset.addMfloor; });
+      if (!s) return;
+      if (!Array.isArray(s.manualFloor)) s.manualFloor = [];
+      s.manualFloor.push(newManualRow());
+      saveState(); renderAll();
+    };
+  });
+  // Manual floor calc — delete row
+  list.querySelectorAll('[data-del-mfloor]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.delMfloor.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      s.manualFloor = (s.manualFloor||[]).filter(function(r){ return r.id!==parts[1]; });
+      saveState(); renderAll();
+    };
+  });
+  // Manual floor calc — edit row fields
+  list.querySelectorAll('input[data-mf-field]').forEach(function(el){
+    const update = function(){
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
+      if (!s) return;
+      const r = (s.manualFloor||[]).find(function(x){ return x.id===el.dataset.mf; });
+      if (!r) return;
+      const f = el.dataset.mfField;
+      r[f] = (f==='length'||f==='width') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-mf-out="'+r.id+'"]');
+      if (out) out.textContent = '= ' + sqft(manualRowSqft(r));
+      // Update the Sum text in the manual-floor header by re-rendering the apply button label
+      // Simpler: full re-render only when add/remove. For live edits, just rerender.
+      renderAll();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  // Manual floor calc — apply sum to floor area
+  list.querySelectorAll('[data-apply-mfloor]').forEach(function(b){
+    b.onclick = function(){
+      const s = state.slabs.find(function(x){ return x.id===b.dataset.applyMfloor; });
+      if (!s) return;
+      const total = slabManualFloorTotal(s);
+      if (total <= 0) { toast('Manual rows are empty', 'info'); return; }
+      s.floorSqft = total;
+      saveState(); renderAll();
+      toast('Floor area set to ' + sqft(total), 'success');
+    };
+  });
   list.querySelectorAll('[data-add-extra]').forEach(function(b){
     b.onclick = function(){ const s = state.slabs.find(function(x){ return x.id===b.dataset.addExtra; }); if (s){ s.extras.push(newExtra()); saveState(); renderAll(); } };
   });
@@ -654,6 +732,7 @@ document.getElementById('btnSubmit').addEventListener('click', function(){
           name:s.name, mode:s.mode, floorSqft:s.floorSqft,
           upturns:s.upturns.map(function(u){ return {label:u.label,runFt:u.runFt,upturnFt:u.upturnFt,sqft:upturnSqft(u)}; }),
           extras:s.extras.map(function(e){ return {label:e.label,qty:e.qty,unit:e.unit,price:e.price,total:extraTotal(e)}; }),
+          manualFloor:(s.manualFloor||[]).map(function(r){ return {label:r.label,length:r.length,width:r.width,sqft:manualRowSqft(r)}; }),
           photoCount:s.photos.length, membraneSqft:slabSqft(s), membraneRm:slabMembraneRm(s),
           extrasRm:slabExtrasRm(s), slabTotal:slabTotal(s)
         };
