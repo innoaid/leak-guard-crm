@@ -54,6 +54,7 @@ function doPost(e) {
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
+      case 'claimCooldown':      return handleClaimCooldown(body);  // round 54 — atomic check-and-set for v2 link cooldown
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -411,6 +412,57 @@ function handleResetTestLead(body) {
 // Called by n8n's Send Whapi Reply (when bot emits [PROPOSE] marker) and
 // Debug Skip Echo (to clear pending on escalation interruption).
 // Pass empty strings for pendingDate / pendingSlot / pendingCreatedAt to clear.
+
+// ================================================================
+// Round 54 — atomic cooldown claim for v2 chat link-send
+// Body: { action, secret, groupName, durationMin? (default 60) }
+// Returns: { status:'ok', claimed: true }  on fresh claim (timestamp written)
+//          { status:'ok', claimed: false, ageMin } when still in cooldown
+// LockService serialises concurrent calls so two parallel requests can't
+// both claim. Eliminates the read-after-write race we hit with Sheets'
+// eventual consistency (Nithia case — 2 messages 21s apart, both saw
+// empty Pending Confirmation (AI) and both sent the link).
+// ================================================================
+function handleClaimCooldown(body) {
+  if (!body.groupName) return jsonResponse({status: 'error', message: 'groupName required'});
+  const durationMin = Number(body.durationMin) || 60;
+
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(5000); } catch (e) {
+    return jsonResponse({status: 'error', message: 'lock timeout'});
+  }
+  try {
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const gnIdx = headers.indexOf('Group Name (AE)');
+    const pcIdx = headers.indexOf('Pending Confirmation (AI)');
+    if (gnIdx === -1 || pcIdx === -1) {
+      return jsonResponse({status: 'error', message: 'columns missing'});
+    }
+    let rowNum = null;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][gnIdx] || '').trim() === body.groupName.trim()) {
+        rowNum = i + 1; break;
+      }
+    }
+    if (!rowNum) return jsonResponse({status: 'error', message: 'group not found'});
+
+    const cellVal = String(data[rowNum-1][pcIdx] || '').trim();
+    if (cellVal) {
+      const lastTs = new Date(cellVal);
+      const ageMs = Date.now() - lastTs.getTime();
+      if (!isNaN(ageMs) && ageMs >= 0 && ageMs < durationMin * 60 * 1000) {
+        return jsonResponse({status: 'ok', claimed: false, ageMin: Math.round(ageMs / 60000)});
+      }
+    }
+    sheet.getRange(rowNum, pcIdx + 1).setValue(new Date().toISOString());
+    SpreadsheetApp.flush();  // force the write to commit before releasing lock
+    return jsonResponse({status: 'ok', claimed: true, rowNum: rowNum});
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+  }
+}
 
 function handleSetPending(body) {
   // body: {action: 'setPending', secret, groupName, pendingDate, pendingSlot, pendingCreatedAt}
