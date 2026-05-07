@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Site Visit Form (Mockup v2)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;min-height:100vh;-webkit-tap-highlight-color:transparent}
+
+.wrap{max-width:760px;margin:0 auto;padding:14px;padding-bottom:120px}
+
+.demo-banner{background:#FEF3C7;border:.5px solid #FDE68A;color:#92400E;padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:10px;text-align:center}
+
+.hdr{background:var(--pri);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:14px}
+.hdr-t{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
+.hdr-s{font-size:11px;opacity:.75;margin-top:3px}
+
+.section{background:#fff;border-radius:10px;padding:16px 18px;margin-bottom:12px;border:.5px solid var(--bdr)}
+.section-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mt);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.section-h-action{font-size:12px;font-weight:600;color:var(--acc);background:none;border:.5px solid var(--acc);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0}
+.section-h-action:active{background:#F0FDF4}
+
+.cust-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13px;line-height:1.5}
+.cust-grid dt{color:var(--mt);font-weight:500}
+.cust-grid dd{color:var(--ink);font-weight:600}
+
+.field{margin-bottom:14px}
+.field:last-child{margin-bottom:0}
+.field-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--mt);margin-bottom:5px;display:block}
+.field-required:after{content:'*';color:var(--err);margin-left:3px}
+.input,.textarea,.select{width:100%;padding:10px 12px;border:.5px solid #D1D5DB;border-radius:6px;font-size:15px;font-family:inherit;background:#fff;color:var(--ink)}
+.input:focus,.textarea:focus,.select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(29,158,117,.12)}
+.textarea{resize:vertical;min-height:70px;line-height:1.4}
+.field-hint{font-size:11px;color:var(--mt);margin-top:4px}
+
+/* Slab card (mirrors quotation builder's .zone) */
+.slab{background:#FAFAFA;border:.5px solid var(--bdr);border-radius:8px;padding:12px;margin-bottom:9px}
+.slab-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+.slab-name{flex:1;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:14px;font-weight:600;font-family:inherit;background:#fff}
+.slab-remove{padding:6px 11px;background:#FEE2E2;color:#991B1B;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
+.slab-remove:active{background:#FECACA}
+
+.slab-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.photo-slot{position:relative;aspect-ratio:1;border:1.5px dashed #D1D5DB;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--mt);font-size:11px;text-align:center;overflow:hidden;cursor:pointer}
+.photo-slot.has-img{cursor:default;border-style:solid;border-color:#D1D5DB}
+.photo-slot:not(.has-img):active{background:#F0FDF4;border-color:var(--acc)}
+.photo-slot img{width:100%;height:100%;object-fit:cover}
+.photo-slot input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.photo-slot.has-img input[type=file]{display:none}
+.photo-slot-del{position:absolute;top:5px;right:5px;background:rgba(220,38,38,.94);color:#fff;border:none;border-radius:6px;width:28px;height:28px;font-size:16px;cursor:pointer;font-family:inherit;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;padding:0}
+.photo-slot-meta{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.65);color:#fff;font-size:10px;padding:3px 6px;font-weight:500;letter-spacing:.2px}
+.photo-slot-add{font-size:22px;display:block;margin-bottom:5px;color:#9CA3AF}
+
+.add-photo-btn{padding:10px;border:.5px dashed #D1D5DB;border-radius:8px;background:#fff;color:var(--mt);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;position:relative;margin-bottom:10px}
+.add-photo-btn:active{background:#F0FDF4;border-color:var(--acc);color:var(--acc)}
+.add-photo-btn input{position:absolute;inset:0;opacity:0;pointer-events:auto;cursor:pointer}
+
+.slab-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.slab-input-wrap{display:flex;flex-direction:column;gap:3px}
+.slab-input-label{font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.slab-input{padding:9px 11px;border:.5px solid #D1D5DB;border-radius:5px;font-size:15px;font-family:inherit;background:#fff;width:100%}
+.slab-input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(29,158,117,.12)}
+.slab-subtotal{display:flex;justify-content:flex-end;font-size:12px;font-weight:600;color:var(--acc);margin-top:6px}
+
+.add-slab-btn{padding:11px;border:.5px dashed var(--acc);border-radius:8px;background:#F0FDF4;color:var(--acc);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:6px}
+.add-slab-btn:active{background:#DCFCE7}
+
+.grand-total{background:#F0FDF4;border:.5px solid #BBF7D0;padding:11px 14px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;color:#065F46;margin-top:10px}
+
+.submit-bar{position:fixed;bottom:0;left:0;right:0;padding:10px 14px;background:#fff;border-top:.5px solid var(--bdr);box-shadow:0 -2px 10px rgba(0,0,0,.05);z-index:50}
+.submit-bar-inner{max-width:760px;margin:0 auto;display:flex;gap:8px}
+.btn-submit{flex:1;padding:14px;border:none;border-radius:8px;background:var(--acc);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-submit:disabled{background:#9CA3AF;cursor:not-allowed}
+.btn-submit:active:not(:disabled){background:#0F6E56}
+.btn-clear{padding:14px 16px;border:.5px solid var(--bdr);border-radius:8px;background:#fff;color:var(--mt);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+
+/* Toast */
+.toast-container{position:fixed;top:14px;left:14px;right:14px;display:flex;flex-direction:column;gap:8px;z-index:1000;pointer-events:none}
+.toast{padding:12px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);pointer-events:auto;text-align:center}
+.toast.success{background:#10B981}
+.toast.error{background:#DC2626}
+.toast.info{background:#3B82F6}
+
+/* Loading overlay */
+.upload-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:200;flex-direction:column;gap:12px;color:#fff;font-size:14px;font-weight:600}
+.upload-overlay.on{display:flex}
+.spinner{width:42px;height:42px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media (max-width: 480px){
+  .slab-photos{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="demo-banner">⚠️ Pressable mockup — saves to your browser only. Submit shows fake confirmation, no real CRM write.</div>
+
+  <div class="hdr">
+    <div class="hdr-t">🔍 Site Visit Form</div>
+    <div class="hdr-s">Measure each slab + capture photos on-site</div>
+  </div>
+
+  <!-- Customer (read-only, prefilled) -->
+  <div class="section">
+    <div class="section-h">Customer</div>
+    <dl class="cust-grid">
+      <dt>Name</dt><dd id="cName">Annie</dd>
+      <dt>Phone</dt><dd id="cPhone">60179934386</dd>
+      <dt>Group</dt><dd id="cGroup">SV-0426-018 Annie - Ampang</dd>
+      <dt>Location</dt><dd id="cLoc">Ampang, KL</dd>
+      <dt>Problem</dt><dd id="cProblem">Bathroom slab leaking to unit below</dd>
+      <dt>Address</dt><dd id="cAddr">Block A, Lvl 9, Pangsapuri Anggun, Ampang</dd>
+      <dt>Visit slot</dt><dd id="cSlot">Wed 7 May, 10:30 AM</dd>
+    </dl>
+  </div>
+
+  <!-- Visit form (top fields) -->
+  <div class="section">
+    <div class="section-h">Visit Details</div>
+
+    <div class="field">
+      <label class="field-label field-required">Submitted by</label>
+      <select class="select" id="fSubmittedBy">
+        <option value="">— Select your name —</option>
+        <option>William (KL)</option>
+        <option>Osment (JB)</option>
+        <option>Alvin</option>
+        <option>Ken</option>
+        <option>Other (specify in notes)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Slabs -->
+  <div class="section">
+    <div class="section-h">
+      Slabs
+      <button class="section-h-action" id="btnAddSlab">+ Add Slab</button>
+    </div>
+    <div id="slabsList"></div>
+    <button class="add-slab-btn" id="btnAddSlabBig" type="button">+ Add another slab</button>
+    <div class="grand-total">
+      <span>TOTAL ALL SLABS</span>
+      <span id="grandTotal">0 sqft</span>
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <div class="section">
+    <div class="section-h">Notes (optional)</div>
+    <textarea class="textarea" id="fNotes" rows="3" placeholder="e.g. concrete cracked at NE corner, recommend full re-screed before membrane"></textarea>
+  </div>
+</div>
+
+<div class="submit-bar">
+  <div class="submit-bar-inner">
+    <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
+    <button class="btn-submit" id="btnSubmit" type="button" disabled>Submit Visit</button>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="upload-overlay" id="uploadOverlay">
+  <div class="spinner"></div>
+  <div id="uploadText">Compressing photos…</div>
+</div>
+
+<script>
+const LS_KEY = 'lg_site_visit_mockup_v2';
+
+let state = {
+  submittedBy: '',
+  notes: '',
+  slabs: []   // [{id, name, floorSqft, upturnSqft, photos:[{id,dataUrl,filename,originalKB,compressedKB}]}]
+};
+
+function uuid() { return Math.random().toString(36).slice(2, 9); }
+
+// ---------- Toast ----------
+function toast(msg, type) {
+  type = type || 'info';
+  const c = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(function(){ el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 250); }, 3500);
+}
+
+// ---------- LocalStorage persistence ----------
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        state.submittedBy = parsed.submittedBy || '';
+        state.notes = parsed.notes || '';
+        state.slabs = (parsed.slabs || []).map(function(s) {
+          return {
+            id: s.id || uuid(),
+            name: s.name || 'Slab',
+            floorSqft: Number(s.floorSqft) || 0,
+            upturnSqft: Number(s.upturnSqft) || 0,
+            photos: []  // photos not persisted (too big for localStorage)
+          };
+        });
+      }
+    }
+  } catch (e) { console.warn('loadState failed', e); }
+  if (!state.slabs.length) addSlab({name:'Slab 1'});  // seed first slab
+  document.getElementById('fSubmittedBy').value = state.submittedBy || '';
+  document.getElementById('fNotes').value = state.notes || '';
+  renderSlabs();
+  updateSubmitState();
+}
+
+function saveState() {
+  try {
+    const slim = {
+      submittedBy: state.submittedBy,
+      notes: state.notes,
+      slabs: state.slabs.map(function(s) {
+        return { id: s.id, name: s.name, floorSqft: s.floorSqft, upturnSqft: s.upturnSqft };
+      })
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(slim));
+  } catch (e) {}
+}
+
+// ---------- Slab CRUD ----------
+function addSlab(opts) {
+  opts = opts || {};
+  const n = state.slabs.length + 1;
+  state.slabs.push({
+    id: uuid(),
+    name: opts.name || ('Slab ' + n),
+    floorSqft: 0,
+    upturnSqft: 0,
+    photos: []
+  });
+  saveState();
+}
+
+function removeSlab(id) {
+  if (state.slabs.length <= 1) {
+    toast('At least one slab required', 'info');
+    return;
+  }
+  if (!confirm('Remove this slab and its photos?')) return;
+  state.slabs = state.slabs.filter(function(s){ return s.id !== id; });
+  saveState();
+  renderSlabs();
+  updateSubmitState();
+}
+
+function updateSlab(id, field, value) {
+  const s = state.slabs.find(function(x){ return x.id === id; });
+  if (!s) return;
+  if (field === 'floorSqft' || field === 'upturnSqft') s[field] = Number(value) || 0;
+  else s[field] = value;
+  saveState();
+  // Update inline subtotal + grand total without full re-render (preserves focus)
+  const sub = document.querySelector('[data-subtotal="' + id + '"]');
+  if (sub) sub.textContent = (s.floorSqft + s.upturnSqft) + ' sqft';
+  updateGrandTotal();
+  updateSubmitState();
+}
+
+// ---------- Photo compression ----------
+async function compressImage(file, maxEdge) {
+  maxEdge = maxEdge || 1280;
+  return new Promise(function(resolve, reject) {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      img.onload = function() {
+        let w = img.width, h = img.height;
+        if (w > h && w > maxEdge) { h = Math.round(h * maxEdge / w); w = maxEdge; }
+        else if (h >= w && h > maxEdge) { w = Math.round(w * maxEdge / h); h = maxEdge; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        resolve(dataUrl);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataUrlSizeKB(dataUrl) {
+  const idx = dataUrl.indexOf(',');
+  const b64 = dataUrl.slice(idx + 1);
+  return Math.round(b64.length * 0.75 / 1024);
+}
+
+async function handlePhotoFiles(slabId, files) {
+  if (!files || !files.length) return;
+  const slab = state.slabs.find(function(s){ return s.id === slabId; });
+  if (!slab) return;
+  const overlay = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
+  overlay.classList.add('on');
+  let added = 0;
+  for (const file of Array.from(files)) {
+    ut.textContent = 'Compressing… (' + (added + 1) + ' of ' + files.length + ')';
+    try {
+      const originalKB = Math.round(file.size / 1024);
+      const dataUrl = await compressImage(file, 1280);
+      const compressedKB = dataUrlSizeKB(dataUrl);
+      slab.photos.push({
+        id: uuid(),
+        dataUrl: dataUrl,
+        filename: file.name || 'photo.jpg',
+        originalKB: originalKB,
+        compressedKB: compressedKB
+      });
+      added++;
+    } catch (e) { toast('Failed to read one photo', 'error'); }
+  }
+  overlay.classList.remove('on');
+  if (added) toast('Added ' + added + ' photo' + (added > 1 ? 's' : '') + ' to ' + slab.name, 'success');
+  renderSlabs();
+  updateSubmitState();
+}
+
+function removePhoto(slabId, photoId) {
+  const slab = state.slabs.find(function(s){ return s.id === slabId; });
+  if (!slab) return;
+  slab.photos = slab.photos.filter(function(p){ return p.id !== photoId; });
+  renderSlabs();
+  updateSubmitState();
+}
+
+// ---------- Render ----------
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function renderSlabs() {
+  const list = document.getElementById('slabsList');
+  list.innerHTML = '';
+  state.slabs.forEach(function(s, idx) {
+    const div = document.createElement('div');
+    div.className = 'slab';
+    let photoSlots = '';
+    s.photos.forEach(function(p, i) {
+      photoSlots +=
+        '<div class="photo-slot has-img">' +
+          '<img src="' + p.dataUrl + '" alt="">' +
+          '<button class="photo-slot-del" type="button" data-del-photo="' + s.id + '|' + p.id + '" aria-label="Remove">×</button>' +
+          '<div class="photo-slot-meta">#' + (i+1) + ' · ' + p.originalKB + 'KB → ' + p.compressedKB + 'KB</div>' +
+        '</div>';
+    });
+    div.innerHTML =
+      '<div class="slab-h">' +
+        '<input class="slab-name" value="' + escapeHtml(s.name) + '" data-slab="' + s.id + '" data-field="name">' +
+        '<button class="slab-remove" data-remove-slab="' + s.id + '" type="button">Remove</button>' +
+      '</div>' +
+      (photoSlots ? '<div class="slab-photos">' + photoSlots + '</div>' : '') +
+      '<label class="add-photo-btn">' +
+        '<span style="font-size:18px">📷</span>' +
+        '<span>Tap to take or upload photo</span>' +
+        '<input type="file" accept="image/*" capture="environment" data-add-photo="' + s.id + '" multiple>' +
+      '</label>' +
+      '<div class="slab-row">' +
+        '<div class="slab-input-wrap">' +
+          '<span class="slab-input-label">Area size (sqft)</span>' +
+          '<input class="slab-input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="e.g. 25" value="' + (s.floorSqft || '') + '" data-slab="' + s.id + '" data-field="floorSqft">' +
+        '</div>' +
+        '<div class="slab-input-wrap">' +
+          '<span class="slab-input-label">Upturn (sqft)</span>' +
+          '<input class="slab-input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="e.g. 8" value="' + (s.upturnSqft || '') + '" data-slab="' + s.id + '" data-field="upturnSqft">' +
+        '</div>' +
+      '</div>' +
+      '<div class="slab-subtotal">Subtotal: <span data-subtotal="' + s.id + '" style="margin-left:6px">' + (s.floorSqft + s.upturnSqft) + ' sqft</span></div>';
+    list.appendChild(div);
+  });
+
+  // Wire inputs
+  list.querySelectorAll('input[data-slab]').forEach(function(el) {
+    const handler = function(){ updateSlab(el.dataset.slab, el.dataset.field, el.value); };
+    el.addEventListener('input', handler);
+    el.addEventListener('change', handler);
+  });
+  list.querySelectorAll('[data-remove-slab]').forEach(function(el) {
+    el.onclick = function() { removeSlab(el.dataset.removeSlab); };
+  });
+  list.querySelectorAll('input[data-add-photo]').forEach(function(el) {
+    el.onchange = function(e) {
+      handlePhotoFiles(el.dataset.addPhoto, el.files);
+      e.target.value = '';
+    };
+  });
+  list.querySelectorAll('[data-del-photo]').forEach(function(el) {
+    el.onclick = function(e) {
+      e.preventDefault(); e.stopPropagation();
+      const parts = el.dataset.delPhoto.split('|');
+      removePhoto(parts[0], parts[1]);
+    };
+  });
+
+  updateGrandTotal();
+}
+
+function updateGrandTotal() {
+  const total = state.slabs.reduce(function(sum, s){ return sum + s.floorSqft + s.upturnSqft; }, 0);
+  document.getElementById('grandTotal').textContent = total + ' sqft';
+}
+
+function totalPhotos() {
+  return state.slabs.reduce(function(sum, s){ return sum + s.photos.length; }, 0);
+}
+
+function updateSubmitState() {
+  const btn = document.getElementById('btnSubmit');
+  const slabsValid = state.slabs.length >= 1 && state.slabs.every(function(s) {
+    return (s.floorSqft + s.upturnSqft) > 0;
+  });
+  const photosCount = totalPhotos();
+  const ok = state.submittedBy && slabsValid && photosCount >= 1;
+  btn.disabled = !ok;
+  btn.textContent = ok
+    ? ('Submit Visit — ' + state.slabs.length + ' slab' + (state.slabs.length > 1 ? 's' : '') + ', ' + photosCount + ' photo' + (photosCount > 1 ? 's' : ''))
+    : 'Submit Visit';
+}
+
+// ---------- Top-level field handlers ----------
+document.getElementById('fSubmittedBy').addEventListener('change', function(e){
+  state.submittedBy = e.target.value;
+  saveState(); updateSubmitState();
+});
+document.getElementById('fNotes').addEventListener('input', function(e){
+  state.notes = e.target.value;
+  saveState();
+});
+
+// Add Slab buttons (header + bottom)
+function handleAddSlab() {
+  addSlab({});
+  renderSlabs();
+  updateSubmitState();
+  // scroll the new slab into view
+  const list = document.getElementById('slabsList');
+  const lastSlab = list.lastElementChild;
+  if (lastSlab) lastSlab.scrollIntoView({behavior:'smooth', block:'center'});
+}
+document.getElementById('btnAddSlab').addEventListener('click', handleAddSlab);
+document.getElementById('btnAddSlabBig').addEventListener('click', handleAddSlab);
+
+// ---------- Submit (mock) ----------
+document.getElementById('btnSubmit').addEventListener('click', function(){
+  const overlay = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
+  overlay.classList.add('on');
+  ut.textContent = 'Uploading photos to Drive…';
+  setTimeout(function(){ ut.textContent = 'Writing CRM…'; }, 1100);
+  setTimeout(function(){
+    overlay.classList.remove('on');
+    const total = state.slabs.reduce(function(sum,s){ return sum + s.floorSqft + s.upturnSqft; }, 0);
+    toast('✓ Visit submitted (mockup) — ' + state.slabs.length + ' slabs, ' + totalPhotos() + ' photos, ' + total + ' sqft', 'success');
+    const payload = {
+      phone: '60179934386',
+      submittedBy: state.submittedBy,
+      notes: state.notes,
+      slabs: state.slabs.map(function(s) {
+        return {
+          name: s.name,
+          floorSqft: s.floorSqft,
+          upturnSqft: s.upturnSqft,
+          subtotalSqft: s.floorSqft + s.upturnSqft,
+          photoCount: s.photos.length,
+          photoSizeKB: s.photos.reduce(function(sum,p){ return sum + p.compressedKB; }, 0)
+        };
+      }),
+      grandTotalSqft: total
+    };
+    setTimeout(function(){
+      alert('Mockup payload (real version POSTs this to n8n):\n\n' + JSON.stringify(payload, null, 2));
+    }, 600);
+  }, 2200);
+});
+
+// ---------- Reset ----------
+document.getElementById('btnClear').addEventListener('click', function(){
+  if (!confirm('Clear the form and all slabs/photos?')) return;
+  state = { submittedBy: '', notes: '', slabs: [] };
+  addSlab({name:'Slab 1'});
+  document.getElementById('fSubmittedBy').value = '';
+  document.getElementById('fNotes').value = '';
+  saveState();
+  renderSlabs();
+  updateSubmitState();
+  toast('Cleared', 'info');
+});
+
+// ---------- Boot ----------
+loadState();
+</script>
+
+</body>
+</html>
