@@ -2384,7 +2384,11 @@ function renderBulkLinkReport() {
 
   // Matched section
   if ((bulkLinkState.matched||[]).length) {
-    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6B7280;letter-spacing:.5px;margin:16px 0 8px">✅ Matched (' + bulkLinkState.matched.length + ') — link to existing CRM rows</div>';
+    html += sectionHeaderHtml(
+      '✅ Matched (' + bulkLinkState.matched.length + ') — link to existing CRM rows',
+      'link_existing',
+      '#6B7280'
+    );
     bulkLinkState.matched.forEach(function(m){
       html += renderMatchedCard(m);
     });
@@ -2392,7 +2396,11 @@ function renderBulkLinkReport() {
 
   // Orphan section
   if ((bulkLinkState.orphan||[]).length) {
-    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6B7280;letter-spacing:.5px;margin:20px 0 8px">🆕 Orphan (' + bulkLinkState.orphan.length + ') — no CRM match, will create new rows</div>';
+    html += sectionHeaderHtml(
+      '🆕 Orphan (' + bulkLinkState.orphan.length + ') — no CRM match, will create new rows',
+      'create_orphan',
+      '#6B7280'
+    );
     bulkLinkState.orphan.forEach(function(o){
       html += renderOrphanCard(o);
     });
@@ -2420,6 +2428,34 @@ function renderBulkLinkReport() {
     el.addEventListener('change', onBulkLinkRowChange);
     el.addEventListener('input', onBulkLinkRowChange);
   });
+  // Round 53: wire bucket-level Skip-all / Include-all toggles
+  c.querySelectorAll('[data-bl-toggle-bucket]').forEach(function(el){
+    el.addEventListener('click', function(){ toggleBucketSkip(el.dataset.blToggleBucket); });
+  });
+}
+
+// Round 53: section header with bulk skip/include toggle for the bucket.
+// kind = 'link_existing' (matched bucket) or 'create_orphan' (orphan bucket).
+function sectionHeaderHtml(label, kind, color) {
+  const rows = Object.values(bulkLinkState.perRow || {}).filter(function(c){ return c.kind === kind; });
+  const total = rows.length;
+  const skippedCount = rows.filter(function(c){ return c.skip; }).length;
+  const allSkipped = total > 0 && skippedCount === total;
+  const btnLabel = allSkipped ? '↺ Include all (' + total + ')' : '✕ Skip all (' + total + ')';
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px;gap:8px">' +
+    '<span style="font-size:11px;font-weight:700;text-transform:uppercase;color:' + color + ';letter-spacing:.5px">' + label + '</span>' +
+    '<button type="button" data-bl-toggle-bucket="' + kind + '" style="font-size:11px;padding:4px 9px;border:.5px solid ' + (allSkipped ? '#10B981' : '#9CA3AF') + ';border-radius:5px;background:#fff;color:' + (allSkipped ? '#065F46' : '#374151') + ';font-family:inherit;font-weight:600;cursor:pointer">' + btnLabel + '</button>' +
+    '</div>';
+}
+
+function toggleBucketSkip(kind) {
+  if (!bulkLinkState || !bulkLinkState.perRow) return;
+  const rows = Object.values(bulkLinkState.perRow).filter(function(c){ return c.kind === kind; });
+  if (rows.length === 0) return;
+  const allSkipped = rows.every(function(c){ return c.skip; });
+  const newSkip = !allSkipped;
+  rows.forEach(function(c){ c.skip = newSkip; });
+  renderBulkLinkReport();
 }
 
 function renderMatchedCard(m) {
