@@ -3,126 +3,141 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Leak Guard — Site Visit Form (Mockup v2)</title>
+<title>Leak Guard — Site Visit + On-Spot Estimate (Mockup v3)</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;min-height:100vh;-webkit-tap-highlight-color:transparent}
-
-.wrap{max-width:760px;margin:0 auto;padding:14px;padding-bottom:120px}
+.wrap{max-width:760px;margin:0 auto;padding:14px;padding-bottom:140px}
 
 .demo-banner{background:#FEF3C7;border:.5px solid #FDE68A;color:#92400E;padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:10px;text-align:center}
 
 .hdr{background:var(--pri);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:14px}
 .hdr-t{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
-.hdr-s{font-size:11px;opacity:.75;margin-top:3px}
+.hdr-s{font-size:11px;opacity:.78;margin-top:3px}
 
-.section{background:#fff;border-radius:10px;padding:16px 18px;margin-bottom:12px;border:.5px solid var(--bdr)}
+.section{background:#fff;border-radius:10px;padding:14px 16px;margin-bottom:11px;border:.5px solid var(--bdr)}
 .section-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mt);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
-.section-h-action{font-size:12px;font-weight:600;color:var(--acc);background:none;border:.5px solid var(--acc);border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0}
-.section-h-action:active{background:#F0FDF4}
 
-.cust-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13px;line-height:1.5}
+.cust-grid{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px;line-height:1.5}
 .cust-grid dt{color:var(--mt);font-weight:500}
 .cust-grid dd{color:var(--ink);font-weight:600}
 
-.field{margin-bottom:14px}
+.field{margin-bottom:12px}
 .field:last-child{margin-bottom:0}
 .field-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--mt);margin-bottom:5px;display:block}
 .field-required:after{content:'*';color:var(--err);margin-left:3px}
 .input,.textarea,.select{width:100%;padding:10px 12px;border:.5px solid #D1D5DB;border-radius:6px;font-size:15px;font-family:inherit;background:#fff;color:var(--ink)}
 .input:focus,.textarea:focus,.select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(29,158,117,.12)}
-.textarea{resize:vertical;min-height:70px;line-height:1.4}
+.textarea{resize:vertical;min-height:64px;line-height:1.4}
 .field-hint{font-size:11px;color:var(--mt);margin-top:4px}
+.input-with-suffix{position:relative}
+.input-with-suffix .suffix{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--mt);pointer-events:none}
+.input-with-suffix .input{padding-right:42px}
 
-/* Slab card (mirrors quotation builder's .zone) */
-.slab{background:#FAFAFA;border:.5px solid var(--bdr);border-radius:8px;padding:12px;margin-bottom:9px}
-.slab-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+/* SLAB CARD */
+.slab{background:#FAFAFA;border:.5px solid var(--bdr);border-radius:10px;padding:12px 14px;margin-bottom:11px}
+.slab-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px}
 .slab-name{flex:1;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:14px;font-weight:600;font-family:inherit;background:#fff}
-.slab-remove{padding:6px 11px;background:#FEE2E2;color:#991B1B;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
-.slab-remove:active{background:#FECACA}
+.slab-remove{padding:6px 10px;background:#FEE2E2;color:#991B1B;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
+.slab-mode-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.slab-mode-row label{font-size:11px;font-weight:600;color:var(--mt);text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}
+.slab-mode-row select{flex:1;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;background:#fff;font-family:inherit}
 
-.slab-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.photo-slot{position:relative;aspect-ratio:1;border:1.5px dashed #D1D5DB;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;color:var(--mt);font-size:11px;text-align:center;overflow:hidden;cursor:pointer}
-.photo-slot.has-img{cursor:default;border-style:solid;border-color:#D1D5DB}
-.photo-slot:not(.has-img):active{background:#F0FDF4;border-color:var(--acc)}
+.subsection{background:#fff;border:.5px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-top:10px}
+.subsection-h{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+
+/* PHOTOS */
+.slab-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.photo-slot{position:relative;aspect-ratio:1;border:1.5px solid #D1D5DB;border-radius:8px;background:#fff;overflow:hidden}
 .photo-slot img{width:100%;height:100%;object-fit:cover}
-.photo-slot input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
-.photo-slot.has-img input[type=file]{display:none}
-.photo-slot-del{position:absolute;top:5px;right:5px;background:rgba(220,38,38,.94);color:#fff;border:none;border-radius:6px;width:28px;height:28px;font-size:16px;cursor:pointer;font-family:inherit;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;padding:0}
-.photo-slot-meta{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.65);color:#fff;font-size:10px;padding:3px 6px;font-weight:500;letter-spacing:.2px}
-.photo-slot-add{font-size:22px;display:block;margin-bottom:5px;color:#9CA3AF}
+.photo-slot-del{position:absolute;top:5px;right:5px;background:rgba(220,38,38,.94);color:#fff;border:none;border-radius:6px;width:26px;height:26px;font-size:14px;cursor:pointer;font-family:inherit;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center}
+.photo-slot-meta{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.65);color:#fff;font-size:9px;padding:2px 5px;font-weight:500}
+.add-photo-btn{padding:9px;border:.5px dashed #D1D5DB;border-radius:8px;background:#fff;color:var(--mt);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;position:relative}
+.add-photo-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
 
-.add-photo-btn{padding:10px;border:.5px dashed #D1D5DB;border-radius:8px;background:#fff;color:var(--mt);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;position:relative;margin-bottom:10px}
-.add-photo-btn:active{background:#F0FDF4;border-color:var(--acc);color:var(--acc)}
-.add-photo-btn input{position:absolute;inset:0;opacity:0;pointer-events:auto;cursor:pointer}
+/* UPTURN / EXTRAS row */
+.row{display:grid;grid-template-columns:1fr;gap:5px;padding:8px;background:#FAFAFA;border-radius:6px;margin-bottom:6px;border:.5px solid #F3F4F6}
+.row .row-label{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
+.row-x{background:none;border:none;color:#dc2626;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;padding:0 5px}
+.row-fields{display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:5px;align-items:center}
+.row-fields .fld-out{font-size:13px;font-weight:700;color:var(--acc);text-align:right;padding:0 4px}
+.row-fields input{padding:7px 9px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;font-family:inherit;background:#fff;width:100%;min-width:0}
+.row-fields input:focus{outline:none;border-color:var(--acc)}
+.extras-fields{display:grid;grid-template-columns:1.5fr .8fr .8fr 1fr auto;gap:5px;align-items:center}
+.extras-fields input{padding:7px 9px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;font-family:inherit;background:#fff;width:100%;min-width:0}
+.extras-fields .fld-out{font-size:13px;font-weight:700;color:var(--acc);text-align:right;padding:0 4px}
 
-.slab-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
-.slab-input-wrap{display:flex;flex-direction:column;gap:3px}
-.slab-input-label{font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
-.slab-input{padding:9px 11px;border:.5px solid #D1D5DB;border-radius:5px;font-size:15px;font-family:inherit;background:#fff;width:100%}
-.slab-input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(29,158,117,.12)}
-.slab-subtotal{display:flex;justify-content:flex-end;font-size:12px;font-weight:600;color:var(--acc);margin-top:6px}
+.add-row{padding:8px;border:.5px dashed #D1D5DB;border-radius:6px;background:#fff;color:var(--mt);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
+.add-row:active{background:#F0FDF4;border-color:var(--acc);color:var(--acc)}
+
+.chip-row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px}
+.chip{padding:5px 10px;background:#EFF6FF;color:#1E3A8A;border:.5px solid #BFDBFE;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.chip:active{background:#DBEAFE}
+
+.slab-subtotal{margin-top:11px;padding:9px 12px;background:#F0FDF4;border:.5px solid #BBF7D0;border-radius:7px;font-size:12px;color:#065F46}
+.slab-subtotal .line{display:flex;justify-content:space-between;line-height:1.6}
+.slab-subtotal .line.total{font-size:13px;font-weight:800;border-top:.5px solid #BBF7D0;margin-top:4px;padding-top:5px}
 
 .add-slab-btn{padding:11px;border:.5px dashed var(--acc);border-radius:8px;background:#F0FDF4;color:var(--acc);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:6px}
-.add-slab-btn:active{background:#DCFCE7}
 
-.grand-total{background:#F0FDF4;border:.5px solid #BBF7D0;padding:11px 14px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;color:#065F46;margin-top:10px}
+.grand-card{background:linear-gradient(135deg,#2D2A6E,#1D2862);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:11px}
+.grand-card-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;opacity:.7;margin-bottom:9px}
+.grand-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.7;opacity:.92}
+.grand-line.divider{border-top:1px solid rgba(255,255,255,.2);margin-top:6px;padding-top:7px}
+.grand-line.total{font-size:18px;font-weight:800;margin-top:6px;opacity:1}
+.grand-line .l-label{opacity:.85}
+.grand-line .l-val{font-variant-numeric:tabular-nums}
 
 .submit-bar{position:fixed;bottom:0;left:0;right:0;padding:10px 14px;background:#fff;border-top:.5px solid var(--bdr);box-shadow:0 -2px 10px rgba(0,0,0,.05);z-index:50}
 .submit-bar-inner{max-width:760px;margin:0 auto;display:flex;gap:8px}
-.btn-submit{flex:1;padding:14px;border:none;border-radius:8px;background:var(--acc);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-submit{flex:1;padding:14px;border:none;border-radius:8px;background:var(--acc);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
 .btn-submit:disabled{background:#9CA3AF;cursor:not-allowed}
-.btn-submit:active:not(:disabled){background:#0F6E56}
 .btn-clear{padding:14px 16px;border:.5px solid var(--bdr);border-radius:8px;background:#fff;color:var(--mt);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 
-/* Toast */
 .toast-container{position:fixed;top:14px;left:14px;right:14px;display:flex;flex-direction:column;gap:8px;z-index:1000;pointer-events:none}
-.toast{padding:12px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);pointer-events:auto;text-align:center}
-.toast.success{background:#10B981}
-.toast.error{background:#DC2626}
-.toast.info{background:#3B82F6}
+.toast{padding:11px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);text-align:center}
+.toast.success{background:#10B981}.toast.error{background:#DC2626}.toast.info{background:#3B82F6}
 
-/* Loading overlay */
 .upload-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:200;flex-direction:column;gap:12px;color:#fff;font-size:14px;font-weight:600}
 .upload-overlay.on{display:flex}
-.spinner{width:42px;height:42px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+.spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 @media (max-width: 480px){
-  .slab-photos{grid-template-columns:1fr 1fr}
+  .row-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:12px}
+  .row-fields .fld-out{font-size:12px}
+  .extras-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:11px}
+  .extras-fields input[data-extra-field="unit"], .extras-fields input[data-site-field="unit"]{display:none}
 }
 </style>
 </head>
 <body>
 
 <div class="wrap">
-  <div class="demo-banner">⚠️ Pressable mockup — saves to your browser only. Submit shows fake confirmation, no real CRM write.</div>
+  <div class="demo-banner">⚠️ Pressable mockup v3 — saves to your browser only. Submit shows fake confirmation. Numbers are real (live calculation).</div>
 
   <div class="hdr">
-    <div class="hdr-t">🔍 Site Visit Form</div>
-    <div class="hdr-s">Measure each slab + capture photos on-site</div>
+    <div class="hdr-t">📐 Site Visit + On-Spot Estimate</div>
+    <div class="hdr-s">Measure with iScanner → enter here → estimate generates live</div>
   </div>
 
   <!-- Customer (read-only, prefilled) -->
   <div class="section">
     <div class="section-h">Customer</div>
     <dl class="cust-grid">
-      <dt>Name</dt><dd id="cName">Annie</dd>
-      <dt>Phone</dt><dd id="cPhone">60179934386</dd>
-      <dt>Group</dt><dd id="cGroup">SV-0426-018 Annie - Ampang</dd>
-      <dt>Location</dt><dd id="cLoc">Ampang, KL</dd>
-      <dt>Problem</dt><dd id="cProblem">Bathroom slab leaking to unit below</dd>
-      <dt>Address</dt><dd id="cAddr">Block A, Lvl 9, Pangsapuri Anggun, Ampang</dd>
-      <dt>Visit slot</dt><dd id="cSlot">Wed 7 May, 10:30 AM</dd>
+      <dt>Name</dt><dd>Annie</dd>
+      <dt>Phone</dt><dd>60179934386</dd>
+      <dt>Group</dt><dd>SV-0426-018 Annie - Ampang</dd>
+      <dt>Problem</dt><dd>Bathroom slab leaking to unit below</dd>
+      <dt>Address</dt><dd>Block A, Lvl 9, Pangsapuri Anggun, Ampang</dd>
     </dl>
   </div>
 
-  <!-- Visit form (top fields) -->
+  <!-- Submitted by -->
   <div class="section">
     <div class="section-h">Visit Details</div>
-
     <div class="field">
       <label class="field-label field-required">Submitted by</label>
       <select class="select" id="fSubmittedBy">
@@ -140,20 +155,34 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <div class="section">
     <div class="section-h">
       Slabs
-      <button class="section-h-action" id="btnAddSlab">+ Add Slab</button>
+      <button class="add-row" id="btnAddSlabHeader" style="width:auto;padding:6px 12px;border:.5px solid var(--acc);background:#F0FDF4;color:var(--acc)">+ Add Slab</button>
     </div>
     <div id="slabsList"></div>
     <button class="add-slab-btn" id="btnAddSlabBig" type="button">+ Add another slab</button>
-    <div class="grand-total">
-      <span>TOTAL ALL SLABS</span>
-      <span id="grandTotal">0 sqft</span>
-    </div>
+  </div>
+
+  <!-- Site-wide extras -->
+  <div class="section">
+    <div class="section-h">Site-wide additional services</div>
+    <div class="chip-row" id="siteChips"></div>
+    <div id="siteExtrasList"></div>
+    <button class="add-row" id="btnAddSiteExtra" type="button">+ Add site service</button>
   </div>
 
   <!-- Notes -->
   <div class="section">
     <div class="section-h">Notes (optional)</div>
-    <textarea class="textarea" id="fNotes" rows="3" placeholder="e.g. concrete cracked at NE corner, recommend full re-screed before membrane"></textarea>
+    <textarea class="textarea" id="fNotes" rows="2" placeholder="Concrete cracked at NE corner, recommend full re-screed before membrane…"></textarea>
+  </div>
+
+  <!-- Grand total -->
+  <div class="grand-card">
+    <div class="grand-card-h">Estimated Total</div>
+    <div class="grand-line"><span class="l-label">Total membrane area</span><span class="l-val" id="gtArea">0 sqft</span></div>
+    <div class="grand-line"><span class="l-label">Membrane @ RM 8.50/sqft</span><span class="l-val" id="gtMembrane">RM 0.00</span></div>
+    <div class="grand-line"><span class="l-label">Per-slab services</span><span class="l-val" id="gtSlabExtras">RM 0.00</span></div>
+    <div class="grand-line"><span class="l-label">Site-wide services</span><span class="l-val" id="gtSiteExtras">RM 0.00</span></div>
+    <div class="grand-line divider total"><span class="l-label">ESTIMATED TOTAL</span><span class="l-val" id="gtTotal">RM 0.00</span></div>
   </div>
 </div>
 
@@ -165,348 +194,485 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
-
-<div class="upload-overlay" id="uploadOverlay">
-  <div class="spinner"></div>
-  <div id="uploadText">Compressing photos…</div>
-</div>
+<div class="upload-overlay" id="uploadOverlay"><div class="spinner"></div><div id="uploadText">Compressing photos…</div></div>
 
 <script>
-const LS_KEY = 'lg_site_visit_mockup_v2';
+const LS_KEY = 'lg_site_visit_mockup_v3';
+const MEMBRANE_RATE = 8.50;
 
-let state = {
-  submittedBy: '',
-  notes: '',
-  slabs: []   // [{id, name, floorSqft, upturnSqft, photos:[{id,dataUrl,filename,originalKB,compressedKB}]}]
-};
+const SLAB_SERVICE_PRESETS = [
+  { label: 'Water tank removal',      qty: 1, unit: 'job',  price: 350 },
+  { label: 'Water pump removal',      qty: 1, unit: 'job',  price: 250 },
+  { label: 'Existing coating removal', qty: 0, unit: 'sqft', price: 5    },
+  { label: 'AC compressor removal',   qty: 1, unit: 'job',  price: 200 },
+];
+const SITE_SERVICE_PRESETS = [
+  { label: 'Scaffolding supply & deliver', qty: 1, unit: 'job', price: 800 },
+];
 
-function uuid() { return Math.random().toString(36).slice(2, 9); }
+let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[] };
 
-// ---------- Toast ----------
-function toast(msg, type) {
-  type = type || 'info';
-  const c = document.getElementById('toastContainer');
-  const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  el.textContent = msg;
-  c.appendChild(el);
-  setTimeout(function(){ el.style.opacity = '0'; setTimeout(function(){ el.remove(); }, 250); }, 3500);
+function uuid(){ return Math.random().toString(36).slice(2,9); }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function rm(n){ return 'RM ' + (Number(n)||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function sqft(n){ return ((Number(n)||0).toFixed(1)) + ' sqft'; }
+
+function toast(msg,type){
+  type=type||'info';
+  const c=document.getElementById('toastContainer'); const el=document.createElement('div');
+  el.className='toast '+type; el.textContent=msg; c.appendChild(el);
+  setTimeout(function(){ el.style.opacity='0'; setTimeout(function(){ el.remove(); },250); },3500);
 }
 
-// ---------- LocalStorage persistence ----------
-function loadState() {
+// ========= STATE =========
+function newSlab(name){
+  return { id:uuid(), name:name||('Slab '+(state.slabs.length+1)), mode:'slab', floorSqft:0, upturns:[], extras:[], photos:[] };
+}
+function newUpturn(){ return { id:uuid(), label:'', runFt:0, upturnFt:0 }; }
+function newExtra(preset){ return { id:uuid(), label:(preset&&preset.label)||'', qty:(preset&&preset.qty)||1, unit:(preset&&preset.unit)||'job', price:(preset&&preset.price)||0 }; }
+
+function loadState(){
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
+      if (parsed && typeof parsed==='object') {
         state.submittedBy = parsed.submittedBy || '';
         state.notes = parsed.notes || '';
-        state.slabs = (parsed.slabs || []).map(function(s) {
+        state.slabs = (parsed.slabs||[]).map(function(s){
           return {
-            id: s.id || uuid(),
-            name: s.name || 'Slab',
-            floorSqft: Number(s.floorSqft) || 0,
-            upturnSqft: Number(s.upturnSqft) || 0,
-            photos: []  // photos not persisted (too big for localStorage)
+            id:s.id||uuid(), name:s.name||'Slab', mode:s.mode||'slab',
+            floorSqft:Number(s.floorSqft)||0,
+            upturns:(s.upturns||[]).map(function(u){ return {id:u.id||uuid(),label:u.label||'',runFt:Number(u.runFt)||0,upturnFt:Number(u.upturnFt)||0}; }),
+            extras:(s.extras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; }),
+            photos:[]
           };
         });
+        state.siteExtras = (parsed.siteExtras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; });
       }
     }
-  } catch (e) { console.warn('loadState failed', e); }
-  if (!state.slabs.length) addSlab({name:'Slab 1'});  // seed first slab
+  } catch(_){}
+  if (!state.slabs.length) state.slabs.push(newSlab('Slab 1'));
   document.getElementById('fSubmittedBy').value = state.submittedBy || '';
   document.getElementById('fNotes').value = state.notes || '';
-  renderSlabs();
-  updateSubmitState();
+  renderAll();
 }
 
-function saveState() {
+function saveState(){
   try {
     const slim = {
-      submittedBy: state.submittedBy,
-      notes: state.notes,
-      slabs: state.slabs.map(function(s) {
-        return { id: s.id, name: s.name, floorSqft: s.floorSqft, upturnSqft: s.upturnSqft };
-      })
+      submittedBy:state.submittedBy, notes:state.notes,
+      slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras}; }),
+      siteExtras:state.siteExtras
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
-  } catch (e) {}
+  } catch(_){}
 }
 
-// ---------- Slab CRUD ----------
-function addSlab(opts) {
-  opts = opts || {};
-  const n = state.slabs.length + 1;
-  state.slabs.push({
-    id: uuid(),
-    name: opts.name || ('Slab ' + n),
-    floorSqft: 0,
-    upturnSqft: 0,
-    photos: []
-  });
-  saveState();
-}
+// ========= COMPUTED =========
+function upturnSqft(u){ return (Number(u.runFt)||0)*(Number(u.upturnFt)||0); }
+function slabUpturnTotal(s){ return s.upturns.reduce(function(sum,u){ return sum+upturnSqft(u); },0); }
+function slabFloorContribution(s){ return s.mode==='flashing' ? 0 : (Number(s.floorSqft)||0); }
+function slabSqft(s){ return slabFloorContribution(s)+slabUpturnTotal(s); }
+function slabMembraneRm(s){ return slabSqft(s)*MEMBRANE_RATE; }
+function extraTotal(e){ return (Number(e.qty)||0)*(Number(e.price)||0); }
+function slabExtrasRm(s){ return s.extras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
+function slabTotal(s){ return slabMembraneRm(s)+slabExtrasRm(s); }
+function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
+function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabSqft(s); },0); }
+function grandSlabExtrasRm(){ return state.slabs.reduce(function(sum,s){ return sum+slabExtrasRm(s); },0); }
+function grandTotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm(); }
+function totalPhotos(){ return state.slabs.reduce(function(sum,s){ return sum+s.photos.length; },0); }
 
-function removeSlab(id) {
-  if (state.slabs.length <= 1) {
-    toast('At least one slab required', 'info');
-    return;
-  }
-  if (!confirm('Remove this slab and its photos?')) return;
-  state.slabs = state.slabs.filter(function(s){ return s.id !== id; });
-  saveState();
-  renderSlabs();
-  updateSubmitState();
-}
-
-function updateSlab(id, field, value) {
-  const s = state.slabs.find(function(x){ return x.id === id; });
-  if (!s) return;
-  if (field === 'floorSqft' || field === 'upturnSqft') s[field] = Number(value) || 0;
-  else s[field] = value;
-  saveState();
-  // Update inline subtotal + grand total without full re-render (preserves focus)
-  const sub = document.querySelector('[data-subtotal="' + id + '"]');
-  if (sub) sub.textContent = (s.floorSqft + s.upturnSqft) + ' sqft';
-  updateGrandTotal();
-  updateSubmitState();
-}
-
-// ---------- Photo compression ----------
-async function compressImage(file, maxEdge) {
-  maxEdge = maxEdge || 1280;
-  return new Promise(function(resolve, reject) {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      img.onload = function() {
-        let w = img.width, h = img.height;
-        if (w > h && w > maxEdge) { h = Math.round(h * maxEdge / w); w = maxEdge; }
-        else if (h >= w && h > maxEdge) { w = Math.round(w * maxEdge / h); h = maxEdge; }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-        resolve(dataUrl);
+// ========= PHOTO =========
+async function compressImage(file,maxEdge){
+  maxEdge = maxEdge||1280;
+  return new Promise(function(resolve,reject){
+    const img=new Image(); const r=new FileReader();
+    r.onload=function(e){
+      img.onload=function(){
+        let w=img.width,h=img.height;
+        if (w>h && w>maxEdge){ h=Math.round(h*maxEdge/w); w=maxEdge; }
+        else if (h>=w && h>maxEdge){ w=Math.round(w*maxEdge/h); h=maxEdge; }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',0.82));
       };
-      img.onerror = reject;
-      img.src = e.target.result;
+      img.onerror=reject; img.src=e.target.result;
     };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    r.onerror=reject; r.readAsDataURL(file);
   });
 }
+function dataUrlSizeKB(d){ const i=d.indexOf(','); return Math.round(d.slice(i+1).length*0.75/1024); }
 
-function dataUrlSizeKB(dataUrl) {
-  const idx = dataUrl.indexOf(',');
-  const b64 = dataUrl.slice(idx + 1);
-  return Math.round(b64.length * 0.75 / 1024);
-}
-
-async function handlePhotoFiles(slabId, files) {
+async function handlePhotoFiles(slabId, files){
   if (!files || !files.length) return;
-  const slab = state.slabs.find(function(s){ return s.id === slabId; });
+  const slab = state.slabs.find(function(s){ return s.id===slabId; });
   if (!slab) return;
-  const overlay = document.getElementById('uploadOverlay');
-  const ut = document.getElementById('uploadText');
-  overlay.classList.add('on');
+  const ov = document.getElementById('uploadOverlay');
+  ov.classList.add('on');
   let added = 0;
-  for (const file of Array.from(files)) {
-    ut.textContent = 'Compressing… (' + (added + 1) + ' of ' + files.length + ')';
+  for (const f of Array.from(files)) {
+    document.getElementById('uploadText').textContent = 'Compressing… ('+(added+1)+'/'+files.length+')';
     try {
-      const originalKB = Math.round(file.size / 1024);
-      const dataUrl = await compressImage(file, 1280);
-      const compressedKB = dataUrlSizeKB(dataUrl);
-      slab.photos.push({
-        id: uuid(),
-        dataUrl: dataUrl,
-        filename: file.name || 'photo.jpg',
-        originalKB: originalKB,
-        compressedKB: compressedKB
-      });
+      const okb = Math.round(f.size/1024);
+      const dataUrl = await compressImage(f,1280);
+      slab.photos.push({ id:uuid(), dataUrl, originalKB:okb, compressedKB:dataUrlSizeKB(dataUrl) });
       added++;
-    } catch (e) { toast('Failed to read one photo', 'error'); }
+    } catch(_){ toast('Failed to read one photo','error'); }
   }
-  overlay.classList.remove('on');
-  if (added) toast('Added ' + added + ' photo' + (added > 1 ? 's' : '') + ' to ' + slab.name, 'success');
-  renderSlabs();
-  updateSubmitState();
+  ov.classList.remove('on');
+  if (added) toast('Added '+added+' photo'+(added>1?'s':''),'success');
+  renderAll();
 }
 
-function removePhoto(slabId, photoId) {
-  const slab = state.slabs.find(function(s){ return s.id === slabId; });
-  if (!slab) return;
-  slab.photos = slab.photos.filter(function(p){ return p.id !== photoId; });
-  renderSlabs();
-  updateSubmitState();
+// ========= RENDER =========
+function renderAll(){
+  renderSlabs(); renderSiteExtras(); renderSiteChips(); renderGrand(); updateSubmitState();
 }
 
-// ---------- Render ----------
-function escapeHtml(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-  });
-}
-
-function renderSlabs() {
+function renderSlabs(){
   const list = document.getElementById('slabsList');
   list.innerHTML = '';
-  state.slabs.forEach(function(s, idx) {
+  state.slabs.forEach(function(s){
+    const isFlashing = s.mode === 'flashing';
     const div = document.createElement('div');
     div.className = 'slab';
-    let photoSlots = '';
-    s.photos.forEach(function(p, i) {
-      photoSlots +=
-        '<div class="photo-slot has-img">' +
-          '<img src="' + p.dataUrl + '" alt="">' +
-          '<button class="photo-slot-del" type="button" data-del-photo="' + s.id + '|' + p.id + '" aria-label="Remove">×</button>' +
-          '<div class="photo-slot-meta">#' + (i+1) + ' · ' + p.originalKB + 'KB → ' + p.compressedKB + 'KB</div>' +
+
+    let photosHtml = '';
+    if (s.photos.length) {
+      photosHtml = '<div class="slab-photos">'+s.photos.map(function(p,i){
+        return '<div class="photo-slot"><img src="'+p.dataUrl+'" alt="">'+
+               '<button class="photo-slot-del" type="button" data-del-photo="'+s.id+'|'+p.id+'" aria-label="Remove">×</button>'+
+               '<div class="photo-slot-meta">#'+(i+1)+' · '+p.compressedKB+'KB</div></div>';
+      }).join('')+'</div>';
+    }
+
+    let upturnsHtml = '';
+    s.upturns.forEach(function(u){
+      upturnsHtml +=
+        '<div class="row" data-upturn="'+u.id+'">'+
+          '<div class="row-label"><span>Section</span><button class="row-x" data-del-upturn="'+s.id+'|'+u.id+'" type="button" aria-label="Remove">×</button></div>'+
+          '<div class="row-fields">'+
+            '<input type="text" placeholder="e.g. Left wall" value="'+escapeHtml(u.label)+'" data-up-field="label" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+            '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Run ft" value="'+(u.runFt||'')+'" data-up-field="runFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+            '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Upturn ft" value="'+(u.upturnFt||'')+'" data-up-field="upturnFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+            '<span class="fld-out" data-up-out="'+u.id+'">= '+sqft(upturnSqft(u))+'</span>'+
+          '</div>'+
         '</div>';
     });
+
+    let extrasHtml = '';
+    s.extras.forEach(function(e){
+      extrasHtml +=
+        '<div class="row" data-extra="'+e.id+'">'+
+          '<div class="row-label"><span>Service</span><button class="row-x" data-del-extra="'+s.id+'|'+e.id+'" type="button" aria-label="Remove">×</button></div>'+
+          '<div class="extras-fields">'+
+            '<input type="text" placeholder="Description" value="'+escapeHtml(e.label)+'" data-extra-field="label" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+            '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Qty" value="'+(e.qty||'')+'" data-extra-field="qty" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+            '<input type="text" placeholder="Unit" value="'+escapeHtml(e.unit)+'" data-extra-field="unit" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+            '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Price" value="'+(e.price||'')+'" data-extra-field="price" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+            '<span class="fld-out" data-extra-out="'+e.id+'">= '+rm(extraTotal(e))+'</span>'+
+          '</div>'+
+        '</div>';
+    });
+
+    const slabChips = SLAB_SERVICE_PRESETS.map(function(p){
+      return '<button class="chip" type="button" data-add-extra-preset="'+s.id+'|'+escapeHtml(p.label)+'">+ '+escapeHtml(p.label)+'</button>';
+    }).join('');
+
     div.innerHTML =
-      '<div class="slab-h">' +
-        '<input class="slab-name" value="' + escapeHtml(s.name) + '" data-slab="' + s.id + '" data-field="name">' +
-        '<button class="slab-remove" data-remove-slab="' + s.id + '" type="button">Remove</button>' +
-      '</div>' +
-      (photoSlots ? '<div class="slab-photos">' + photoSlots + '</div>' : '') +
-      '<label class="add-photo-btn">' +
-        '<span style="font-size:18px">📷</span>' +
-        '<span>Tap to take or upload photo</span>' +
-        '<input type="file" accept="image/*" capture="environment" data-add-photo="' + s.id + '" multiple>' +
-      '</label>' +
-      '<div class="slab-row">' +
-        '<div class="slab-input-wrap">' +
-          '<span class="slab-input-label">Area size (sqft)</span>' +
-          '<input class="slab-input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="e.g. 25" value="' + (s.floorSqft || '') + '" data-slab="' + s.id + '" data-field="floorSqft">' +
-        '</div>' +
-        '<div class="slab-input-wrap">' +
-          '<span class="slab-input-label">Upturn (sqft)</span>' +
-          '<input class="slab-input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="e.g. 8" value="' + (s.upturnSqft || '') + '" data-slab="' + s.id + '" data-field="upturnSqft">' +
-        '</div>' +
-      '</div>' +
-      '<div class="slab-subtotal">Subtotal: <span data-subtotal="' + s.id + '" style="margin-left:6px">' + (s.floorSqft + s.upturnSqft) + ' sqft</span></div>';
+      '<div class="slab-h">'+
+        '<input class="slab-name" value="'+escapeHtml(s.name)+'" data-slab-name="'+s.id+'">'+
+        '<button class="slab-remove" data-remove-slab="'+s.id+'" type="button">Remove</button>'+
+      '</div>'+
+
+      '<div class="slab-mode-row">'+
+        '<label>Mode:</label>'+
+        '<select data-slab-mode="'+s.id+'">'+
+          '<option value="slab"'+(isFlashing?'':' selected')+'>Slab + upturns</option>'+
+          '<option value="flashing"'+(isFlashing?' selected':'')+'>Flashing / linear only (no floor)</option>'+
+        '</select>'+
+      '</div>'+
+
+      '<div class="subsection">'+
+        '<div class="subsection-h">Photos ('+s.photos.length+')</div>'+
+        photosHtml+
+        '<label class="add-photo-btn"><span style="font-size:16px">📷</span><span>Tap to take or upload</span>'+
+          '<input type="file" accept="image/*" capture="environment" data-add-photo="'+s.id+'" multiple></label>'+
+      '</div>'+
+
+      (isFlashing ? '' :
+        '<div class="subsection">'+
+          '<div class="subsection-h">Floor area</div>'+
+          '<div class="input-with-suffix">'+
+            '<input class="input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="From iScanner — e.g. 35.5" value="'+(s.floorSqft||'')+'" data-slab="'+s.id+'" data-slab-field="floorSqft">'+
+            '<span class="suffix">sqft</span>'+
+          '</div>'+
+          '<div class="field-hint">Use phone iScanner app to measure → key the area here.</div>'+
+        '</div>'
+      )+
+
+      '<div class="subsection">'+
+        '<div class="subsection-h">'+(isFlashing?'Linear sections':'Upturns')+' ('+s.upturns.length+')</div>'+
+        upturnsHtml+
+        '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn')+'</button>'+
+      '</div>'+
+
+      '<div class="subsection">'+
+        '<div class="subsection-h">Additional services for this slab ('+s.extras.length+')</div>'+
+        '<div class="chip-row">'+slabChips+'</div>'+
+        extrasHtml+
+        '<button class="add-row" type="button" data-add-extra="'+s.id+'">+ Add custom service</button>'+
+      '</div>'+
+
+      '<div class="slab-subtotal">'+
+        '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × RM '+MEMBRANE_RATE.toFixed(2)+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
+        '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
+        '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>'+
+      '</div>';
+
     list.appendChild(div);
   });
+  wireSlabHandlers(list);
+}
 
-  // Wire inputs
-  list.querySelectorAll('input[data-slab]').forEach(function(el) {
-    const handler = function(){ updateSlab(el.dataset.slab, el.dataset.field, el.value); };
-    el.addEventListener('input', handler);
-    el.addEventListener('change', handler);
-  });
-  list.querySelectorAll('[data-remove-slab]').forEach(function(el) {
-    el.onclick = function() { removeSlab(el.dataset.removeSlab); };
-  });
-  list.querySelectorAll('input[data-add-photo]').forEach(function(el) {
-    el.onchange = function(e) {
-      handlePhotoFiles(el.dataset.addPhoto, el.files);
-      e.target.value = '';
+function renderSiteChips(){
+  const wrap = document.getElementById('siteChips');
+  wrap.innerHTML = SITE_SERVICE_PRESETS.map(function(p){
+    return '<button class="chip" type="button" data-add-site-preset="'+escapeHtml(p.label)+'">+ '+escapeHtml(p.label)+'</button>';
+  }).join('');
+  wrap.querySelectorAll('[data-add-site-preset]').forEach(function(b){
+    b.onclick = function(){
+      const preset = SITE_SERVICE_PRESETS.find(function(p){ return p.label === b.dataset.addSitePreset; });
+      state.siteExtras.push(newExtra(preset));
+      saveState(); renderAll();
     };
   });
-  list.querySelectorAll('[data-del-photo]').forEach(function(el) {
-    el.onclick = function(e) {
+}
+
+function renderSiteExtras(){
+  const list = document.getElementById('siteExtrasList');
+  list.innerHTML = '';
+  state.siteExtras.forEach(function(e){
+    const div = document.createElement('div');
+    div.className = 'row';
+    div.innerHTML =
+      '<div class="row-label"><span>Service</span><button class="row-x" data-del-site-extra="'+e.id+'" type="button" aria-label="Remove">×</button></div>'+
+      '<div class="extras-fields">'+
+        '<input type="text" placeholder="Description" value="'+escapeHtml(e.label)+'" data-site-field="label" data-site-id="'+e.id+'">'+
+        '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Qty" value="'+(e.qty||'')+'" data-site-field="qty" data-site-id="'+e.id+'">'+
+        '<input type="text" placeholder="Unit" value="'+escapeHtml(e.unit)+'" data-site-field="unit" data-site-id="'+e.id+'">'+
+        '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Price" value="'+(e.price||'')+'" data-site-field="price" data-site-id="'+e.id+'">'+
+        '<span class="fld-out" data-site-out="'+e.id+'">= '+rm(extraTotal(e))+'</span>'+
+      '</div>';
+    list.appendChild(div);
+  });
+  list.querySelectorAll('input[data-site-field]').forEach(function(el){
+    const update = function(){
+      const e = state.siteExtras.find(function(x){ return x.id === el.dataset.siteId; });
+      if (!e) return;
+      const f = el.dataset.siteField;
+      e[f] = (f==='qty'||f==='price') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-site-out="'+e.id+'"]');
+      if (out) out.textContent = '= ' + rm(extraTotal(e));
+      renderGrand(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('[data-del-site-extra]').forEach(function(b){
+    b.onclick = function(){
+      state.siteExtras = state.siteExtras.filter(function(x){ return x.id !== b.dataset.delSiteExtra; });
+      saveState(); renderAll();
+    };
+  });
+}
+
+function renderGrand(){
+  document.getElementById('gtArea').textContent = sqft(grandMembraneSqft());
+  document.getElementById('gtMembrane').textContent = rm(grandMembraneSqft()*MEMBRANE_RATE);
+  document.getElementById('gtSlabExtras').textContent = rm(grandSlabExtrasRm());
+  document.getElementById('gtSiteExtras').textContent = rm(siteExtrasRm());
+  document.getElementById('gtTotal').textContent = rm(grandTotal());
+}
+
+function wireSlabHandlers(list){
+  list.querySelectorAll('input[data-slab-name]').forEach(function(el){
+    el.oninput = function(){ const s = state.slabs.find(function(x){ return x.id===el.dataset.slabName; }); if (s){ s.name=el.value; saveState(); renderGrand(); updateSubmitState(); updateSlabSubtotalLabel(s); } };
+  });
+  list.querySelectorAll('select[data-slab-mode]').forEach(function(el){
+    el.onchange = function(){ const s = state.slabs.find(function(x){ return x.id===el.dataset.slabMode; }); if (s){ s.mode=el.value; saveState(); renderAll(); } };
+  });
+  list.querySelectorAll('[data-remove-slab]').forEach(function(b){
+    b.onclick = function(){
+      if (state.slabs.length<=1){ toast('At least 1 slab required','info'); return; }
+      if (!confirm('Remove this slab and its photos?')) return;
+      state.slabs = state.slabs.filter(function(x){ return x.id!==b.dataset.removeSlab; });
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('[data-add-upturn]').forEach(function(b){
+    b.onclick = function(){ const s = state.slabs.find(function(x){ return x.id===b.dataset.addUpturn; }); if (s){ s.upturns.push(newUpturn()); saveState(); renderAll(); } };
+  });
+  list.querySelectorAll('[data-del-upturn]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.delUpturn.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      s.upturns = s.upturns.filter(function(u){ return u.id!==parts[1]; });
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('input[data-up-field]').forEach(function(el){
+    const update = function(){
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
+      if (!s) return;
+      const u = s.upturns.find(function(x){ return x.id===el.dataset.up; });
+      if (!u) return;
+      const f = el.dataset.upField;
+      u[f] = (f==='runFt'||f==='upturnFt') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-up-out="'+u.id+'"]');
+      if (out) out.textContent = '= ' + sqft(upturnSqft(u));
+      updateSlabSubtotal(s); renderGrand(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('input[data-slab-field="floorSqft"]').forEach(function(el){
+    const update = function(){
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
+      if (!s) return;
+      s.floorSqft = Number(el.value)||0;
+      updateSlabSubtotal(s); renderGrand(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('[data-add-extra]').forEach(function(b){
+    b.onclick = function(){ const s = state.slabs.find(function(x){ return x.id===b.dataset.addExtra; }); if (s){ s.extras.push(newExtra()); saveState(); renderAll(); } };
+  });
+  list.querySelectorAll('[data-add-extra-preset]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.addExtraPreset.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      const preset = SLAB_SERVICE_PRESETS.find(function(p){ return p.label===parts[1]; });
+      s.extras.push(newExtra(preset));
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('[data-del-extra]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.delExtra.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      s.extras = s.extras.filter(function(e){ return e.id!==parts[1]; });
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('input[data-extra-field]').forEach(function(el){
+    const update = function(){
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
+      if (!s) return;
+      const e = s.extras.find(function(x){ return x.id===el.dataset.extraId; });
+      if (!e) return;
+      const f = el.dataset.extraField;
+      e[f] = (f==='qty'||f==='price') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-extra-out="'+e.id+'"]');
+      if (out) out.textContent = '= ' + rm(extraTotal(e));
+      updateSlabSubtotal(s); renderGrand(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('input[data-add-photo]').forEach(function(el){
+    el.onchange = function(){ handlePhotoFiles(el.dataset.addPhoto, el.files); el.value=''; };
+  });
+  list.querySelectorAll('[data-del-photo]').forEach(function(b){
+    b.onclick = function(e){
       e.preventDefault(); e.stopPropagation();
-      const parts = el.dataset.delPhoto.split('|');
-      removePhoto(parts[0], parts[1]);
+      const parts = b.dataset.delPhoto.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      s.photos = s.photos.filter(function(p){ return p.id!==parts[1]; });
+      renderAll();
     };
   });
-
-  updateGrandTotal();
 }
 
-function updateGrandTotal() {
-  const total = state.slabs.reduce(function(sum, s){ return sum + s.floorSqft + s.upturnSqft; }, 0);
-  document.getElementById('grandTotal').textContent = total + ' sqft';
+function updateSlabSubtotal(s){
+  const nameInput = document.querySelector('[data-slab-name="'+s.id+'"]');
+  if (!nameInput) return;
+  const slabEl = nameInput.closest('.slab');
+  if (!slabEl) return;
+  const sub = slabEl.querySelector('.slab-subtotal');
+  if (!sub) return;
+  sub.innerHTML =
+    '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × RM '+MEMBRANE_RATE.toFixed(2)+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
+    '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
+    '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
 }
+function updateSlabSubtotalLabel(s){ updateSlabSubtotal(s); }
 
-function totalPhotos() {
-  return state.slabs.reduce(function(sum, s){ return sum + s.photos.length; }, 0);
-}
-
-function updateSubmitState() {
+function updateSubmitState(){
   const btn = document.getElementById('btnSubmit');
-  const slabsValid = state.slabs.length >= 1 && state.slabs.every(function(s) {
-    return (s.floorSqft + s.upturnSqft) > 0;
-  });
+  const slabsValid = state.slabs.length>=1 && state.slabs.every(function(s){ return slabSqft(s)>0; });
   const photosCount = totalPhotos();
-  const ok = state.submittedBy && slabsValid && photosCount >= 1;
+  const ok = state.submittedBy && slabsValid && photosCount>=1;
   btn.disabled = !ok;
-  btn.textContent = ok
-    ? ('Submit Visit — ' + state.slabs.length + ' slab' + (state.slabs.length > 1 ? 's' : '') + ', ' + photosCount + ' photo' + (photosCount > 1 ? 's' : ''))
-    : 'Submit Visit';
+  btn.textContent = ok ? ('Submit — '+state.slabs.length+' slab'+(state.slabs.length>1?'s':'')+', '+rm(grandTotal())+' est.') : 'Submit Visit';
 }
 
-// ---------- Top-level field handlers ----------
-document.getElementById('fSubmittedBy').addEventListener('change', function(e){
-  state.submittedBy = e.target.value;
-  saveState(); updateSubmitState();
-});
-document.getElementById('fNotes').addEventListener('input', function(e){
-  state.notes = e.target.value;
-  saveState();
-});
+document.getElementById('fSubmittedBy').addEventListener('change', function(e){ state.submittedBy=e.target.value; saveState(); updateSubmitState(); });
+document.getElementById('fNotes').addEventListener('input', function(e){ state.notes=e.target.value; saveState(); });
 
-// Add Slab buttons (header + bottom)
-function handleAddSlab() {
-  addSlab({});
-  renderSlabs();
-  updateSubmitState();
-  // scroll the new slab into view
-  const list = document.getElementById('slabsList');
-  const lastSlab = list.lastElementChild;
-  if (lastSlab) lastSlab.scrollIntoView({behavior:'smooth', block:'center'});
-}
-document.getElementById('btnAddSlab').addEventListener('click', handleAddSlab);
-document.getElementById('btnAddSlabBig').addEventListener('click', handleAddSlab);
-
-// ---------- Submit (mock) ----------
-document.getElementById('btnSubmit').addEventListener('click', function(){
-  const overlay = document.getElementById('uploadOverlay');
-  const ut = document.getElementById('uploadText');
-  overlay.classList.add('on');
-  ut.textContent = 'Uploading photos to Drive…';
-  setTimeout(function(){ ut.textContent = 'Writing CRM…'; }, 1100);
+function handleAddSlab(){
+  state.slabs.push(newSlab());
+  saveState(); renderAll();
   setTimeout(function(){
-    overlay.classList.remove('on');
-    const total = state.slabs.reduce(function(sum,s){ return sum + s.floorSqft + s.upturnSqft; }, 0);
-    toast('✓ Visit submitted (mockup) — ' + state.slabs.length + ' slabs, ' + totalPhotos() + ' photos, ' + total + ' sqft', 'success');
+    const list = document.getElementById('slabsList');
+    if (list && list.lastElementChild) list.lastElementChild.scrollIntoView({behavior:'smooth',block:'center'});
+  }, 30);
+}
+document.getElementById('btnAddSlabHeader').addEventListener('click', handleAddSlab);
+document.getElementById('btnAddSlabBig').addEventListener('click', handleAddSlab);
+document.getElementById('btnAddSiteExtra').addEventListener('click', function(){ state.siteExtras.push(newExtra()); saveState(); renderAll(); });
+
+document.getElementById('btnSubmit').addEventListener('click', function(){
+  const ov = document.getElementById('uploadOverlay');
+  ov.classList.add('on');
+  document.getElementById('uploadText').textContent = 'Uploading photos to Drive…';
+  setTimeout(function(){ document.getElementById('uploadText').textContent = 'Saving estimate to CRM…'; }, 1100);
+  setTimeout(function(){
+    ov.classList.remove('on');
+    toast('✓ Submitted (mockup) — '+state.slabs.length+' slabs, '+rm(grandTotal())+' estimate','success');
     const payload = {
-      phone: '60179934386',
-      submittedBy: state.submittedBy,
-      notes: state.notes,
-      slabs: state.slabs.map(function(s) {
+      phone:'60179934386', submittedBy:state.submittedBy, notes:state.notes,
+      slabs:state.slabs.map(function(s){
         return {
-          name: s.name,
-          floorSqft: s.floorSqft,
-          upturnSqft: s.upturnSqft,
-          subtotalSqft: s.floorSqft + s.upturnSqft,
-          photoCount: s.photos.length,
-          photoSizeKB: s.photos.reduce(function(sum,p){ return sum + p.compressedKB; }, 0)
+          name:s.name, mode:s.mode, floorSqft:s.floorSqft,
+          upturns:s.upturns.map(function(u){ return {label:u.label,runFt:u.runFt,upturnFt:u.upturnFt,sqft:upturnSqft(u)}; }),
+          extras:s.extras.map(function(e){ return {label:e.label,qty:e.qty,unit:e.unit,price:e.price,total:extraTotal(e)}; }),
+          photoCount:s.photos.length, membraneSqft:slabSqft(s), membraneRm:slabMembraneRm(s),
+          extrasRm:slabExtrasRm(s), slabTotal:slabTotal(s)
         };
       }),
-      grandTotalSqft: total
+      siteExtras:state.siteExtras.map(function(e){ return {label:e.label,qty:e.qty,unit:e.unit,price:e.price,total:extraTotal(e)}; }),
+      grandMembraneSqft:grandMembraneSqft(), grandTotal:grandTotal()
     };
-    setTimeout(function(){
-      alert('Mockup payload (real version POSTs this to n8n):\n\n' + JSON.stringify(payload, null, 2));
-    }, 600);
-  }, 2200);
+    setTimeout(function(){ alert('Mockup payload (real version POSTs to n8n):\n\n'+JSON.stringify(payload,null,2)); }, 600);
+  }, 2100);
 });
 
-// ---------- Reset ----------
 document.getElementById('btnClear').addEventListener('click', function(){
-  if (!confirm('Clear the form and all slabs/photos?')) return;
-  state = { submittedBy: '', notes: '', slabs: [] };
-  addSlab({name:'Slab 1'});
-  document.getElementById('fSubmittedBy').value = '';
-  document.getElementById('fNotes').value = '';
-  saveState();
-  renderSlabs();
-  updateSubmitState();
-  toast('Cleared', 'info');
+  if (!confirm('Clear all slabs, services, and photos?')) return;
+  state = { submittedBy:'', notes:'', slabs:[newSlab('Slab 1')], siteExtras:[] };
+  document.getElementById('fSubmittedBy').value='';
+  document.getElementById('fNotes').value='';
+  saveState(); renderAll(); toast('Cleared','info');
 });
 
-// ---------- Boot ----------
 loadState();
 </script>
 
