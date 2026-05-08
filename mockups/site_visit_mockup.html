@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Leak Guard — Site Visit + On-Spot Estimate (Mockup v3)</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626}
@@ -105,6 +106,52 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* PDF print view — captured by html2pdf, rendered off-screen */
+#printView{position:absolute;left:-9999px;top:0;width:794px;background:#fff;font-family:'Inter',sans-serif;color:#111}
+.pv-page{width:794px;padding:46px 50px;background:#fff;page-break-after:always;display:flex;flex-direction:column}
+.pv-page:last-child{page-break-after:auto}
+.pv-band{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #2D2A6E;padding-bottom:14px;margin-bottom:18px}
+.pv-band-l .pv-brand{font-size:24px;font-weight:800;color:#2D2A6E;letter-spacing:.3px}
+.pv-band-l .pv-brand-sub{font-size:11px;color:#6b7280;margin-top:3px;font-weight:500}
+.pv-band-r{text-align:right;font-size:11px;color:#333;line-height:1.7}
+.pv-band-r b{font-weight:700;color:#111}
+.pv-title{font-size:20px;font-weight:800;color:#2D2A6E;letter-spacing:.5px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #e5e7eb}
+.pv-cust{font-size:12px;line-height:1.85;margin-bottom:18px;background:#FAFAFA;border:.5px solid #e5e7eb;border-radius:8px;padding:12px 16px}
+.pv-cust .pv-cust-row{display:flex}
+.pv-cust .pv-cust-row .lbl{color:#6b7280;font-weight:600;width:110px;flex-shrink:0;text-transform:uppercase;font-size:10px;letter-spacing:.3px;padding-top:3px}
+.pv-cust .pv-cust-row .val{color:#111;font-weight:600;font-size:13px}
+
+.pv-slab{margin-bottom:20px;page-break-inside:avoid;border:.5px solid #e5e7eb;border-radius:8px;padding:14px 16px;background:#fff}
+.pv-slab-h{font-size:14px;font-weight:800;color:#111;margin-bottom:10px;padding-bottom:7px;border-bottom:.5px solid #e5e7eb;display:flex;justify-content:space-between;align-items:baseline}
+.pv-slab-h .pv-slab-mode{font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
+.pv-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px}
+.pv-photo{border:.5px solid #e5e7eb;border-radius:6px;overflow:hidden;background:#fff}
+.pv-photo img{width:100%;height:auto;max-height:230px;object-fit:cover;display:block}
+.pv-section{margin-bottom:9px}
+.pv-section-h{font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.pv-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.pv-tbl td{padding:5px 7px;border-bottom:.5px solid #f3f4f6;vertical-align:top}
+.pv-tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.pv-tbl tr:last-child td{border-bottom:none}
+.pv-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.7;padding:2px 0}
+.pv-line.sub{font-weight:700;border-top:.5px solid #e5e7eb;padding-top:6px;margin-top:5px}
+.pv-grand{margin-top:16px;border:1.5px solid #2D2A6E;border-radius:10px;padding:14px 18px;background:#F0FDF4;border-color:#1D9E75}
+.pv-grand-h{font-size:11px;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.pv-grand-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.8;color:#065F46}
+.pv-grand-line.total{font-size:18px;font-weight:800;border-top:1px solid #BBF7D0;margin-top:6px;padding-top:8px;color:#064E3B}
+.pv-notes{font-size:11px;line-height:1.6;background:#FFFBEB;border:.5px solid #FDE68A;border-radius:8px;padding:11px 14px;margin-top:14px;color:#92400E;white-space:pre-wrap}
+.pv-notes-h{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#92400E;margin-bottom:5px}
+.pv-tnc{margin-top:18px;font-size:10px;line-height:1.7;color:#444}
+.pv-tnc-h{font-size:11px;font-weight:800;color:#111;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px}
+.pv-tnc ul{padding-left:18px;margin:0}
+.pv-tnc li{margin-bottom:2px}
+.pv-sig{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:32px;font-size:11px}
+.pv-sig-block .lbl{font-size:9px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.3px;margin-bottom:32px}
+.pv-sig-block .line{border-top:1px solid #111;padding-top:5px}
+.pv-sig-block .name{font-weight:700;font-size:12px;color:#111}
+.pv-sig-block .date{color:#6b7280;margin-top:3px;font-size:10px}
+.pv-foot{margin-top:24px;font-size:9px;color:#9ca3af;text-align:center;border-top:.5px solid #e5e7eb;padding-top:8px}
+
 @media (max-width: 480px){
   .row-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:12px}
   .row-fields .fld-out{font-size:12px}
@@ -189,9 +236,12 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 <div class="submit-bar">
   <div class="submit-bar-inner">
     <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
+    <button class="btn-clear" id="btnPdf" type="button" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E">📄 Estimate PDF</button>
     <button class="btn-submit" id="btnSubmit" type="button" disabled>Submit Visit</button>
   </div>
 </div>
+
+<div id="printView"></div>
 
 <div class="toast-container" id="toastContainer"></div>
 <div class="upload-overlay" id="uploadOverlay"><div class="spinner"></div><div id="uploadText">Compressing photos…</div></div>
@@ -912,6 +962,264 @@ document.getElementById('btnClear').addEventListener('click', function(){
   document.getElementById('fNotes').value='';
   saveState(); renderAll(); toast('Cleared','info');
 });
+
+// ========= ESTIMATE PDF =========
+// Customer info source — currently hardcoded mock. When wired to real lead lookup
+// (gviz fetch by ?p=<phone>), this comes from the loaded lead row.
+const PDF_CUSTOMER_MOCK = {
+  name: 'Annie',
+  phone: '60179934386',
+  group: 'SV-0426-018 Annie - Ampang',
+  address: 'Block A, Lvl 9, Pangsapuri Anggun, Ampang',
+  problem: 'Bathroom slab leaking to unit below'
+};
+
+function todayISODate(){
+  const d = new Date(Date.now() + 8*60*60*1000);
+  return d.toISOString().slice(0, 10);
+}
+function todayDisplayDate(){
+  const d = new Date(Date.now() + 8*60*60*1000);
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+}
+function generateEstimateRef(){
+  const d = new Date(Date.now() + 8*60*60*1000);
+  const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+  const yy = String(d.getUTCFullYear()).slice(-2);
+  const sfx = String(Math.floor(Math.random() * 900) + 100);
+  return 'SVE-' + mm + yy + '-' + sfx;
+}
+function sanitizeFilename(s){
+  return String(s||'estimate').replace(/[^A-Za-z0-9-_]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+}
+
+function buildPrintView() {
+  const pv = document.getElementById('printView');
+  const cust = PDF_CUSTOMER_MOCK;
+  const ref = generateEstimateRef();
+  const dateStr = todayDisplayDate();
+
+  let html = '<div class="pv-page">';
+
+  // 1. Header band
+  html +=
+    '<div class="pv-band">'+
+      '<div class="pv-band-l">'+
+        '<div class="pv-brand">LEAK GUARD</div>'+
+        '<div class="pv-brand-sub">Waterproofing Specialists · Innovation AID Sdn Bhd</div>'+
+      '</div>'+
+      '<div class="pv-band-r">'+
+        '<div><b>Date:</b> '+escapeHtml(dateStr)+'</div>'+
+        '<div><b>Ref:</b> '+escapeHtml(ref)+'</div>'+
+      '</div>'+
+    '</div>';
+
+  // 2. Title
+  html += '<div class="pv-title">SITE VISIT ESTIMATE</div>';
+
+  // 3. Customer block
+  html +=
+    '<div class="pv-cust">'+
+      '<div class="pv-cust-row"><span class="lbl">Customer</span><span class="val">'+escapeHtml(cust.name)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Phone</span><span class="val">'+escapeHtml(cust.phone)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Group</span><span class="val">'+escapeHtml(cust.group)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Address</span><span class="val">'+escapeHtml(cust.address)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Problem</span><span class="val">'+escapeHtml(cust.problem)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Inspected by</span><span class="val">'+escapeHtml(state.submittedBy || '—')+'</span></div>'+
+    '</div>';
+
+  // 4. Per slab
+  state.slabs.forEach(function(s){
+    const isFlashing = s.mode === 'flashing';
+    let slabHtml = '<div class="pv-slab">';
+    slabHtml +=
+      '<div class="pv-slab-h">'+
+        '<span>'+escapeHtml(s.name)+'</span>'+
+        '<span class="pv-slab-mode">'+(isFlashing ? 'Flashing / Linear' : 'Slab + Upturns')+'</span>'+
+      '</div>';
+
+    // Photos (max 4 to keep PDF size sane; supervisor can include more if needed)
+    const photoSubset = (s.photos || []).slice(0, 4);
+    if (photoSubset.length) {
+      slabHtml += '<div class="pv-photos">' + photoSubset.map(function(p){
+        return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';
+      }).join('') + '</div>';
+    }
+
+    // Measurements
+    slabHtml += '<div class="pv-section"><div class="pv-section-h">Measurements</div>';
+    if (!isFlashing) {
+      slabHtml += '<div class="pv-line"><span>Floor area</span><span>'+sqft(s.floorSqft)+'</span></div>';
+    }
+    if ((s.upturns || []).length) {
+      slabHtml += '<table class="pv-tbl" style="margin-top:4px"><tr><td colspan="4" style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.3px">'+(isFlashing ? 'Linear sections' : 'Upturns')+'</td></tr>';
+      s.upturns.forEach(function(u){
+        const upSqft = upturnSqft(u);
+        slabHtml += '<tr>'+
+          '<td>'+escapeHtml(u.label || '—')+'</td>'+
+          '<td class="num">'+(Number(u.runFt)||0)+' ft</td>'+
+          '<td class="num">× '+(Number(u.upturnFt)||0)+' ft</td>'+
+          '<td class="num">= '+sqft(upSqft)+'</td>'+
+        '</tr>';
+      });
+      slabHtml += '<tr><td colspan="3" style="font-weight:700;color:#065F46">Total upturn</td><td class="num" style="font-weight:700;color:#065F46">'+sqft(slabUpturnTotal(s))+'</td></tr>';
+      slabHtml += '</table>';
+    }
+    slabHtml += '<div class="pv-line sub"><span>Total membrane area</span><span>'+sqft(slabSqft(s))+'</span></div>';
+    slabHtml += '</div>';
+
+    // Membrane line
+    slabHtml += '<div class="pv-section"><div class="pv-line"><span>Membrane installation @ RM '+MEMBRANE_RATE.toFixed(2)+'/sqft</span><span>'+rm(slabMembraneRm(s))+'</span></div></div>';
+
+    // Per-slab services
+    if ((s.extras || []).length) {
+      slabHtml += '<div class="pv-section"><div class="pv-section-h">Additional services</div>';
+      slabHtml += '<table class="pv-tbl">';
+      s.extras.forEach(function(e){
+        slabHtml += '<tr>'+
+          '<td>'+escapeHtml(e.label || '—')+'</td>'+
+          '<td class="num">'+(Number(e.qty)||0)+' '+escapeHtml(e.unit || '')+'</td>'+
+          '<td class="num">@ '+rm(e.price)+'</td>'+
+          '<td class="num">'+rm(extraTotal(e))+'</td>'+
+        '</tr>';
+      });
+      slabHtml += '</table>';
+      slabHtml += '<div class="pv-line"><span style="color:#6b7280">Services subtotal</span><span style="font-weight:700">'+rm(slabExtrasRm(s))+'</span></div>';
+      slabHtml += '</div>';
+    }
+
+    // Slab subtotal
+    slabHtml += '<div class="pv-line sub" style="font-size:14px;color:#2D2A6E"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
+    slabHtml += '</div>';
+
+    html += slabHtml;
+  });
+
+  // 5. Site-wide services
+  if ((state.siteExtras || []).length) {
+    html += '<div class="pv-slab">'+
+      '<div class="pv-slab-h"><span>Site-Wide Services</span></div>'+
+      '<table class="pv-tbl">';
+    state.siteExtras.forEach(function(e){
+      html += '<tr>'+
+        '<td>'+escapeHtml(e.label || '—')+'</td>'+
+        '<td class="num">'+(Number(e.qty)||0)+' '+escapeHtml(e.unit || '')+'</td>'+
+        '<td class="num">@ '+rm(e.price)+'</td>'+
+        '<td class="num">'+rm(extraTotal(e))+'</td>'+
+      '</tr>';
+    });
+    html += '</table>';
+    html += '<div class="pv-line sub" style="font-size:13px;color:#2D2A6E"><span>Site-wide subtotal</span><span>'+rm(siteExtrasRm())+'</span></div>';
+    html += '</div>';
+  }
+
+  // 6. Grand total
+  html +=
+    '<div class="pv-grand">'+
+      '<div class="pv-grand-h">Estimated Total</div>'+
+      '<div class="pv-grand-line"><span>Total membrane area</span><span>'+sqft(grandMembraneSqft())+'</span></div>'+
+      '<div class="pv-grand-line"><span>Membrane @ RM '+MEMBRANE_RATE.toFixed(2)+'/sqft</span><span>'+rm(grandMembraneSqft()*MEMBRANE_RATE)+'</span></div>'+
+      '<div class="pv-grand-line"><span>Per-slab services</span><span>'+rm(grandSlabExtrasRm())+'</span></div>'+
+      '<div class="pv-grand-line"><span>Site-wide services</span><span>'+rm(siteExtrasRm())+'</span></div>'+
+      '<div class="pv-grand-line total"><span>TOTAL ESTIMATE</span><span>'+rm(grandTotal())+'</span></div>'+
+    '</div>';
+
+  // 7. Notes (only if filled)
+  if (state.notes && state.notes.trim()) {
+    html +=
+      '<div class="pv-notes">'+
+        '<div class="pv-notes-h">Inspector\'s Notes</div>'+
+        escapeHtml(state.notes)+
+      '</div>';
+  }
+
+  // 8. T&C
+  html +=
+    '<div class="pv-tnc">'+
+      '<div class="pv-tnc-h">Terms &amp; Conditions</div>'+
+      '<ul>'+
+        '<li>This estimate is valid for <b>14 days</b> from date of issue.</li>'+
+        '<li>A final formal quotation will be issued upon project confirmation.</li>'+
+        '<li>Estimate is subject to actual site conditions on installation day; minor adjustments may apply.</li>'+
+        '<li>Waterproofing membrane carries a <b>5-year workmanship warranty</b> from project completion.</li>'+
+        '<li>All payments must be made via official Innovation AID Sdn Bhd channels only.</li>'+
+        '<li>Customer to ensure site access on the agreed installation date.</li>'+
+      '</ul>'+
+    '</div>';
+
+  // 9. Signatures
+  html +=
+    '<div class="pv-sig">'+
+      '<div class="pv-sig-block">'+
+        '<div class="lbl">Inspected by</div>'+
+        '<div class="line">'+
+          '<div class="name">'+escapeHtml(state.submittedBy || '________________')+'</div>'+
+          '<div class="date">Date: '+escapeHtml(dateStr)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="pv-sig-block">'+
+        '<div class="lbl">Acknowledged by</div>'+
+        '<div class="line">'+
+          '<div class="name">'+escapeHtml(cust.name)+'</div>'+
+          '<div class="date">Date: ____________________</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+
+  // Footer
+  html +=
+    '<div class="pv-foot">'+
+      'Innovation AID Sdn Bhd · Waterproofing Specialists · This document is computer-generated and does not require a stamp.'+
+    '</div>';
+
+  html += '</div>'; // /pv-page
+  pv.innerHTML = html;
+  return { ref: ref, dateStr: dateStr };
+}
+
+async function generateEstimatePdf() {
+  if (typeof html2pdf === 'undefined') {
+    toast('PDF library not loaded — check internet connection', 'error');
+    return;
+  }
+  if (!state.submittedBy) {
+    toast('Pick "Submitted by" before generating the estimate', 'info');
+    return;
+  }
+  if (!state.slabs.length || state.slabs.every(function(s){ return slabSqft(s) === 0; })) {
+    toast('Add at least one slab with measurements before generating', 'info');
+    return;
+  }
+
+  const ov = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
+  ov.classList.add('on');
+  ut.textContent = 'Building estimate PDF…';
+
+  try {
+    const { ref } = buildPrintView();
+    // Wait a tick so the DOM updates and images load
+    await new Promise(function(r){ setTimeout(r, 200); });
+    const filename = 'LeakGuard-Estimate-' + sanitizeFilename(PDF_CUSTOMER_MOCK.group) + '-' + todayISODate() + '.pdf';
+    const opts = {
+      margin: 0,
+      filename: filename,
+      image: { type: 'jpeg', quality: 0.92 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    };
+    await html2pdf().set(opts).from(document.getElementById('printView')).save();
+    toast('✓ Estimate PDF generated (' + ref + ')', 'success');
+  } catch (e) {
+    toast('PDF failed: ' + (e.message || e), 'error');
+  } finally {
+    ov.classList.remove('on');
+  }
+}
+
+document.getElementById('btnPdf').addEventListener('click', generateEstimatePdf);
 
 loadState();
 </script>
