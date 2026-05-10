@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Leak Guard — Site Visit + On-Spot Estimate (Mockup v3)</title>
+<title>Leak Guard — Site Visit + On-Spot Estimate (Mockup v3.4)</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 <style>
@@ -14,11 +14,21 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 
 .demo-banner{background:#FEF3C7;border:.5px solid #FDE68A;color:#92400E;padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:10px;text-align:center}
 
-.hdr{background:var(--pri);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:14px}
+.hdr{background:var(--pri);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.hdr-l{flex:1;min-width:0}
 .hdr-t{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
 .hdr-s{font-size:11px;opacity:.78;margin-top:3px}
+.hdr-gear{background:rgba(255,255,255,.14);color:#fff;border:none;width:38px;height:38px;border-radius:8px;font-size:18px;cursor:pointer;font-family:inherit;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.hdr-gear:active{background:rgba(255,255,255,.28)}
 
-.section{background:#fff;border-radius:10px;padding:14px 16px;margin-bottom:11px;border:.5px solid var(--bdr)}
+/* STEP zones (Round v3.4) */
+.step{background:#fff;border-radius:10px;margin-bottom:11px;border:.5px solid var(--bdr);overflow:hidden}
+.step-h{padding:11px 16px;background:#FAFAFA;border-bottom:.5px solid var(--bdr);display:flex;align-items:center;gap:10px}
+.step-num{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:var(--pri);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.step-title{font-size:13px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:.4px}
+.step-summary{margin-left:auto;font-size:11px;color:var(--mt);font-weight:600;text-align:right}
+.step-body{padding:14px 16px}
+
 .section-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mt);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
 
 .cust-grid{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px;line-height:1.5}
@@ -38,16 +48,38 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .input-with-suffix .input{padding-right:42px}
 
 /* SLAB CARD */
-.slab{background:#FAFAFA;border:.5px solid var(--bdr);border-radius:10px;padding:12px 14px;margin-bottom:11px}
+.slab{background:#FAFAFA;border:.5px solid var(--bdr);border-radius:10px;margin-bottom:11px;overflow:hidden}
+.slab.expanded{padding:12px 14px}
+
+/* Collapsed slab — single row only (Round v3.4) */
+.slab.collapsed{padding:0;cursor:pointer}
+.slab.collapsed:active{background:#F0FDF4}
+.slab-collapsed-row{display:flex;align-items:center;gap:10px;padding:11px 14px}
+.slab-collapsed-name{flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slab-collapsed-mode{font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0;background:#fff;padding:2px 7px;border-radius:10px;border:.5px solid var(--bdr)}
+.slab-collapsed-area{font-size:12px;color:var(--mt);font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+.slab-collapsed-total{font-size:13px;color:var(--acc);font-weight:800;font-variant-numeric:tabular-nums;flex-shrink:0}
+.slab-collapsed-chev{color:var(--mt);font-size:14px;flex-shrink:0;margin-left:2px}
+
 .slab-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px}
 .slab-name{flex:1;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:14px;font-weight:600;font-family:inherit;background:#fff}
+.slab-collapse-btn{background:#fff;border:.5px solid var(--bdr);color:var(--mt);width:32px;height:32px;border-radius:5px;font-size:14px;cursor:pointer;font-family:inherit;flex-shrink:0;font-weight:700}
 .slab-remove{padding:6px 10px;background:#FEE2E2;color:#991B1B;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
 .slab-mode-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 .slab-mode-row label{font-size:11px;font-weight:600;color:var(--mt);text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}
 .slab-mode-row select{flex:1;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;background:#fff;font-family:inherit}
 
-.subsection{background:#fff;border:.5px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-top:10px}
-.subsection-h{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+/* Sub-zones inside expanded slab (Round v3.4) */
+.subzone{background:#fff;border:.5px solid var(--bdr);border-radius:8px;margin-top:10px;overflow:hidden}
+.subzone-h{padding:9px 12px;background:#FFF;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.subzone-h.static{cursor:default}
+.subzone-h:not(.static):active{background:#F9FAFB}
+.subzone-h-icon{font-size:14px;flex-shrink:0}
+.subzone-h-title{flex:1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--ink)}
+.subzone-h-summary{font-size:11px;color:var(--mt);font-weight:600;flex-shrink:0;margin-right:6px}
+.subzone-h-chev{color:var(--mt);font-size:12px;flex-shrink:0}
+.subzone-body{padding:0 12px 11px 12px;border-top:.5px solid #F3F4F6}
+.subzone-body.tight{padding-top:9px}
 
 /* PHOTOS */
 .slab-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
@@ -55,8 +87,13 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .photo-slot img{width:100%;height:100%;object-fit:cover}
 .photo-slot-del{position:absolute;top:5px;right:5px;background:rgba(220,38,38,.94);color:#fff;border:none;border-radius:6px;width:26px;height:26px;font-size:14px;cursor:pointer;font-family:inherit;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center}
 .photo-slot-meta{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.65);color:#fff;font-size:9px;padding:2px 5px;font-weight:500}
-.add-photo-btn{padding:9px;border:.5px dashed #D1D5DB;border-radius:8px;background:#fff;color:var(--mt);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;position:relative}
-.add-photo-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* Photo upload buttons — split into Camera + Album (Round v3.4) */
+.photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.photo-btn{padding:9px;border:.5px dashed #D1D5DB;border-radius:8px;background:#fff;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;position:relative}
+.photo-btn .ico{font-size:16px}
+.photo-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.photo-btn:active{background:#F0FDF4;border-color:var(--acc);color:var(--acc)}
 
 /* UPTURN / EXTRAS row */
 .row{display:grid;grid-template-columns:1fr;gap:5px;padding:8px;background:#FAFAFA;border-radius:6px;margin-bottom:6px;border:.5px solid #F3F4F6}
@@ -83,13 +120,17 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 
 .add-slab-btn{padding:11px;border:.5px dashed var(--acc);border-radius:8px;background:#F0FDF4;color:var(--acc);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:6px}
 
+/* GRAND CARD — per-slab blocks (Round v3.4) */
 .grand-card{background:linear-gradient(135deg,#2D2A6E,#1D2862);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:11px}
 .grand-card-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;opacity:.7;margin-bottom:9px}
-.grand-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.7;opacity:.92}
-.grand-line.divider{border-top:1px solid rgba(255,255,255,.2);margin-top:6px;padding-top:7px}
-.grand-line.total{font-size:18px;font-weight:800;margin-top:6px;opacity:1}
-.grand-line .l-label{opacity:.85}
-.grand-line .l-val{font-variant-numeric:tabular-nums}
+.grand-block{margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.16)}
+.grand-block:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.grand-block-h{font-size:12px;font-weight:800;margin-bottom:5px;color:#fff}
+.grand-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.65;opacity:.9}
+.grand-line.indent{padding-left:9px;font-size:11.5px;opacity:.82}
+.grand-line.subtotal{font-weight:800;opacity:1;margin-top:3px;border-top:.5px dashed rgba(255,255,255,.3);padding-top:4px}
+.grand-total-line{display:flex;justify-content:space-between;font-size:18px;font-weight:800;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.3)}
+.grand-total-line .l-val{font-variant-numeric:tabular-nums}
 
 .submit-bar{position:fixed;bottom:0;left:0;right:0;padding:10px 14px;background:#fff;border-top:.5px solid var(--bdr);box-shadow:0 -2px 10px rgba(0,0,0,.05);z-index:50}
 .submit-bar-inner{max-width:760px;margin:0 auto;display:flex;gap:8px}
@@ -106,8 +147,42 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* PDF print view — captured by html2pdf, rendered off-screen */
-#printView{position:absolute;left:-9999px;top:0;width:794px;background:#fff;font-family:'Inter',sans-serif;color:#111}
+/* Settings modal (Round v3.4) */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;z-index:300;padding:30px 12px;overflow-y:auto}
+.modal-overlay.on{display:flex}
+.modal{background:#fff;border-radius:12px;width:100%;max-width:560px;padding:0;box-shadow:0 8px 28px rgba(0,0,0,.25);max-height:calc(100vh - 60px);display:flex;flex-direction:column;overflow:hidden}
+.modal-h{padding:14px 18px;background:var(--pri);color:#fff;display:flex;justify-content:space-between;align-items:center}
+.modal-h-t{font-size:15px;font-weight:800}
+.modal-x{background:rgba(255,255,255,.14);border:none;color:#fff;width:30px;height:30px;border-radius:6px;font-size:16px;cursor:pointer;font-family:inherit;font-weight:700}
+.modal-body{padding:14px 18px;overflow-y:auto;flex:1}
+.modal-foot{padding:11px 18px;border-top:.5px solid var(--bdr);background:#FAFAFA;display:flex;justify-content:space-between;gap:8px}
+.modal-foot .left{display:flex;gap:8px}
+.btn-secondary{padding:10px 14px;background:#fff;color:var(--mt);border:.5px solid var(--bdr);border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-primary{padding:10px 16px;background:var(--acc);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-warn{padding:10px 14px;background:#FEF3C7;color:#92400E;border:.5px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+
+.settings-section{margin-bottom:16px}
+.settings-section-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+.settings-section-h .add-row{width:auto;padding:5px 10px;margin-top:0;font-size:11px}
+.preset-tbl{display:grid;gap:6px}
+.preset-row{display:grid;grid-template-columns:1.5fr .7fr .7fr 1fr auto;gap:5px;align-items:center;padding:7px;background:#FAFAFA;border:.5px solid var(--bdr);border-radius:6px}
+.preset-row input{padding:6px 8px;border:.5px solid #D1D5DB;border-radius:5px;font-size:12px;font-family:inherit;background:#fff;width:100%;min-width:0}
+.preset-row input:focus{outline:none;border-color:var(--acc)}
+.preset-row .row-x{padding:0 6px;font-size:14px}
+@media (max-width:480px){
+  .preset-row{grid-template-columns:1fr 1fr 1fr 1fr auto;font-size:11px}
+}
+
+@media (max-width: 480px){
+  .row-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:12px}
+  .row-fields .fld-out{font-size:12px}
+  .extras-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:11px}
+  .extras-fields input[data-extra-field="unit"], .extras-fields input[data-site-field="unit"]{display:none}
+  .slab-collapsed-mode{display:none}
+}
+
+/* PDF print view — captured by html2pdf, rendered off-DOM but PAINTED (Round v3.4 iPad fix) */
+#printView{position:fixed;top:0;left:0;width:794px;clip-path:inset(100%);pointer-events:none;background:#fff;font-family:'Inter',sans-serif;color:#111;z-index:-1}
 .pv-page{width:794px;padding:46px 50px;background:#fff;page-break-after:always;display:flex;flex-direction:column}
 .pv-page:last-child{page-break-after:auto}
 .pv-band{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #2D2A6E;padding-bottom:14px;margin-bottom:18px}
@@ -135,10 +210,18 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .pv-tbl tr:last-child td{border-bottom:none}
 .pv-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.7;padding:2px 0}
 .pv-line.sub{font-weight:700;border-top:.5px solid #e5e7eb;padding-top:6px;margin-top:5px}
-.pv-grand{margin-top:16px;border:1.5px solid #2D2A6E;border-radius:10px;padding:14px 18px;background:#F0FDF4;border-color:#1D9E75}
+
+/* PDF grand summary — per-slab blocks (Round v3.4) */
+.pv-grand{margin-top:16px;border:1.5px solid #1D9E75;border-radius:10px;padding:14px 18px;background:#F0FDF4}
 .pv-grand-h{font-size:11px;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-.pv-grand-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.8;color:#065F46}
-.pv-grand-line.total{font-size:18px;font-weight:800;border-top:1px solid #BBF7D0;margin-top:6px;padding-top:8px;color:#064E3B}
+.pv-grand-block{margin-bottom:8px;padding-bottom:7px;border-bottom:.5px dashed #BBF7D0}
+.pv-grand-block:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.pv-grand-block-h{font-size:12px;font-weight:800;color:#065F46;margin-bottom:3px}
+.pv-grand-line{display:flex;justify-content:space-between;font-size:11.5px;line-height:1.65;color:#065F46}
+.pv-grand-line.indent{padding-left:9px;font-size:11px;color:#047857}
+.pv-grand-line.subtotal{font-weight:800;border-top:.5px solid #BBF7D0;margin-top:3px;padding-top:4px}
+.pv-grand-total{display:flex;justify-content:space-between;font-size:18px;font-weight:800;border-top:1.5px solid #064E3B;margin-top:9px;padding-top:8px;color:#064E3B}
+
 .pv-notes{font-size:11px;line-height:1.6;background:#FFFBEB;border:.5px solid #FDE68A;border-radius:8px;padding:11px 14px;margin-top:14px;color:#92400E;white-space:pre-wrap}
 .pv-notes-h{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#92400E;margin-bottom:5px}
 .pv-tnc{margin-top:18px;font-size:10px;line-height:1.7;color:#444}
@@ -151,85 +234,98 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .pv-sig-block .name{font-weight:700;font-size:12px;color:#111}
 .pv-sig-block .date{color:#6b7280;margin-top:3px;font-size:10px}
 .pv-foot{margin-top:24px;font-size:9px;color:#9ca3af;text-align:center;border-top:.5px solid #e5e7eb;padding-top:8px}
-
-@media (max-width: 480px){
-  .row-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:12px}
-  .row-fields .fld-out{font-size:12px}
-  .extras-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:11px}
-  .extras-fields input[data-extra-field="unit"], .extras-fields input[data-site-field="unit"]{display:none}
-}
 </style>
 </head>
 <body>
 
 <div class="wrap">
-  <div class="demo-banner">⚠️ Pressable mockup v3 — saves to your browser only. Submit shows fake confirmation. Numbers are real (live calculation).</div>
+  <div class="demo-banner">⚠️ Pressable mockup v3.4 — saves to your browser only. Submit shows fake confirmation. Numbers are real (live calculation).</div>
 
   <div class="hdr">
-    <div class="hdr-t">📐 Site Visit + On-Spot Estimate</div>
-    <div class="hdr-s">Measure with iScanner → enter here → estimate generates live</div>
+    <div class="hdr-l">
+      <div class="hdr-t">📐 Site Visit + On-Spot Estimate</div>
+      <div class="hdr-s">Measure with iScanner → enter here → estimate generates live</div>
+    </div>
+    <button class="hdr-gear" id="btnSettings" type="button" aria-label="Settings">⚙</button>
   </div>
 
-  <!-- Customer (read-only, prefilled) -->
-  <div class="section">
-    <div class="section-h">Customer</div>
-    <dl class="cust-grid">
-      <dt>Name</dt><dd>Annie</dd>
-      <dt>Phone</dt><dd>60179934386</dd>
-      <dt>Group</dt><dd>SV-0426-018 Annie - Ampang</dd>
-      <dt>Problem</dt><dd>Bathroom slab leaking to unit below</dd>
-      <dt>Address</dt><dd>Block A, Lvl 9, Pangsapuri Anggun, Ampang</dd>
-    </dl>
-  </div>
-
-  <!-- Submitted by -->
-  <div class="section">
-    <div class="section-h">Visit Details</div>
-    <div class="field">
-      <label class="field-label field-required">Submitted by</label>
-      <select class="select" id="fSubmittedBy">
-        <option value="">— Select your name —</option>
-        <option>William (KL)</option>
-        <option>Osment (JB)</option>
-        <option>Alvin</option>
-        <option>Ken</option>
-        <option>Other (specify in notes)</option>
-      </select>
+  <!-- STEP 1 — Inspector + Customer (read-only customer info merged in) -->
+  <div class="step">
+    <div class="step-h">
+      <span class="step-num">1</span>
+      <span class="step-title">Inspector</span>
+      <span class="step-summary" id="step1Summary">Pick your name to begin</span>
+    </div>
+    <div class="step-body">
+      <div class="field">
+        <label class="field-label field-required">Submitted by</label>
+        <select class="select" id="fSubmittedBy">
+          <option value="">— Select your name —</option>
+          <option>William (KL)</option>
+          <option>Osment (JB)</option>
+          <option>Alvin</option>
+          <option>Ken</option>
+          <option>Other (specify in notes)</option>
+        </select>
+      </div>
+      <div class="section-h" style="margin-top:14px;margin-bottom:6px">Customer</div>
+      <dl class="cust-grid">
+        <dt>Name</dt><dd>Annie</dd>
+        <dt>Phone</dt><dd>60179934386</dd>
+        <dt>Group</dt><dd>SV-0426-018 Annie - Ampang</dd>
+        <dt>Problem</dt><dd>Bathroom slab leaking to unit below</dd>
+        <dt>Address</dt><dd>Block A, Lvl 9, Pangsapuri Anggun, Ampang</dd>
+      </dl>
     </div>
   </div>
 
-  <!-- Slabs -->
-  <div class="section">
-    <div class="section-h">
-      Slabs
-      <button class="add-row" id="btnAddSlabHeader" style="width:auto;padding:6px 12px;border:.5px solid var(--acc);background:#F0FDF4;color:var(--acc)">+ Add Slab</button>
+  <!-- STEP 2 — Slabs -->
+  <div class="step">
+    <div class="step-h">
+      <span class="step-num">2</span>
+      <span class="step-title">Slabs / Areas</span>
+      <span class="step-summary" id="step2Summary">No slabs yet</span>
     </div>
-    <div id="slabsList"></div>
-    <button class="add-slab-btn" id="btnAddSlabBig" type="button">+ Add another slab</button>
+    <div class="step-body">
+      <div id="slabsList"></div>
+      <button class="add-slab-btn" id="btnAddSlabBig" type="button">+ Add another slab</button>
+    </div>
   </div>
 
-  <!-- Site-wide extras -->
-  <div class="section">
-    <div class="section-h">Site-wide additional services</div>
-    <div class="chip-row" id="siteChips"></div>
-    <div id="siteExtrasList"></div>
-    <button class="add-row" id="btnAddSiteExtra" type="button">+ Add site service</button>
+  <!-- STEP 3 — Additional Costs (was "Site-wide additional services") -->
+  <div class="step">
+    <div class="step-h">
+      <span class="step-num">3</span>
+      <span class="step-title">Additional Costs</span>
+      <span class="step-summary" id="step3Summary">None added</span>
+    </div>
+    <div class="step-body">
+      <div class="chip-row" id="siteChips"></div>
+      <div id="siteExtrasList"></div>
+      <button class="add-row" id="btnAddSiteExtra" type="button">+ Add additional cost</button>
+    </div>
   </div>
 
-  <!-- Notes -->
-  <div class="section">
-    <div class="section-h">Notes (optional)</div>
-    <textarea class="textarea" id="fNotes" rows="2" placeholder="Concrete cracked at NE corner, recommend full re-screed before membrane…"></textarea>
-  </div>
+  <!-- STEP 4 — Notes & Submit -->
+  <div class="step">
+    <div class="step-h">
+      <span class="step-num">4</span>
+      <span class="step-title">Notes &amp; Estimate</span>
+      <span class="step-summary" id="step4Summary"></span>
+    </div>
+    <div class="step-body">
+      <div class="field">
+        <label class="field-label">Notes (optional)</label>
+        <textarea class="textarea" id="fNotes" rows="2" placeholder="Concrete cracked at NE corner, recommend full re-screed before membrane…"></textarea>
+      </div>
 
-  <!-- Grand total -->
-  <div class="grand-card">
-    <div class="grand-card-h">Estimated Total</div>
-    <div class="grand-line"><span class="l-label">Total membrane area</span><span class="l-val" id="gtArea">0 sqft</span></div>
-    <div class="grand-line"><span class="l-label">Membrane @ RM 8.50/sqft</span><span class="l-val" id="gtMembrane">RM 0.00</span></div>
-    <div class="grand-line"><span class="l-label">Per-slab services</span><span class="l-val" id="gtSlabExtras">RM 0.00</span></div>
-    <div class="grand-line"><span class="l-label">Site-wide services</span><span class="l-val" id="gtSiteExtras">RM 0.00</span></div>
-    <div class="grand-line divider total"><span class="l-label">ESTIMATED TOTAL</span><span class="l-val" id="gtTotal">RM 0.00</span></div>
+      <!-- Grand total -->
+      <div class="grand-card" id="grandCard">
+        <div class="grand-card-h">Estimated Total</div>
+        <div id="grandBlocks"></div>
+        <div class="grand-total-line"><span class="l-label">TOTAL</span><span class="l-val" id="gtTotal">RM 0.00</span></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -246,21 +342,111 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 <div class="toast-container" id="toastContainer"></div>
 <div class="upload-overlay" id="uploadOverlay"><div class="spinner"></div><div id="uploadText">Compressing photos…</div></div>
 
+<!-- Settings modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div class="modal-h-t">⚙ Default Pricing & Presets</div>
+      <button class="modal-x" id="settingsClose" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <div class="settings-section-h"><span>Membrane installation rate</span></div>
+        <div class="input-with-suffix">
+          <input class="input" type="number" inputmode="decimal" step="0.10" min="0" id="setMembraneRate" placeholder="8.50">
+          <span class="suffix">RM / sqft</span>
+        </div>
+        <div class="field-hint">Applies to all slabs. Inspector cannot override per-slab in v3.4.</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-h">
+          <span>Per-slab service presets</span>
+          <button class="add-row" id="setAddSlabPreset" type="button">+ Add</button>
+        </div>
+        <div class="preset-tbl" id="setSlabPresetsList"></div>
+        <div class="field-hint">Shown as quick-add chips inside each slab card.</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-h">
+          <span>Additional cost presets (site-wide)</span>
+          <button class="add-row" id="setAddSitePreset" type="button">+ Add</button>
+        </div>
+        <div class="preset-tbl" id="setSitePresetsList"></div>
+        <div class="field-hint">Shown as quick-add chips in the Additional Costs section.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <div class="left">
+        <button class="btn-warn" id="settingsReset" type="button">Reset to defaults</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" id="settingsCancel" type="button">Cancel</button>
+        <button class="btn-primary" id="settingsSave" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const LS_KEY = 'lg_site_visit_mockup_v3';
-const MEMBRANE_RATE = 8.50;
+const SETTINGS_KEY = 'lg_site_visit_settings_v1';
 
-const SLAB_SERVICE_PRESETS = [
-  { label: 'Water tank removal',      qty: 1, unit: 'job',  price: 350 },
-  { label: 'Water pump removal',      qty: 1, unit: 'job',  price: 250 },
-  { label: 'Existing coating removal', qty: 0, unit: 'sqft', price: 5    },
-  { label: 'AC compressor removal',   qty: 1, unit: 'job',  price: 200 },
-];
-const SITE_SERVICE_PRESETS = [
-  { label: 'Scaffolding supply & deliver', qty: 1, unit: 'job', price: 800 },
-];
+// Defaults — used to seed settings on first run + reset.
+const DEFAULT_SETTINGS = {
+  membraneRate: 8.50,
+  slabPresets: [
+    { label: 'Water tank removal',       qty: 1, unit: 'job',  price: 350 },
+    { label: 'Water pump removal',       qty: 1, unit: 'job',  price: 250 },
+    { label: 'Existing coating removal', qty: 0, unit: 'sqft', price: 5   },
+    { label: 'AC compressor removal',    qty: 1, unit: 'job',  price: 200 },
+  ],
+  sitePresets: [
+    { label: 'Scaffolding supply & deliver', qty: 1, unit: 'job', price: 800 },
+  ],
+};
+
+function deepClonePresets(arr){
+  return arr.map(function(p){ return { label:p.label, qty:p.qty, unit:p.unit, price:p.price }; });
+}
+function loadSettings(){
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed==='object') {
+        return {
+          membraneRate: Number(parsed.membraneRate) || DEFAULT_SETTINGS.membraneRate,
+          slabPresets: Array.isArray(parsed.slabPresets) && parsed.slabPresets.length
+            ? parsed.slabPresets.map(function(p){ return {label:String(p.label||''),qty:Number(p.qty)||0,unit:String(p.unit||'job'),price:Number(p.price)||0}; })
+            : deepClonePresets(DEFAULT_SETTINGS.slabPresets),
+          sitePresets: Array.isArray(parsed.sitePresets) && parsed.sitePresets.length
+            ? parsed.sitePresets.map(function(p){ return {label:String(p.label||''),qty:Number(p.qty)||0,unit:String(p.unit||'job'),price:Number(p.price)||0}; })
+            : deepClonePresets(DEFAULT_SETTINGS.sitePresets),
+        };
+      }
+    }
+  } catch(_){}
+  return {
+    membraneRate: DEFAULT_SETTINGS.membraneRate,
+    slabPresets: deepClonePresets(DEFAULT_SETTINGS.slabPresets),
+    sitePresets: deepClonePresets(DEFAULT_SETTINGS.sitePresets),
+  };
+}
+function saveSettings(s){
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch(_){}
+}
+let settings = loadSettings();
 
 let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[] };
+
+// Ephemeral UI collapse state per slab — not persisted (re-derived on render)
+const uiCollapse = new Map(); // slabId -> { measurements: bool, services: bool }
+function getUi(slabId){
+  if (!uiCollapse.has(slabId)) uiCollapse.set(slabId, { measurements:null, services:true });
+  return uiCollapse.get(slabId);
+}
 
 function uuid(){ return Math.random().toString(36).slice(2,9); }
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -312,7 +498,7 @@ function parseIScanner(text) {
 
 // ========= STATE =========
 function newSlab(name){
-  return { id:uuid(), name:name||('Slab '+(state.slabs.length+1)), mode:'slab', floorSqft:0, upturns:[], extras:[], photos:[], manualFloor:[] };
+  return { id:uuid(), name:name||('Slab '+(state.slabs.length+1)), mode:'slab', floorSqft:0, upturns:[], extras:[], photos:[], manualFloor:[], collapsed:false };
 }
 function newUpturn(){ return { id:uuid(), label:'', runFt:0, upturnFt:0 }; }
 function newManualRow(){ return { id:uuid(), label:'', length:0, width:0 }; }
@@ -335,7 +521,8 @@ function loadState(){
             upturns:(s.upturns||[]).map(function(u){ return {id:u.id||uuid(),label:u.label||'',runFt:Number(u.runFt)||0,upturnFt:Number(u.upturnFt)||0}; }),
             extras:(s.extras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; }),
             photos:[],
-            manualFloor:(s.manualFloor||[]).map(function(r){ return {id:r.id||uuid(),label:r.label||'',length:Number(r.length)||0,width:Number(r.width)||0}; })
+            manualFloor:(s.manualFloor||[]).map(function(r){ return {id:r.id||uuid(),label:r.label||'',length:Number(r.length)||0,width:Number(r.width)||0}; }),
+            collapsed:!!s.collapsed
           };
         });
         state.siteExtras = (parsed.siteExtras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; });
@@ -352,7 +539,7 @@ function saveState(){
   try {
     const slim = {
       submittedBy:state.submittedBy, notes:state.notes,
-      slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor}; }),
+      slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor,collapsed:!!s.collapsed}; }),
       siteExtras:state.siteExtras
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
@@ -360,17 +547,17 @@ function saveState(){
 }
 
 // ========= COMPUTED =========
+function membraneRate(){ return Number(settings.membraneRate)||0; }
 function upturnSqft(u){ return (Number(u.runFt)||0)*(Number(u.upturnFt)||0); }
 function slabUpturnTotal(s){ return s.upturns.reduce(function(sum,u){ return sum+upturnSqft(u); },0); }
 function slabFloorContribution(s){ return s.mode==='flashing' ? 0 : (Number(s.floorSqft)||0); }
 function slabSqft(s){ return slabFloorContribution(s)+slabUpturnTotal(s); }
-function slabMembraneRm(s){ return slabSqft(s)*MEMBRANE_RATE; }
+function slabMembraneRm(s){ return slabSqft(s)*membraneRate(); }
 function extraTotal(e){ return (Number(e.qty)||0)*(Number(e.price)||0); }
 function slabExtrasRm(s){ return s.extras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
 function slabTotal(s){ return slabMembraneRm(s)+slabExtrasRm(s); }
 function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
 function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabSqft(s); },0); }
-function grandSlabExtrasRm(){ return state.slabs.reduce(function(sum,s){ return sum+slabExtrasRm(s); },0); }
 function grandTotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm(); }
 function totalPhotos(){ return state.slabs.reduce(function(sum,s){ return sum+s.photos.length; },0); }
 
@@ -419,21 +606,19 @@ async function handlePhotoFiles(slabId, files){
   ov.classList.remove('on');
   renderAll();
 
-  // Round v3.2: try OCR on each new photo. Fire-and-forget per photo so the
-  // user can keep filling the form while OCR runs in background.
+  // Try OCR on each new photo. Fire-and-forget per photo so the user can keep
+  // filling the form while OCR runs in background.
   for (const p of newPhotos) {
     runOcrOnPhoto(slab, p);  // no await — parallel
   }
 }
 
 async function runOcrOnPhoto(slab, photo) {
-  // Mark as in-progress
   photo.ocr = { status: 'running' };
-  renderSlabBanner(slab.id);
+  renderAll();
   try {
     const text = await ocrPhoto(photo.dataUrl, function(progress){
       photo.ocr = { status: 'running', progress: progress };
-      renderSlabBanner(slab.id);
     });
     const parsed = parseIScanner(text);
     if (parsed.areaSqft !== null || parsed.perimeterFt !== null) {
@@ -444,20 +629,37 @@ async function runOcrOnPhoto(slab, photo) {
   } catch (e) {
     photo.ocr = { status: 'error', error: String(e.message || e) };
   }
-  renderSlabBanner(slab.id);
-  renderAll();  // updates photo card overlays
+  renderAll();
 }
 
 // ========= RENDER =========
 function renderAll(){
-  renderSlabs(); renderSiteExtras(); renderSiteChips(); renderGrand(); updateSubmitState();
+  renderSlabs(); renderSiteExtras(); renderSiteChips(); renderGrand(); renderStepSummaries(); updateSubmitState();
 }
 
-// Round v3.2: OCR banner inside floor-area subsection. Aggregates results
-// from all photos in the slab — most-recent detection wins.
+function renderStepSummaries(){
+  // STEP 1
+  document.getElementById('step1Summary').textContent =
+    state.submittedBy ? '✓ ' + state.submittedBy : 'Pick your name to begin';
+  // STEP 2
+  const nSlabs = state.slabs.length;
+  const totalArea = grandMembraneSqft();
+  const slabPart = nSlabs ? (nSlabs + ' slab' + (nSlabs>1?'s':'')) : 'No slabs';
+  document.getElementById('step2Summary').textContent =
+    nSlabs ? (slabPart + ' · ' + sqft(totalArea)) : 'No slabs yet';
+  // STEP 3
+  const nSite = state.siteExtras.length;
+  document.getElementById('step3Summary').textContent =
+    nSite ? (nSite + ' item' + (nSite>1?'s':'') + ' · ' + rm(siteExtrasRm())) : 'None added';
+  // STEP 4
+  document.getElementById('step4Summary').textContent =
+    grandTotal() > 0 ? rm(grandTotal()) : '';
+}
+
+// OCR banner inside floor-area subsection. Aggregates results from all photos
+// in the slab — most-recent detection wins.
 function ocrBannerHtml(s) {
   const photos = (s.photos || []).slice().reverse();
-  // Find any in-progress OCR
   const running = photos.find(function(p){ return p.ocr && p.ocr.status === 'running'; });
   if (running) {
     const pct = running.ocr.progress != null ? Math.round(running.ocr.progress * 100) + '%' : '';
@@ -465,7 +667,6 @@ function ocrBannerHtml(s) {
       '⏳ Reading iScanner photo… '+pct+' (first time loads ~20MB OCR engine, cached after)'+
       '</div>';
   }
-  // Find latest with detected values
   const detected = photos.find(function(p){ return p.ocr && p.ocr.status === 'detected'; });
   if (detected) {
     const a = detected.ocr.areaSqft;
@@ -483,7 +684,6 @@ function ocrBannerHtml(s) {
       '</div>'+
       '</div>';
   }
-  // Find latest with no-match
   const noMatch = photos.find(function(p){ return p.ocr && p.ocr.status === 'no-match'; });
   if (noMatch) {
     return '<div style="margin-bottom:8px;padding:7px 10px;background:#FEF3C7;border:.5px solid #FDE68A;border-radius:6px;color:#92400E;font-size:11px">'+
@@ -491,41 +691,6 @@ function ocrBannerHtml(s) {
       '</div>';
   }
   return '';
-}
-
-function renderSlabBanner(slabId) {
-  // Surgical update of just the banner inside this slab card to avoid
-  // re-rendering the entire slab (which would lose input focus).
-  const s = state.slabs.find(function(x){ return x.id===slabId; });
-  if (!s) return;
-  const nameInput = document.querySelector('[data-slab-name="'+slabId+'"]');
-  if (!nameInput) return;
-  const slabEl = nameInput.closest('.slab');
-  if (!slabEl) return;
-  const floorSubsection = slabEl.querySelector('.subsection .input-with-suffix');
-  if (!floorSubsection) return;
-  // Banner sits as the immediate previous sibling of the input-with-suffix wrapper.
-  // Strategy: find any existing banner with our marker classes and replace, else insert.
-  const newBannerHtml = ocrBannerHtml(s);
-  // Find the existing banner — it's the element right before the .input-with-suffix
-  let prev = floorSubsection.previousElementSibling;
-  // Existing banner has inline style starting with margin-bottom; check via background sniffing
-  const isBanner = prev && prev.tagName === 'DIV' && /margin-bottom:8px/.test(prev.style.cssText || '');
-  if (newBannerHtml === '') {
-    if (isBanner) prev.remove();
-    return;
-  }
-  const tmp = document.createElement('div');
-  tmp.innerHTML = newBannerHtml;
-  const newEl = tmp.firstElementChild;
-  if (isBanner) {
-    prev.replaceWith(newEl);
-  } else {
-    floorSubsection.parentNode.insertBefore(newEl, floorSubsection);
-  }
-  // Wire the apply button
-  const applyBtn = newEl.querySelector('[data-apply-ocr]');
-  if (applyBtn) applyBtn.addEventListener('click', onApplyOcr);
 }
 
 function onApplyOcr(e) {
@@ -540,149 +705,210 @@ function onApplyOcr(e) {
   toast('Floor area set to ' + val.toFixed(1) + ' sqft from iScanner', 'success');
 }
 
-function renderSlabs(){
-  const list = document.getElementById('slabsList');
-  list.innerHTML = '';
-  state.slabs.forEach(function(s){
-    const isFlashing = s.mode === 'flashing';
-    const div = document.createElement('div');
-    div.className = 'slab';
+// Renders the COLLAPSED row variant of a slab card (header-only).
+function renderSlabCollapsed(s){
+  const isFlashing = s.mode === 'flashing';
+  return '<div class="slab collapsed" data-slab-toggle="'+s.id+'">'+
+    '<div class="slab-collapsed-row">'+
+      '<span class="slab-collapsed-name">'+escapeHtml(s.name)+'</span>'+
+      '<span class="slab-collapsed-mode">'+(isFlashing?'Flashing':'Slab')+'</span>'+
+      '<span class="slab-collapsed-area">'+sqft(slabSqft(s))+'</span>'+
+      '<span class="slab-collapsed-total">'+rm(slabTotal(s))+'</span>'+
+      '<span class="slab-collapsed-chev">▾</span>'+
+    '</div>'+
+  '</div>';
+}
 
-    let photosHtml = '';
-    if (s.photos.length) {
-      photosHtml = '<div class="slab-photos">'+s.photos.map(function(p,i){
-        let badge = '';
-        if (p.ocr && p.ocr.status === 'detected') badge = '<div style="position:absolute;top:5px;left:5px;background:rgba(29,158,117,.92);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">📐 iScanner</div>';
-        else if (p.ocr && p.ocr.status === 'running') badge = '<div style="position:absolute;top:5px;left:5px;background:rgba(59,130,246,.92);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">⏳ OCR…</div>';
-        return '<div class="photo-slot"><img src="'+p.dataUrl+'" alt="">'+
-               badge +
-               '<button class="photo-slot-del" type="button" data-del-photo="'+s.id+'|'+p.id+'" aria-label="Remove">×</button>'+
-               '<div class="photo-slot-meta">#'+(i+1)+' · '+p.compressedKB+'KB</div></div>';
-      }).join('')+'</div>';
-    }
+// Renders the EXPANDED slab body.
+function renderSlabExpanded(s){
+  const isFlashing = s.mode === 'flashing';
+  const ui = getUi(s.id);
 
-    let upturnsHtml = '';
-    s.upturns.forEach(function(u){
-      upturnsHtml +=
-        '<div class="row" data-upturn="'+u.id+'">'+
-          '<div class="row-label"><span>Section</span><button class="row-x" data-del-upturn="'+s.id+'|'+u.id+'" type="button" aria-label="Remove">×</button></div>'+
-          '<div class="row-fields">'+
-            '<input type="text" placeholder="e.g. Left wall" value="'+escapeHtml(u.label)+'" data-up-field="label" data-slab="'+s.id+'" data-up="'+u.id+'">'+
-            '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Run ft" value="'+(u.runFt||'')+'" data-up-field="runFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
-            '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Upturn ft" value="'+(u.upturnFt||'')+'" data-up-field="upturnFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
-            '<span class="fld-out" data-up-out="'+u.id+'">= '+sqft(upturnSqft(u))+'</span>'+
-          '</div>'+
-        '</div>';
-    });
+  // Auto-decide measurement collapse default if not user-toggled yet:
+  // open when empty (sqft=0), collapsed once any area entered.
+  if (ui.measurements === null) {
+    ui.measurements = slabSqft(s) > 0;  // true = collapsed
+  }
+  const measCollapsed = ui.measurements === true;
+  const servicesCollapsed = ui.services === true;
 
-    let extrasHtml = '';
-    s.extras.forEach(function(e){
-      extrasHtml +=
-        '<div class="row" data-extra="'+e.id+'">'+
-          '<div class="row-label"><span>Service</span><button class="row-x" data-del-extra="'+s.id+'|'+e.id+'" type="button" aria-label="Remove">×</button></div>'+
-          '<div class="extras-fields">'+
-            '<input type="text" placeholder="Description" value="'+escapeHtml(e.label)+'" data-extra-field="label" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
-            '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Qty" value="'+(e.qty||'')+'" data-extra-field="qty" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
-            '<input type="text" placeholder="Unit" value="'+escapeHtml(e.unit)+'" data-extra-field="unit" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
-            '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Price" value="'+(e.price||'')+'" data-extra-field="price" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
-            '<span class="fld-out" data-extra-out="'+e.id+'">= '+rm(extraTotal(e))+'</span>'+
-          '</div>'+
-        '</div>';
-    });
+  let photosHtml = '';
+  if (s.photos.length) {
+    photosHtml = '<div class="slab-photos">'+s.photos.map(function(p,i){
+      let badge = '';
+      if (p.ocr && p.ocr.status === 'detected') badge = '<div style="position:absolute;top:5px;left:5px;background:rgba(29,158,117,.92);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">📐 iScanner</div>';
+      else if (p.ocr && p.ocr.status === 'running') badge = '<div style="position:absolute;top:5px;left:5px;background:rgba(59,130,246,.92);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">⏳ OCR…</div>';
+      return '<div class="photo-slot"><img src="'+p.dataUrl+'" alt="">'+
+             badge +
+             '<button class="photo-slot-del" type="button" data-del-photo="'+s.id+'|'+p.id+'" aria-label="Remove">×</button>'+
+             '<div class="photo-slot-meta">#'+(i+1)+' · '+p.compressedKB+'KB</div></div>';
+    }).join('')+'</div>';
+  }
 
-    const slabChips = SLAB_SERVICE_PRESETS.map(function(p){
-      return '<button class="chip" type="button" data-add-extra-preset="'+s.id+'|'+escapeHtml(p.label)+'">+ '+escapeHtml(p.label)+'</button>';
-    }).join('');
+  let upturnsHtml = '';
+  s.upturns.forEach(function(u){
+    upturnsHtml +=
+      '<div class="row" data-upturn="'+u.id+'">'+
+        '<div class="row-label"><span>Section</span><button class="row-x" data-del-upturn="'+s.id+'|'+u.id+'" type="button" aria-label="Remove">×</button></div>'+
+        '<div class="row-fields">'+
+          '<input type="text" placeholder="e.g. Left wall" value="'+escapeHtml(u.label)+'" data-up-field="label" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+          '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Run ft" value="'+(u.runFt||'')+'" data-up-field="runFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+          '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Upturn ft" value="'+(u.upturnFt||'')+'" data-up-field="upturnFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+          '<span class="fld-out" data-up-out="'+u.id+'">= '+sqft(upturnSqft(u))+'</span>'+
+        '</div>'+
+      '</div>';
+  });
 
-    div.innerHTML =
-      '<div class="slab-h">'+
-        '<input class="slab-name" value="'+escapeHtml(s.name)+'" data-slab-name="'+s.id+'">'+
-        '<button class="slab-remove" data-remove-slab="'+s.id+'" type="button">Remove</button>'+
+  let extrasHtml = '';
+  s.extras.forEach(function(e){
+    extrasHtml +=
+      '<div class="row" data-extra="'+e.id+'">'+
+        '<div class="row-label"><span>Service</span><button class="row-x" data-del-extra="'+s.id+'|'+e.id+'" type="button" aria-label="Remove">×</button></div>'+
+        '<div class="extras-fields">'+
+          '<input type="text" placeholder="Description" value="'+escapeHtml(e.label)+'" data-extra-field="label" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+          '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Qty" value="'+(e.qty||'')+'" data-extra-field="qty" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+          '<input type="text" placeholder="Unit" value="'+escapeHtml(e.unit)+'" data-extra-field="unit" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+          '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Price" value="'+(e.price||'')+'" data-extra-field="price" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+          '<span class="fld-out" data-extra-out="'+e.id+'">= '+rm(extraTotal(e))+'</span>'+
+        '</div>'+
+      '</div>';
+  });
+
+  const slabChips = settings.slabPresets.map(function(p){
+    return '<button class="chip" type="button" data-add-extra-preset="'+s.id+'|'+escapeHtml(p.label)+'">+ '+escapeHtml(p.label)+'</button>';
+  }).join('');
+
+  // Measurement subzone (Floor area + Manual L×W + Upturns merged)
+  let measBody = '';
+  if (!isFlashing) {
+    measBody +=
+      ocrBannerHtml(s)+
+      '<div class="input-with-suffix">'+
+        '<input class="input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="From iScanner — e.g. 35.5" value="'+(s.floorSqft||'')+'" data-slab="'+s.id+'" data-slab-field="floorSqft">'+
+        '<span class="suffix">sqft</span>'+
       '</div>'+
-
-      '<div class="slab-mode-row">'+
-        '<label>Mode:</label>'+
-        '<select data-slab-mode="'+s.id+'">'+
-          '<option value="slab"'+(isFlashing?'':' selected')+'>Slab + upturns</option>'+
-          '<option value="flashing"'+(isFlashing?' selected':'')+'>Flashing / linear only (no floor)</option>'+
-        '</select>'+
+      '<div class="field-hint">Key the iScanner Area value here, or use manual L × W below.</div>'+
+      // Manual fallback calculator
+      '<div style="margin-top:9px;padding:9px;background:#FAFAFA;border:.5px dashed #D1D5DB;border-radius:6px">'+
+        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'+
+          '<span>📏 Manual L × W (iScanner failed)</span>'+
+          '<span style="font-weight:600;color:var(--acc)">Sum: '+sqft(slabManualFloorTotal(s))+'</span>'+
+        '</div>'+
+        (s.manualFloor||[]).map(function(r){
+          return '<div class="row" data-mfloor="'+r.id+'" style="margin-bottom:5px">'+
+            '<div class="row-label"><span>Section</span><button class="row-x" data-del-mfloor="'+s.id+'|'+r.id+'" type="button" aria-label="Remove">×</button></div>'+
+            '<div class="row-fields">'+
+              '<input type="text" placeholder="e.g. Main floor" value="'+escapeHtml(r.label)+'" data-mf-field="label" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+              '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Length ft" value="'+(r.length||'')+'" data-mf-field="length" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+              '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Width ft" value="'+(r.width||'')+'" data-mf-field="width" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+              '<span class="fld-out" data-mf-out="'+r.id+'">= '+sqft(manualRowSqft(r))+'</span>'+
+            '</div>'+
+          '</div>';
+        }).join('')+
+        '<div style="display:flex;gap:6px;margin-top:5px">'+
+          '<button class="add-row" type="button" data-add-mfloor="'+s.id+'" style="flex:1;margin-top:0">+ Add section</button>'+
+          ((s.manualFloor||[]).length ? '<button class="add-row" type="button" data-apply-mfloor="'+s.id+'" style="flex:1;margin-top:0;border-color:var(--acc);background:#F0FDF4;color:var(--acc);font-weight:700">↑ Apply '+sqft(slabManualFloorTotal(s))+' to floor area</button>' : '')+
+        '</div>'+
       '</div>'+
+      '<div style="margin-top:11px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt)">Upturns ('+s.upturns.length+')</div>';
+  } else {
+    measBody += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:5px">Linear sections ('+s.upturns.length+')</div>';
+  }
+  measBody +=
+    upturnsHtml +
+    '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn')+'</button>';
 
-      '<div class="subsection">'+
-        '<div class="subsection-h">Photos &amp; iScanner result ('+s.photos.length+')</div>'+
+  const measSummary = sqft(slabSqft(s)) + ' total';
+
+  // Build all subzones
+  let bodyHtml =
+    '<div class="slab-h">'+
+      '<input class="slab-name" value="'+escapeHtml(s.name)+'" data-slab-name="'+s.id+'">'+
+      '<button class="slab-collapse-btn" data-slab-toggle="'+s.id+'" type="button" aria-label="Collapse">▴</button>'+
+      '<button class="slab-remove" data-remove-slab="'+s.id+'" type="button">Remove</button>'+
+    '</div>'+
+
+    '<div class="slab-mode-row">'+
+      '<label>Mode:</label>'+
+      '<select data-slab-mode="'+s.id+'">'+
+        '<option value="slab"'+(isFlashing?'':' selected')+'>Slab + upturns</option>'+
+        '<option value="flashing"'+(isFlashing?' selected':'')+'>Flashing / linear only (no floor)</option>'+
+      '</select>'+
+    '</div>'+
+
+    // Photos subzone — always visible (static, not collapsible)
+    '<div class="subzone">'+
+      '<div class="subzone-h static">'+
+        '<span class="subzone-h-icon">📷</span>'+
+        '<span class="subzone-h-title">Photos &amp; iScanner ('+s.photos.length+')</span>'+
+      '</div>'+
+      '<div class="subzone-body tight">'+
         '<div class="field-hint" style="margin-bottom:7px">💡 First photo: <b>iScanner screenshot</b> showing area + perimeter. Then site condition photos.</div>'+
         photosHtml+
-        '<label class="add-photo-btn"><span style="font-size:16px">📐📷</span><span>Tap to take iScanner screenshot or site photo</span>'+
-          '<input type="file" accept="image/*" capture="environment" data-add-photo="'+s.id+'" multiple></label>'+
+        '<div class="photo-actions">'+
+          '<label class="photo-btn"><span class="ico">📷</span><span>Take Photo</span>'+
+            '<input type="file" accept="image/*" capture="environment" data-add-photo="'+s.id+'" multiple></label>'+
+          '<label class="photo-btn"><span class="ico">🖼️</span><span>From Album</span>'+
+            '<input type="file" accept="image/*" data-add-photo="'+s.id+'" multiple></label>'+
+        '</div>'+
       '</div>'+
+    '</div>'+
 
-      (isFlashing ? '' :
-        '<div class="subsection">'+
-          '<div class="subsection-h">Floor area</div>'+
-          ocrBannerHtml(s)+
-          '<div class="input-with-suffix">'+
-            '<input class="input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="From iScanner — e.g. 35.5" value="'+(s.floorSqft||'')+'" data-slab="'+s.id+'" data-slab-field="floorSqft">'+
-            '<span class="suffix">sqft</span>'+
-          '</div>'+
-          '<div class="field-hint">Key the iScanner Area value here. If iScanner failed → use manual L × W below.</div>'+
+    // Measurements subzone — collapsible (auto-collapse when filled)
+    '<div class="subzone">'+
+      '<div class="subzone-h" data-subzone-toggle="'+s.id+'|measurements">'+
+        '<span class="subzone-h-icon">📐</span>'+
+        '<span class="subzone-h-title">Measurements</span>'+
+        '<span class="subzone-h-summary">'+measSummary+'</span>'+
+        '<span class="subzone-h-chev">'+(measCollapsed?'▾':'▴')+'</span>'+
+      '</div>'+
+      (measCollapsed ? '' :
+        '<div class="subzone-body tight">'+ measBody +'</div>'
+      )+
+    '</div>'+
 
-          // Manual fallback calculator (Round v3.1)
-          '<div style="margin-top:9px;padding:9px;background:#FAFAFA;border:.5px dashed #D1D5DB;border-radius:6px">'+
-            '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'+
-              '<span>📏 Manual L × W (iScanner failed)</span>'+
-              '<span style="font-weight:600;color:var(--acc)">Sum: '+sqft(slabManualFloorTotal(s))+'</span>'+
-            '</div>'+
-            (s.manualFloor||[]).map(function(r){
-              return '<div class="row" data-mfloor="'+r.id+'" style="margin-bottom:5px">'+
-                '<div class="row-label"><span>Section</span><button class="row-x" data-del-mfloor="'+s.id+'|'+r.id+'" type="button" aria-label="Remove">×</button></div>'+
-                '<div class="row-fields">'+
-                  '<input type="text" placeholder="e.g. Main floor" value="'+escapeHtml(r.label)+'" data-mf-field="label" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
-                  '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Length ft" value="'+(r.length||'')+'" data-mf-field="length" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
-                  '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Width ft" value="'+(r.width||'')+'" data-mf-field="width" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
-                  '<span class="fld-out" data-mf-out="'+r.id+'">= '+sqft(manualRowSqft(r))+'</span>'+
-                '</div>'+
-              '</div>';
-            }).join('')+
-            '<div style="display:flex;gap:6px;margin-top:5px">'+
-              '<button class="add-row" type="button" data-add-mfloor="'+s.id+'" style="flex:1;margin-top:0">+ Add section</button>'+
-              ((s.manualFloor||[]).length ? '<button class="add-row" type="button" data-apply-mfloor="'+s.id+'" style="flex:1;margin-top:0;border-color:var(--acc);background:#F0FDF4;color:var(--acc);font-weight:700">↑ Apply '+sqft(slabManualFloorTotal(s))+' to floor area</button>' : '')+
-            '</div>'+
-          '</div>'+
+    // Services subzone — collapsible (default-collapsed)
+    '<div class="subzone">'+
+      '<div class="subzone-h" data-subzone-toggle="'+s.id+'|services">'+
+        '<span class="subzone-h-icon">💼</span>'+
+        '<span class="subzone-h-title">Services for this slab</span>'+
+        '<span class="subzone-h-summary">'+(s.extras.length?(s.extras.length+' · '+rm(slabExtrasRm(s))):'none')+'</span>'+
+        '<span class="subzone-h-chev">'+(servicesCollapsed?'▾':'▴')+'</span>'+
+      '</div>'+
+      (servicesCollapsed ? '' :
+        '<div class="subzone-body tight">'+
+          '<div class="chip-row">'+slabChips+'</div>'+
+          extrasHtml+
+          '<button class="add-row" type="button" data-add-extra="'+s.id+'">+ Add custom service</button>'+
         '</div>'
       )+
+    '</div>'+
 
-      '<div class="subsection">'+
-        '<div class="subsection-h">'+(isFlashing?'Linear sections':'Upturns')+' ('+s.upturns.length+')</div>'+
-        upturnsHtml+
-        '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn')+'</button>'+
-      '</div>'+
+    '<div class="slab-subtotal">'+
+      '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × '+rm(membraneRate())+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
+      '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
+      '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>'+
+    '</div>';
 
-      '<div class="subsection">'+
-        '<div class="subsection-h">Additional services for this slab ('+s.extras.length+')</div>'+
-        '<div class="chip-row">'+slabChips+'</div>'+
-        extrasHtml+
-        '<button class="add-row" type="button" data-add-extra="'+s.id+'">+ Add custom service</button>'+
-      '</div>'+
+  return '<div class="slab expanded">'+ bodyHtml +'</div>';
+}
 
-      '<div class="slab-subtotal">'+
-        '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × RM '+MEMBRANE_RATE.toFixed(2)+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
-        '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
-        '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>'+
-      '</div>';
-
-    list.appendChild(div);
-  });
+function renderSlabs(){
+  const list = document.getElementById('slabsList');
+  list.innerHTML = state.slabs.map(function(s){
+    return s.collapsed ? renderSlabCollapsed(s) : renderSlabExpanded(s);
+  }).join('');
   wireSlabHandlers(list);
 }
 
 function renderSiteChips(){
   const wrap = document.getElementById('siteChips');
-  wrap.innerHTML = SITE_SERVICE_PRESETS.map(function(p){
+  wrap.innerHTML = settings.sitePresets.map(function(p){
     return '<button class="chip" type="button" data-add-site-preset="'+escapeHtml(p.label)+'">+ '+escapeHtml(p.label)+'</button>';
   }).join('');
   wrap.querySelectorAll('[data-add-site-preset]').forEach(function(b){
     b.onclick = function(){
-      const preset = SITE_SERVICE_PRESETS.find(function(p){ return p.label === b.dataset.addSitePreset; });
+      const preset = settings.sitePresets.find(function(p){ return p.label === b.dataset.addSitePreset; });
       state.siteExtras.push(newExtra(preset));
       saveState(); renderAll();
     };
@@ -714,7 +940,7 @@ function renderSiteExtras(){
       e[f] = (f==='qty'||f==='price') ? (Number(el.value)||0) : el.value;
       const out = list.querySelector('[data-site-out="'+e.id+'"]');
       if (out) out.textContent = '= ' + rm(extraTotal(e));
-      renderGrand(); updateSubmitState(); saveState();
+      renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
     };
     el.addEventListener('input', update);
     el.addEventListener('change', update);
@@ -727,26 +953,88 @@ function renderSiteExtras(){
   });
 }
 
+// Build the per-slab block list + Additional Costs block (Round v3.4)
 function renderGrand(){
-  document.getElementById('gtArea').textContent = sqft(grandMembraneSqft());
-  document.getElementById('gtMembrane').textContent = rm(grandMembraneSqft()*MEMBRANE_RATE);
-  document.getElementById('gtSlabExtras').textContent = rm(grandSlabExtrasRm());
-  document.getElementById('gtSiteExtras').textContent = rm(siteExtrasRm());
+  const blocks = document.getElementById('grandBlocks');
+  let html = '';
+
+  // Per-slab blocks
+  state.slabs.forEach(function(s){
+    const lines = [];
+    if (slabSqft(s) > 0) {
+      lines.push('<div class="grand-line"><span class="l-label">Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(slabMembraneRm(s))+'</span></div>');
+    } else {
+      lines.push('<div class="grand-line"><span class="l-label">Membrane (no measurements yet)</span><span class="l-val">RM 0.00</span></div>');
+    }
+    s.extras.forEach(function(e){
+      const label = e.label && e.label.trim() ? e.label : '(unnamed service)';
+      lines.push('<div class="grand-line indent"><span class="l-label">'+escapeHtml(label)+'</span><span class="l-val">'+rm(extraTotal(e))+'</span></div>');
+    });
+    lines.push('<div class="grand-line subtotal"><span class="l-label">Subtotal</span><span class="l-val">'+rm(slabTotal(s))+'</span></div>');
+
+    html +=
+      '<div class="grand-block">'+
+        '<div class="grand-block-h">'+escapeHtml(s.name)+'</div>'+
+        lines.join('')+
+      '</div>';
+  });
+
+  // Additional Costs block (site-wide)
+  if (state.siteExtras.length) {
+    let acLines = '';
+    state.siteExtras.forEach(function(e){
+      const label = e.label && e.label.trim() ? e.label : '(unnamed cost)';
+      acLines += '<div class="grand-line indent"><span class="l-label">'+escapeHtml(label)+'</span><span class="l-val">'+rm(extraTotal(e))+'</span></div>';
+    });
+    acLines += '<div class="grand-line subtotal"><span class="l-label">Subtotal</span><span class="l-val">'+rm(siteExtrasRm())+'</span></div>';
+    html +=
+      '<div class="grand-block">'+
+        '<div class="grand-block-h">Additional Costs (site-wide)</div>'+
+        acLines+
+      '</div>';
+  }
+
+  blocks.innerHTML = html;
   document.getElementById('gtTotal').textContent = rm(grandTotal());
 }
 
 function wireSlabHandlers(list){
+  // Slab toggle (collapsed row OR collapse button on expanded)
+  list.querySelectorAll('[data-slab-toggle]').forEach(function(el){
+    el.addEventListener('click', function(ev){
+      // If click came from inside an input/button, ignore unless it's the toggle itself
+      if (ev.target.closest('button[data-slab-toggle]') !== el && ev.target.tagName === 'BUTTON') return;
+      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slabToggle; });
+      if (!s) return;
+      s.collapsed = !s.collapsed;
+      saveState(); renderAll();
+    });
+  });
+
+  // Subzone toggle (measurements / services)
+  list.querySelectorAll('[data-subzone-toggle]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const parts = el.dataset.subzoneToggle.split('|');
+      const ui = getUi(parts[0]);
+      ui[parts[1]] = !ui[parts[1]];
+      renderAll();
+    });
+  });
+
   list.querySelectorAll('input[data-slab-name]').forEach(function(el){
-    el.oninput = function(){ const s = state.slabs.find(function(x){ return x.id===el.dataset.slabName; }); if (s){ s.name=el.value; saveState(); renderGrand(); updateSubmitState(); updateSlabSubtotalLabel(s); } };
+    el.oninput = function(){ const s = state.slabs.find(function(x){ return x.id===el.dataset.slabName; }); if (s){ s.name=el.value; saveState(); renderGrand(); renderStepSummaries(); updateSubmitState(); updateSlabSubtotalLabel(s); } };
   });
   list.querySelectorAll('select[data-slab-mode]').forEach(function(el){
     el.onchange = function(){ const s = state.slabs.find(function(x){ return x.id===el.dataset.slabMode; }); if (s){ s.mode=el.value; saveState(); renderAll(); } };
   });
   list.querySelectorAll('[data-remove-slab]').forEach(function(b){
-    b.onclick = function(){
+    b.onclick = function(ev){
+      ev.stopPropagation();
       if (state.slabs.length<=1){ toast('At least 1 slab required','info'); return; }
       if (!confirm('Remove this slab and its photos?')) return;
       state.slabs = state.slabs.filter(function(x){ return x.id!==b.dataset.removeSlab; });
+      uiCollapse.delete(b.dataset.removeSlab);
       saveState(); renderAll();
     };
   });
@@ -772,7 +1060,7 @@ function wireSlabHandlers(list){
       u[f] = (f==='runFt'||f==='upturnFt') ? (Number(el.value)||0) : el.value;
       const out = list.querySelector('[data-up-out="'+u.id+'"]');
       if (out) out.textContent = '= ' + sqft(upturnSqft(u));
-      updateSlabSubtotal(s); renderGrand(); updateSubmitState(); saveState();
+      updateSlabSubtotal(s); renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
     };
     el.addEventListener('input', update);
     el.addEventListener('change', update);
@@ -782,12 +1070,11 @@ function wireSlabHandlers(list){
       const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
       if (!s) return;
       s.floorSqft = Number(el.value)||0;
-      updateSlabSubtotal(s); renderGrand(); updateSubmitState(); saveState();
+      updateSlabSubtotal(s); renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
     };
     el.addEventListener('input', update);
     el.addEventListener('change', update);
   });
-  // Manual floor calc — add row
   list.querySelectorAll('[data-add-mfloor]').forEach(function(b){
     b.onclick = function(){
       const s = state.slabs.find(function(x){ return x.id===b.dataset.addMfloor; });
@@ -797,7 +1084,6 @@ function wireSlabHandlers(list){
       saveState(); renderAll();
     };
   });
-  // Manual floor calc — delete row
   list.querySelectorAll('[data-del-mfloor]').forEach(function(b){
     b.onclick = function(){
       const parts = b.dataset.delMfloor.split('|');
@@ -807,7 +1093,6 @@ function wireSlabHandlers(list){
       saveState(); renderAll();
     };
   });
-  // Manual floor calc — edit row fields
   list.querySelectorAll('input[data-mf-field]').forEach(function(el){
     const update = function(){
       const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
@@ -818,14 +1103,11 @@ function wireSlabHandlers(list){
       r[f] = (f==='length'||f==='width') ? (Number(el.value)||0) : el.value;
       const out = list.querySelector('[data-mf-out="'+r.id+'"]');
       if (out) out.textContent = '= ' + sqft(manualRowSqft(r));
-      // Update the Sum text in the manual-floor header by re-rendering the apply button label
-      // Simpler: full re-render only when add/remove. For live edits, just rerender.
       renderAll();
     };
     el.addEventListener('input', update);
     el.addEventListener('change', update);
   });
-  // Manual floor calc — apply sum to floor area
   list.querySelectorAll('[data-apply-mfloor]').forEach(function(b){
     b.onclick = function(){
       const s = state.slabs.find(function(x){ return x.id===b.dataset.applyMfloor; });
@@ -845,7 +1127,7 @@ function wireSlabHandlers(list){
       const parts = b.dataset.addExtraPreset.split('|');
       const s = state.slabs.find(function(x){ return x.id===parts[0]; });
       if (!s) return;
-      const preset = SLAB_SERVICE_PRESETS.find(function(p){ return p.label===parts[1]; });
+      const preset = settings.slabPresets.find(function(p){ return p.label===parts[1]; });
       s.extras.push(newExtra(preset));
       saveState(); renderAll();
     };
@@ -869,7 +1151,7 @@ function wireSlabHandlers(list){
       e[f] = (f==='qty'||f==='price') ? (Number(el.value)||0) : el.value;
       const out = list.querySelector('[data-extra-out="'+e.id+'"]');
       if (out) out.textContent = '= ' + rm(extraTotal(e));
-      updateSlabSubtotal(s); renderGrand(); updateSubmitState(); saveState();
+      updateSlabSubtotal(s); renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
     };
     el.addEventListener('input', update);
     el.addEventListener('change', update);
@@ -891,14 +1173,14 @@ function wireSlabHandlers(list){
 }
 
 function updateSlabSubtotal(s){
-  const nameInput = document.querySelector('[data-slab-name="'+s.id+'"]');
-  if (!nameInput) return;
-  const slabEl = nameInput.closest('.slab');
+  const slabEl = document.querySelector('.slab.expanded [data-slab-name="'+s.id+'"]');
   if (!slabEl) return;
-  const sub = slabEl.querySelector('.slab-subtotal');
+  const wrap = slabEl.closest('.slab');
+  if (!wrap) return;
+  const sub = wrap.querySelector('.slab-subtotal');
   if (!sub) return;
   sub.innerHTML =
-    '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × RM '+MEMBRANE_RATE.toFixed(2)+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
+    '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × '+rm(membraneRate())+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
     '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
     '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
 }
@@ -913,18 +1195,21 @@ function updateSubmitState(){
   btn.textContent = ok ? ('Submit — '+state.slabs.length+' slab'+(state.slabs.length>1?'s':'')+', '+rm(grandTotal())+' est.') : 'Submit Visit';
 }
 
-document.getElementById('fSubmittedBy').addEventListener('change', function(e){ state.submittedBy=e.target.value; saveState(); updateSubmitState(); });
+document.getElementById('fSubmittedBy').addEventListener('change', function(e){ state.submittedBy=e.target.value; saveState(); renderStepSummaries(); updateSubmitState(); });
 document.getElementById('fNotes').addEventListener('input', function(e){ state.notes=e.target.value; saveState(); });
 
 function handleAddSlab(){
-  state.slabs.push(newSlab());
+  // Round v3.4: collapse all existing slabs when adding a new one.
+  state.slabs.forEach(function(s){ s.collapsed = true; });
+  const fresh = newSlab();
+  fresh.collapsed = false;
+  state.slabs.push(fresh);
   saveState(); renderAll();
   setTimeout(function(){
     const list = document.getElementById('slabsList');
     if (list && list.lastElementChild) list.lastElementChild.scrollIntoView({behavior:'smooth',block:'center'});
   }, 30);
 }
-document.getElementById('btnAddSlabHeader').addEventListener('click', handleAddSlab);
 document.getElementById('btnAddSlabBig').addEventListener('click', handleAddSlab);
 document.getElementById('btnAddSiteExtra').addEventListener('click', function(){ state.siteExtras.push(newExtra()); saveState(); renderAll(); });
 
@@ -949,7 +1234,8 @@ document.getElementById('btnSubmit').addEventListener('click', function(){
         };
       }),
       siteExtras:state.siteExtras.map(function(e){ return {label:e.label,qty:e.qty,unit:e.unit,price:e.price,total:extraTotal(e)}; }),
-      grandMembraneSqft:grandMembraneSqft(), grandTotal:grandTotal()
+      grandMembraneSqft:grandMembraneSqft(), grandTotal:grandTotal(),
+      membraneRate:membraneRate()
     };
     setTimeout(function(){ alert('Mockup payload (real version POSTs to n8n):\n\n'+JSON.stringify(payload,null,2)); }, 600);
   }, 2100);
@@ -958,14 +1244,13 @@ document.getElementById('btnSubmit').addEventListener('click', function(){
 document.getElementById('btnClear').addEventListener('click', function(){
   if (!confirm('Clear all slabs, services, and photos?')) return;
   state = { submittedBy:'', notes:'', slabs:[newSlab('Slab 1')], siteExtras:[] };
+  uiCollapse.clear();
   document.getElementById('fSubmittedBy').value='';
   document.getElementById('fNotes').value='';
   saveState(); renderAll(); toast('Cleared','info');
 });
 
 // ========= ESTIMATE PDF =========
-// Customer info source — currently hardcoded mock. When wired to real lead lookup
-// (gviz fetch by ?p=<phone>), this comes from the loaded lead row.
 const PDF_CUSTOMER_MOCK = {
   name: 'Annie',
   phone: '60179934386',
@@ -1029,7 +1314,7 @@ function buildPrintView() {
       '<div class="pv-cust-row"><span class="lbl">Inspected by</span><span class="val">'+escapeHtml(state.submittedBy || '—')+'</span></div>'+
     '</div>';
 
-  // 4. Per slab
+  // 4. Per slab — measurements section + photos
   state.slabs.forEach(function(s){
     const isFlashing = s.mode === 'flashing';
     let slabHtml = '<div class="pv-slab">';
@@ -1039,8 +1324,9 @@ function buildPrintView() {
         '<span class="pv-slab-mode">'+(isFlashing ? 'Flashing / Linear' : 'Slab + Upturns')+'</span>'+
       '</div>';
 
-    // Photos (max 4 to keep PDF size sane; supervisor can include more if needed)
-    const photoSubset = (s.photos || []).slice(0, 4);
+    // Round v3.4: cap photos at 2 per slab to keep canvas area below iPad's
+    // 2^24 px² limit (was 4 in v3.3, hit blank-PDF on iPad).
+    const photoSubset = (s.photos || []).slice(0, 2);
     if (photoSubset.length) {
       slabHtml += '<div class="pv-photos">' + photoSubset.map(function(p){
         return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';
@@ -1070,7 +1356,7 @@ function buildPrintView() {
     slabHtml += '</div>';
 
     // Membrane line
-    slabHtml += '<div class="pv-section"><div class="pv-line"><span>Membrane installation @ RM '+MEMBRANE_RATE.toFixed(2)+'/sqft</span><span>'+rm(slabMembraneRm(s))+'</span></div></div>';
+    slabHtml += '<div class="pv-section"><div class="pv-line"><span>Membrane installation @ '+rm(membraneRate())+'/sqft</span><span>'+rm(slabMembraneRm(s))+'</span></div></div>';
 
     // Per-slab services
     if ((s.extras || []).length) {
@@ -1096,10 +1382,10 @@ function buildPrintView() {
     html += slabHtml;
   });
 
-  // 5. Site-wide services
+  // 5. Site-wide services (Additional Costs) — full table
   if ((state.siteExtras || []).length) {
     html += '<div class="pv-slab">'+
-      '<div class="pv-slab-h"><span>Site-Wide Services</span></div>'+
+      '<div class="pv-slab-h"><span>Additional Costs (site-wide)</span></div>'+
       '<table class="pv-tbl">';
     state.siteExtras.forEach(function(e){
       html += '<tr>'+
@@ -1110,20 +1396,43 @@ function buildPrintView() {
       '</tr>';
     });
     html += '</table>';
-    html += '<div class="pv-line sub" style="font-size:13px;color:#2D2A6E"><span>Site-wide subtotal</span><span>'+rm(siteExtrasRm())+'</span></div>';
+    html += '<div class="pv-line sub" style="font-size:13px;color:#2D2A6E"><span>Additional Costs subtotal</span><span>'+rm(siteExtrasRm())+'</span></div>';
     html += '</div>';
   }
 
-  // 6. Grand total
-  html +=
-    '<div class="pv-grand">'+
-      '<div class="pv-grand-h">Estimated Total</div>'+
-      '<div class="pv-grand-line"><span>Total membrane area</span><span>'+sqft(grandMembraneSqft())+'</span></div>'+
-      '<div class="pv-grand-line"><span>Membrane @ RM '+MEMBRANE_RATE.toFixed(2)+'/sqft</span><span>'+rm(grandMembraneSqft()*MEMBRANE_RATE)+'</span></div>'+
-      '<div class="pv-grand-line"><span>Per-slab services</span><span>'+rm(grandSlabExtrasRm())+'</span></div>'+
-      '<div class="pv-grand-line"><span>Site-wide services</span><span>'+rm(siteExtrasRm())+'</span></div>'+
-      '<div class="pv-grand-line total"><span>TOTAL ESTIMATE</span><span>'+rm(grandTotal())+'</span></div>'+
-    '</div>';
+  // 6. Grand total — per-slab line items + Additional Costs (Round v3.4)
+  html += '<div class="pv-grand">';
+  html += '<div class="pv-grand-h">Estimated Total — Breakdown</div>';
+
+  state.slabs.forEach(function(s){
+    let slabBlk = '<div class="pv-grand-block">';
+    slabBlk += '<div class="pv-grand-block-h">'+escapeHtml(s.name)+'</div>';
+    if (slabSqft(s) > 0) {
+      slabBlk += '<div class="pv-grand-line"><span>Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span>'+rm(slabMembraneRm(s))+'</span></div>';
+    }
+    s.extras.forEach(function(e){
+      const lbl = e.label && e.label.trim() ? e.label : '(unnamed service)';
+      slabBlk += '<div class="pv-grand-line indent"><span>'+escapeHtml(lbl)+'</span><span>'+rm(extraTotal(e))+'</span></div>';
+    });
+    slabBlk += '<div class="pv-grand-line subtotal"><span>Subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
+    slabBlk += '</div>';
+    html += slabBlk;
+  });
+
+  if ((state.siteExtras || []).length) {
+    let acBlk = '<div class="pv-grand-block">';
+    acBlk += '<div class="pv-grand-block-h">Additional Costs (site-wide)</div>';
+    state.siteExtras.forEach(function(e){
+      const lbl = e.label && e.label.trim() ? e.label : '(unnamed cost)';
+      acBlk += '<div class="pv-grand-line indent"><span>'+escapeHtml(lbl)+'</span><span>'+rm(extraTotal(e))+'</span></div>';
+    });
+    acBlk += '<div class="pv-grand-line subtotal"><span>Subtotal</span><span>'+rm(siteExtrasRm())+'</span></div>';
+    acBlk += '</div>';
+    html += acBlk;
+  }
+
+  html += '<div class="pv-grand-total"><span>TOTAL</span><span>'+rm(grandTotal())+'</span></div>';
+  html += '</div>';
 
   // 7. Notes (only if filled)
   if (state.notes && state.notes.trim()) {
@@ -1199,18 +1508,32 @@ async function generateEstimatePdf() {
 
   try {
     const { ref } = buildPrintView();
-    // Wait a tick so the DOM updates and images load
-    await new Promise(function(r){ setTimeout(r, 200); });
+
+    // Round v3.4: explicit image-decode wait. Fixes iPad blank-PDF where the
+    // bare 200ms timeout wasn't enough for dataURL images to be fully decoded
+    // before html2canvas read them.
+    const pv = document.getElementById('printView');
+    const imgs = [...pv.querySelectorAll('img')];
+    await Promise.all(imgs.map(function(img){
+      if (img.complete && img.naturalWidth) return Promise.resolve();
+      if (img.decode) return img.decode().catch(function(){});
+      return new Promise(function(r){ img.onload = img.onerror = r; });
+    }));
+    // One extra paint-tick after decode
+    await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
+
     const filename = 'LeakGuard-Estimate-' + sanitizeFilename(PDF_CUSTOMER_MOCK.group) + '-' + todayISODate() + '.pdf';
     const opts = {
       margin: 0,
       filename: filename,
       image: { type: 'jpeg', quality: 0.92 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      // Round v3.4: scale 1.5 (was 2) — keeps canvas area below iPad's 2^24 px²
+      // limit even with 3 slabs × 2 photos.
+      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    await html2pdf().set(opts).from(document.getElementById('printView')).save();
+    await html2pdf().set(opts).from(pv).save();
     toast('✓ Estimate PDF generated (' + ref + ')', 'success');
   } catch (e) {
     toast('PDF failed: ' + (e.message || e), 'error');
@@ -1220,6 +1543,92 @@ async function generateEstimatePdf() {
 }
 
 document.getElementById('btnPdf').addEventListener('click', generateEstimatePdf);
+
+// ========= SETTINGS MODAL (Round v3.4) =========
+let _settingsDraft = null;
+
+function openSettings(){
+  _settingsDraft = JSON.parse(JSON.stringify(settings)); // deep clone
+  document.getElementById('setMembraneRate').value = _settingsDraft.membraneRate;
+  renderSettingsPresetTbl('setSlabPresetsList', _settingsDraft.slabPresets);
+  renderSettingsPresetTbl('setSitePresetsList', _settingsDraft.sitePresets);
+  document.getElementById('settingsModal').classList.add('on');
+}
+function closeSettings(){
+  document.getElementById('settingsModal').classList.remove('on');
+  _settingsDraft = null;
+}
+function renderSettingsPresetTbl(containerId, arr){
+  const c = document.getElementById(containerId);
+  c.innerHTML = arr.map(function(p, i){
+    return '<div class="preset-row" data-idx="'+i+'">'+
+      '<input type="text" placeholder="Label" value="'+escapeHtml(p.label)+'" data-pf="label">'+
+      '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Qty" value="'+(p.qty||'')+'" data-pf="qty">'+
+      '<input type="text" placeholder="Unit" value="'+escapeHtml(p.unit)+'" data-pf="unit">'+
+      '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Price" value="'+(p.price||'')+'" data-pf="price">'+
+      '<button class="row-x" type="button" data-pdel="'+i+'" aria-label="Remove">×</button>'+
+    '</div>';
+  }).join('');
+  c.querySelectorAll('input[data-pf]').forEach(function(el){
+    el.addEventListener('input', function(){
+      const idx = Number(el.closest('[data-idx]').dataset.idx);
+      const f = el.dataset.pf;
+      arr[idx][f] = (f==='qty'||f==='price') ? (Number(el.value)||0) : el.value;
+    });
+  });
+  c.querySelectorAll('[data-pdel]').forEach(function(b){
+    b.addEventListener('click', function(){
+      arr.splice(Number(b.dataset.pdel), 1);
+      renderSettingsPresetTbl(containerId, arr);
+    });
+  });
+}
+
+document.getElementById('btnSettings').addEventListener('click', openSettings);
+document.getElementById('settingsClose').addEventListener('click', closeSettings);
+document.getElementById('settingsCancel').addEventListener('click', closeSettings);
+document.getElementById('settingsModal').addEventListener('click', function(ev){
+  if (ev.target.id === 'settingsModal') closeSettings(); // backdrop click
+});
+document.getElementById('setAddSlabPreset').addEventListener('click', function(){
+  if (!_settingsDraft) return;
+  _settingsDraft.slabPresets.push({ label:'', qty:1, unit:'job', price:0 });
+  renderSettingsPresetTbl('setSlabPresetsList', _settingsDraft.slabPresets);
+});
+document.getElementById('setAddSitePreset').addEventListener('click', function(){
+  if (!_settingsDraft) return;
+  _settingsDraft.sitePresets.push({ label:'', qty:1, unit:'job', price:0 });
+  renderSettingsPresetTbl('setSitePresetsList', _settingsDraft.sitePresets);
+});
+document.getElementById('settingsReset').addEventListener('click', function(){
+  if (!confirm('Reset all settings to factory defaults? This wipes any customizations.')) return;
+  _settingsDraft = {
+    membraneRate: DEFAULT_SETTINGS.membraneRate,
+    slabPresets: deepClonePresets(DEFAULT_SETTINGS.slabPresets),
+    sitePresets: deepClonePresets(DEFAULT_SETTINGS.sitePresets),
+  };
+  document.getElementById('setMembraneRate').value = _settingsDraft.membraneRate;
+  renderSettingsPresetTbl('setSlabPresetsList', _settingsDraft.slabPresets);
+  renderSettingsPresetTbl('setSitePresetsList', _settingsDraft.sitePresets);
+  toast('Defaults restored — click Save to apply','info');
+});
+document.getElementById('settingsSave').addEventListener('click', function(){
+  if (!_settingsDraft) return;
+  // Pull membraneRate from input (others mutate in place via per-row listeners)
+  const rateInput = document.getElementById('setMembraneRate');
+  _settingsDraft.membraneRate = Number(rateInput.value) || 0;
+  if (_settingsDraft.membraneRate <= 0) {
+    toast('Membrane rate must be > 0', 'error'); return;
+  }
+  // Drop blank-label presets so they don't show as empty chips
+  _settingsDraft.slabPresets = _settingsDraft.slabPresets.filter(function(p){ return p.label && p.label.trim(); });
+  _settingsDraft.sitePresets = _settingsDraft.sitePresets.filter(function(p){ return p.label && p.label.trim(); });
+  settings = _settingsDraft;
+  saveSettings(settings);
+  closeSettings();
+  renderAll();
+  toast('Settings saved','success');
+});
 
 loadState();
 </script>
