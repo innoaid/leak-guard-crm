@@ -247,15 +247,13 @@ function handleSendReschedule(body) {
 
   if (!groupId) return jsonResponse({status: 'error', message: 'no group ID'});
 
-  // Build the bare URL — booking page will detect existingAppt via /availability
-  const params = [];
-  if (phone) params.push('phone=' + encodeURIComponent(phone));
-  if (name) params.push('name=' + encodeURIComponent(name));
-  if (groupName) params.push('group=' + encodeURIComponent(groupName));
-  const longUrl = 'https://innoaid.github.io/leak-guard-crm/booking.html?' + params.join('&');
+  // Round 57: canonical short URL. Booking page reads ?p=<phone> and resolves
+  // name/group/existingAppt via lg-availability. Matches every other booking-link
+  // callsite migrated in rounds 18-24.
+  const url = 'https://leakguard.my/appointment/' + (phone ? ('?p=' + encodeURIComponent(phone)) : '');
 
-  const msg = 'Click the link below to manage your appointment — only takes 2 mins.\n\n' +
-    '🚀 Express Booking: ' + longUrl;
+  const msg = 'Hi ' + (name || 'there') + ', here\'s the link to reschedule your site visit.\n\n' +
+    'Check Real Time Availability / Book Your Slot Instantly: ' + url;
 
   try {
     UrlFetchApp.fetch(N8N_WAGROUP_URL, {
@@ -265,7 +263,7 @@ function handleSendReschedule(body) {
       payload: JSON.stringify({to: groupId, body: msg, typing_time: 2}),
       muteHttpExceptions: true
     });
-    return jsonResponse({status: 'ok', url: longUrl});
+    return jsonResponse({status: 'ok', url: url});
   } catch (err) {
     return jsonResponse({status: 'error', message: 'whapi: ' + err.toString()});
   }
