@@ -606,7 +606,12 @@ function handleBulkLinkGroups(body) {
         }
         setCellByHeader(sheet, row, 'Group ID (AB)', g.groupId);
         if (g.groupName)  setCellByHeader(sheet, row, 'Group Name (AE)', g.groupName);
-        if (g.inviteLink) setCellByHeader(sheet, row, 'Group Invite Link (AJ)', g.inviteLink);
+        // Round 60.3: forward-fill invite link if n8n didn't supply one.
+        {
+          let _link = g.inviteLink || '';
+          if (!_link) { _link = fetchInviteLinkForGroup(g.groupId); if (_link) Utilities.sleep(800); }
+          if (_link) setCellByHeader(sheet, row, 'Group Invite Link (AJ)', _link);
+        }
         if (g.newStatus) {
           setCellByHeader(sheet, row, 'Status', g.newStatus);
           setCellByHeader(sheet, row, 'Status Changed At', ts);
@@ -631,7 +636,12 @@ function handleBulkLinkGroups(body) {
           if (!existingGid) {
             setCellByHeader(sheet, row, 'Group ID (AB)', g.groupId);
             if (g.groupName)  setCellByHeader(sheet, row, 'Group Name (AE)', g.groupName);
-            if (g.inviteLink) setCellByHeader(sheet, row, 'Group Invite Link (AJ)', g.inviteLink);
+            // Round 60.3: forward-fill invite link.
+            {
+              let _link = g.inviteLink || '';
+              if (!_link) { _link = fetchInviteLinkForGroup(g.groupId); if (_link) Utilities.sleep(800); }
+              if (_link) setCellByHeader(sheet, row, 'Group Invite Link (AJ)', _link);
+            }
             setCellByHeader(sheet, row, 'Changed By', changedBy);
             result.linked++;
           } else {
@@ -652,7 +662,12 @@ function handleBulkLinkGroups(body) {
         setCellByHeader(sheet, newRow, 'Source', 'Bulk Link (Pre-CRM)');
         setCellByHeader(sheet, newRow, 'Group ID (AB)', g.groupId);
         if (g.groupName)  setCellByHeader(sheet, newRow, 'Group Name (AE)', g.groupName);
-        if (g.inviteLink) setCellByHeader(sheet, newRow, 'Group Invite Link (AJ)', g.inviteLink);
+        // Round 60.3: forward-fill invite link.
+        {
+          let _link = g.inviteLink || '';
+          if (!_link) { _link = fetchInviteLinkForGroup(g.groupId); if (_link) Utilities.sleep(800); }
+          if (_link) setCellByHeader(sheet, newRow, 'Group Invite Link (AJ)', _link);
+        }
         result.created++;
         existingGids.add(g.groupId);
 
@@ -739,18 +754,46 @@ function handleUpdateLeadDetails(body) {
 }
 
 // ================================================================
+// Round 60.3 — Whapi invite-link helper (reused by backfill + bulk-link)
+// ================================================================
+// Returns a full WhatsApp group invite URL, or '' on any failure.
+// Handles: 429 with 1× backoff (8s), invite_code → full-URL construction,
+// network errors. Never throws.
+
+function fetchInviteLinkForGroup(groupId) {
+  if (!groupId) return '';
+  let resp, code = 0, text = '';
+  let retried = false;
+  while (true) {
+    try {
+      resp = UrlFetchApp.fetch(
+        'https://gate.whapi.cloud/groups/' + encodeURIComponent(groupId) + '/invite',
+        { method: 'get', headers: { 'Authorization': 'Bearer ' + WHAPI_TOKEN }, muteHttpExceptions: true }
+      );
+    } catch (e) { return ''; }
+    code = resp.getResponseCode();
+    text = resp.getContentText();
+    if (code !== 429 || retried) break;
+    Utilities.sleep(8000);
+    retried = true;
+  }
+  if (code !== 200) return '';
+  try {
+    const body = JSON.parse(text);
+    if (body.link) return String(body.link);
+    if (body.invite_link) return String(body.invite_link);
+    if (body.url) return String(body.url);
+    if (body.invite_code) return 'https://chat.whatsapp.com/' + String(body.invite_code).trim();
+  } catch (_) {}
+  return '';
+}
+
+// ================================================================
 // Round 60 — backfill Group Invite Link via Whapi (run ONCE manually)
 // ================================================================
-// Context: only handleBulkLinkGroups writes Group Invite Link (AJ). Groups
-// joined naturally via LG-Customer Join save Group ID but not the invite
-// link, so the kanban 💬 WA button never renders on those cards. This
-// function fetches the live invite link from Whapi for every row that has
-// a Group ID but no Group Invite Link, then writes it back.
-//
-// Forward-fill is handled separately by patching LG-Customer Join in n8n.
-//
-// Safe to re-run: skips rows that already have an invite link. ~200ms per
-// row pause between Whapi calls to be polite on rate limits.
+// Walks rows with Group ID but no Group Invite Link, fetches via the helper,
+// writes back. Idempotent (skips already-populated rows). Also runs from a
+// weekly trigger as a safety net for any group that slips through.
 
 function backfillInviteLinks() {
   const sheet = getSheet();
@@ -767,7 +810,6 @@ function backfillInviteLinks() {
     return;
   }
 
-  // Pass 1: collect candidates (avoid mutating while iterating)
   const todo = [];
   for (let i = 1; i < data.length; i++) {
     const groupId = String(data[i][groupIdIdx] || '').trim();
@@ -789,54 +831,16 @@ function backfillInviteLinks() {
 
   for (let j = 0; j < todo.length; j++) {
     const c = todo[j];
-    try {
-      // Whapi: GET /groups/{groupId}/invite → { link: "https://chat.whatsapp.com/..." }
-      // Round 60.1: single retry-with-backoff on 429 (Whapi rate limit). If still
-      // 429 after backoff, log + move on — idempotent re-run picks it up later.
-      let resp, code, text, retried = false;
-      while (true) {
-        resp = UrlFetchApp.fetch(
-          'https://gate.whapi.cloud/groups/' + encodeURIComponent(c.groupId) + '/invite',
-          {
-            method: 'get',
-            headers: { 'Authorization': 'Bearer ' + WHAPI_TOKEN },
-            muteHttpExceptions: true
-          }
-        );
-        code = resp.getResponseCode();
-        text = resp.getContentText();
-        if (code !== 429 || retried) break;
-        Logger.log('row ' + c.row + ' got 429 — sleeping 8s then retrying once…');
-        Utilities.sleep(8000);
-        retried = true;
-      }
-      if (code !== 200) {
-        failures.push({ row: c.row, name: c.name, status: c.status, groupId: c.groupId, code: code, body: text.slice(0, 200) });
-        failCount++;
-        continue;
-      }
-      const body = JSON.parse(text);
-      // Round 60.2: Whapi /groups/{id}/invite returns {invite_code:"22charcode"},
-      // NOT a full URL. We construct it ourselves. Other field names kept as
-      // defensive fallbacks in case Whapi varies the response shape across tiers.
-      let link = body.link || body.invite_link || body.url || '';
-      if (!link && body.invite_code) {
-        link = 'https://chat.whatsapp.com/' + String(body.invite_code).trim();
-      }
-      if (!link) {
-        failures.push({ row: c.row, name: c.name, status: c.status, groupId: c.groupId, error: 'no link/invite_code in response: ' + text.slice(0, 200) });
-        failCount++;
-        continue;
-      }
+    const link = fetchInviteLinkForGroup(c.groupId);
+    if (link) {
       sheet.getRange(c.row, inviteLinkIdx + 1).setValue(link);
       okCount++;
       Logger.log('OK row ' + c.row + ' [' + c.status + '] ' + c.name + ' → ' + link);
-    } catch (err) {
-      failures.push({ row: c.row, name: c.name, groupId: c.groupId, error: String(err.message || err) });
+    } else {
+      failures.push({ row: c.row, name: c.name, status: c.status, groupId: c.groupId, error: 'helper returned empty (likely 403/network/parse fail — check group admin status)' });
       failCount++;
     }
-    // Round 60.1: Whapi rate limit observed at ~5 req/sec → cascading 429s.
-    // 1500ms steady-state pause = 40 req/min, comfortably under thresholds.
+    // 1500ms steady-state pause = 40 req/min, comfortably under Whapi limits.
     Utilities.sleep(1500);
   }
 
