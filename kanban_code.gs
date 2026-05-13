@@ -739,6 +739,97 @@ function handleUpdateLeadDetails(body) {
 }
 
 // ================================================================
+// Round 60 — backfill Group Invite Link via Whapi (run ONCE manually)
+// ================================================================
+// Context: only handleBulkLinkGroups writes Group Invite Link (AJ). Groups
+// joined naturally via LG-Customer Join save Group ID but not the invite
+// link, so the kanban 💬 WA button never renders on those cards. This
+// function fetches the live invite link from Whapi for every row that has
+// a Group ID but no Group Invite Link, then writes it back.
+//
+// Forward-fill is handled separately by patching LG-Customer Join in n8n.
+//
+// Safe to re-run: skips rows that already have an invite link. ~200ms per
+// row pause between Whapi calls to be polite on rate limits.
+
+function backfillInviteLinks() {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0].map(function(h){ return String(h || '').trim(); });
+  const phoneIdx       = headers.indexOf('Phone');
+  const nameIdx        = headers.indexOf('Name');
+  const statusIdx      = headers.indexOf('Status');
+  const groupIdIdx     = headers.indexOf('Group ID (AB)');
+  const inviteLinkIdx  = headers.indexOf('Group Invite Link (AJ)');
+
+  if (groupIdIdx === -1 || inviteLinkIdx === -1) {
+    Logger.log('backfillInviteLinks: missing required headers (Group ID (AB) or Group Invite Link (AJ))');
+    return;
+  }
+
+  // Pass 1: collect candidates (avoid mutating while iterating)
+  const todo = [];
+  for (let i = 1; i < data.length; i++) {
+    const groupId = String(data[i][groupIdIdx] || '').trim();
+    const invite  = String(data[i][inviteLinkIdx] || '').trim();
+    if (groupId && !invite) {
+      todo.push({
+        row: i + 1,
+        groupId: groupId,
+        name: String(data[i][nameIdx] || ''),
+        status: String(data[i][statusIdx] || '')
+      });
+    }
+  }
+  Logger.log('backfillInviteLinks: ' + todo.length + ' row(s) need backfill');
+  if (!todo.length) return;
+
+  let okCount = 0, failCount = 0;
+  const failures = [];
+
+  for (let j = 0; j < todo.length; j++) {
+    const c = todo[j];
+    try {
+      // Whapi: GET /groups/{groupId}/invite → { link: "https://chat.whatsapp.com/..." }
+      const resp = UrlFetchApp.fetch(
+        'https://gate.whapi.cloud/groups/' + encodeURIComponent(c.groupId) + '/invite',
+        {
+          method: 'get',
+          headers: { 'Authorization': 'Bearer ' + WHAPI_TOKEN },
+          muteHttpExceptions: true
+        }
+      );
+      const code = resp.getResponseCode();
+      const text = resp.getContentText();
+      if (code !== 200) {
+        failures.push({ row: c.row, name: c.name, status: c.status, groupId: c.groupId, code: code, body: text.slice(0, 200) });
+        failCount++;
+        continue;
+      }
+      const body = JSON.parse(text);
+      const link = body.link || body.invite_link || body.url || '';
+      if (!link) {
+        failures.push({ row: c.row, name: c.name, status: c.status, groupId: c.groupId, error: 'no link in response: ' + text.slice(0, 200) });
+        failCount++;
+        continue;
+      }
+      sheet.getRange(c.row, inviteLinkIdx + 1).setValue(link);
+      okCount++;
+      Logger.log('OK row ' + c.row + ' [' + c.status + '] ' + c.name + ' → ' + link);
+    } catch (err) {
+      failures.push({ row: c.row, name: c.name, groupId: c.groupId, error: String(err.message || err) });
+      failCount++;
+    }
+    // Politeness pause — Whapi rate limit is generous but be kind.
+    Utilities.sleep(200);
+  }
+
+  Logger.log('---');
+  Logger.log('backfillInviteLinks DONE: ' + okCount + ' ok, ' + failCount + ' failed');
+  if (failures.length) Logger.log('Failures: ' + JSON.stringify(failures, null, 2));
+}
+
+// ================================================================
 // Quick test (run from Apps Script editor manually)
 // ================================================================
 
