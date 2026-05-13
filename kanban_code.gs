@@ -791,16 +791,25 @@ function backfillInviteLinks() {
     const c = todo[j];
     try {
       // Whapi: GET /groups/{groupId}/invite → { link: "https://chat.whatsapp.com/..." }
-      const resp = UrlFetchApp.fetch(
-        'https://gate.whapi.cloud/groups/' + encodeURIComponent(c.groupId) + '/invite',
-        {
-          method: 'get',
-          headers: { 'Authorization': 'Bearer ' + WHAPI_TOKEN },
-          muteHttpExceptions: true
-        }
-      );
-      const code = resp.getResponseCode();
-      const text = resp.getContentText();
+      // Round 60.1: single retry-with-backoff on 429 (Whapi rate limit). If still
+      // 429 after backoff, log + move on — idempotent re-run picks it up later.
+      let resp, code, text, retried = false;
+      while (true) {
+        resp = UrlFetchApp.fetch(
+          'https://gate.whapi.cloud/groups/' + encodeURIComponent(c.groupId) + '/invite',
+          {
+            method: 'get',
+            headers: { 'Authorization': 'Bearer ' + WHAPI_TOKEN },
+            muteHttpExceptions: true
+          }
+        );
+        code = resp.getResponseCode();
+        text = resp.getContentText();
+        if (code !== 429 || retried) break;
+        Logger.log('row ' + c.row + ' got 429 — sleeping 8s then retrying once…');
+        Utilities.sleep(8000);
+        retried = true;
+      }
       if (code !== 200) {
         failures.push({ row: c.row, name: c.name, status: c.status, groupId: c.groupId, code: code, body: text.slice(0, 200) });
         failCount++;
@@ -820,8 +829,9 @@ function backfillInviteLinks() {
       failures.push({ row: c.row, name: c.name, groupId: c.groupId, error: String(err.message || err) });
       failCount++;
     }
-    // Politeness pause — Whapi rate limit is generous but be kind.
-    Utilities.sleep(200);
+    // Round 60.1: Whapi rate limit observed at ~5 req/sec → cascading 429s.
+    // 1500ms steady-state pause = 40 req/min, comfortably under thresholds.
+    Utilities.sleep(1500);
   }
 
   Logger.log('---');
