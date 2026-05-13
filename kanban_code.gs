@@ -816,9 +816,15 @@ function backfillInviteLinks() {
         continue;
       }
       const body = JSON.parse(text);
-      const link = body.link || body.invite_link || body.url || '';
+      // Round 60.2: Whapi /groups/{id}/invite returns {invite_code:"22charcode"},
+      // NOT a full URL. We construct it ourselves. Other field names kept as
+      // defensive fallbacks in case Whapi varies the response shape across tiers.
+      let link = body.link || body.invite_link || body.url || '';
+      if (!link && body.invite_code) {
+        link = 'https://chat.whatsapp.com/' + String(body.invite_code).trim();
+      }
       if (!link) {
-        failures.push({ row: c.row, name: c.name, status: c.status, groupId: c.groupId, error: 'no link in response: ' + text.slice(0, 200) });
+        failures.push({ row: c.row, name: c.name, status: c.status, groupId: c.groupId, error: 'no link/invite_code in response: ' + text.slice(0, 200) });
         failCount++;
         continue;
       }
