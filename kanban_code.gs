@@ -55,6 +55,7 @@ function doPost(e) {
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
       case 'claimCooldown':      return handleClaimCooldown(body);  // round 54 — atomic check-and-set for v2 link cooldown
+      case 'updateStatusByGroup': return handleUpdateStatusByGroup(body);  // round 61 — auto phase-shift from template detection
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -179,6 +180,72 @@ function handleUpdateQuotation(body) {
 
   setCellByHeader(sheet, rowNum, 'Quotation (RM)', body.quotation || '');
   return jsonResponse({status: 'ok'});
+}
+
+// ================================================================
+// Round 61 — phase shift by Group ID (called from WA Receiver template detect)
+// ================================================================
+// WA Receiver detects admin template messages in groups and fires this handler
+// to flip the phase, audit Changed By, and DM the main admin a confirmation.
+// Idempotent: if the row is already at the target status, the inner
+// handleUpdateStatus is a no-op and the admin DM is skipped.
+
+function handleUpdateStatusByGroup(body) {
+  // body: {action, secret, groupId, status, changedBy?, notifyAdmin?}
+  if (!body.groupId || !body.status) {
+    return jsonResponse({status: 'error', message: 'groupId and status required'});
+  }
+  const sheet = getSheet();
+  const headers = getHeaders(sheet);
+  const groupIdCol = headers.colByName['Group ID (AB)'];
+  const phoneCol   = headers.colByName['Phone'];
+  const nameCol    = headers.colByName['Name'];
+  const gnameCol   = headers.colByName['Group Name (AE)'];
+  const statusCol  = headers.colByName['Status'];
+  if (!groupIdCol || !phoneCol) {
+    return jsonResponse({status: 'error', message: 'required columns missing'});
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const target = String(body.groupId).trim();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][groupIdCol - 1] || '').trim() !== target) continue;
+    const phone     = String(data[i][phoneCol  - 1] || '').trim();
+    const name      = nameCol  ? String(data[i][nameCol  - 1] || '').trim() : '';
+    const groupName = gnameCol ? String(data[i][gnameCol - 1] || '').trim() : '';
+    const prevStatus = statusCol ? String(data[i][statusCol - 1] || '').trim() : '';
+
+    // Delegate to existing handleUpdateStatus — inherits Round 58 CAPI fan-out,
+    // Status Changed At update, Changed By audit, prev-status snapshot.
+    const result = handleUpdateStatus({
+      action: 'updateStatus',
+      phone: phone,
+      status: body.status,
+      changedBy: body.changedBy || 'Auto-Template'
+    });
+
+    // Admin DM (only on actual transition, not idempotent re-sends)
+    if (body.notifyAdmin !== false && prevStatus !== body.status) {
+      try {
+        UrlFetchApp.fetch(N8N_WAGROUP_URL, {
+          method: 'post',
+          contentType: 'application/json',
+          headers: {'Authorization': 'Bearer ' + WHAPI_TOKEN},
+          payload: JSON.stringify({
+            to: '60183639321',  // main admin
+            body: '✓ Auto-shifted ' + (groupName || ('group ' + target)) +
+                  '\n  ' + prevStatus + ' → ' + body.status +
+                  '\n  (template detected from ' + (body.changedBy || 'staff') + ')',
+            typing_time: 0
+          }),
+          muteHttpExceptions: true
+        });
+      } catch (_e) { /* best-effort */ }
+    }
+
+    return result;
+  }
+  return jsonResponse({status: 'error', message: 'group not found', groupId: target});
 }
 
 function handleArchive(body) {
