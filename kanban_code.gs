@@ -56,6 +56,7 @@ function doPost(e) {
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
       case 'claimCooldown':      return handleClaimCooldown(body);  // round 54 — atomic check-and-set for v2 link cooldown
       case 'updateStatusByGroup': return handleUpdateStatusByGroup(body);  // round 61 — auto phase-shift from template detection
+      case 'addTagByGroup':      return handleAddTagByGroup(body);  // round 63 — auto-tag from template detection
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -257,6 +258,47 @@ function handleUpdateStatusByGroup(body) {
     // }
 
     return result;
+  }
+  return jsonResponse({status: 'error', message: 'group not found', groupId: target});
+}
+
+// ================================================================
+// Round 63 — append a tag to a row by Group ID (called from WA Receiver
+// template detection — currently used for the 'repair' tag fired by the
+// senior-inspection-team callback template).
+// ================================================================
+// Idempotent: if the tag is already present in the comma-separated Tags
+// cell, it's not added again (no duplicate). Returns the final tag list
+// so the caller can audit if needed.
+
+function handleAddTagByGroup(body) {
+  // body: {action, secret, groupId, tag, changedBy?}
+  if (!body.groupId || !body.tag) {
+    return jsonResponse({status: 'error', message: 'groupId and tag required'});
+  }
+  const sheet = getSheet();
+  const headers = getHeaders(sheet);
+  const groupIdCol = headers.colByName['Group ID (AB)'];
+  const tagsCol    = headers.colByName['Tags'];
+  if (!groupIdCol || !tagsCol) {
+    return jsonResponse({status: 'error', message: 'required columns missing'});
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const target = String(body.groupId).trim();
+  const newTag = String(body.tag).trim();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][groupIdCol - 1] || '').trim() !== target) continue;
+    const rowNum = i + 1;
+    const existing = String(data[i][tagsCol - 1] || '').trim();
+    const tagList = existing.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t; });
+    let added = false;
+    if (tagList.indexOf(newTag) === -1) {
+      tagList.push(newTag);
+      setCellByHeader(sheet, rowNum, 'Tags', tagList.join(','));
+      added = true;
+    }
+    return jsonResponse({status: 'ok', rowNum: rowNum, tags: tagList.join(','), added: added});
   }
   return jsonResponse({status: 'error', message: 'group not found', groupId: target});
 }
@@ -592,7 +634,7 @@ function handleBulkMoveStatus(body) {
   const ALLOWED = [
     'New Lead','Pending Invitation','Pending Site Visit','Site Visit Confirmed',
     'Pending QT','Quotation Sent','Pending I.Date','Pending Downpayment',
-    'Pending Balance','Completed with Complaint','Job Complete','Receipt Sent',
+    'Pending Balance','Completed','Job Complete','Receipt Sent',
     'Lost','Cold Lead','Rejected','Out of Area','Human Handoff'
   ];
   if (ALLOWED.indexOf(newStatus) === -1) {

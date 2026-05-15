@@ -506,7 +506,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
           <option value="Pending I.Date">Pending Installation Date</option>
           <option value="Pending Downpayment">Pending Downpayment</option>
           <option value="Pending Balance">Pending Balance</option>
-          <option value="Completed with Complaint">Completed with Complaint</option>
+          <option value="Completed">Completed</option>
         </select>
       </div>
       <div class="nl-row"><label for="nlSource">Source *</label>
@@ -589,7 +589,7 @@ const ACTIVE_STATUSES = [
   'Pending I.Date',          // UI label below relabels this
   'Pending Downpayment',
   'Pending Balance',
-  'Completed with Complaint'
+  'Completed'
 ];
 
 const STATUS_LABELS = {
@@ -613,7 +613,7 @@ const DAYS_THRESHOLDS = {
   'Pending I.Date':             {yellow: 2, red: 7},
   'Pending Downpayment':        {yellow: 2, red: 7},
   'Pending Balance':            {yellow: 2, red: 7},
-  'Completed with Complaint':   {yellow: 1, red: 3}
+  'Completed':   {yellow: 1, red: 3}
 };
 
 // ================================================================
