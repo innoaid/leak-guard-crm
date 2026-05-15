@@ -224,6 +224,18 @@ function handleUpdateStatusByGroup(body) {
       changedBy: body.changedBy || 'Auto-Template'
     });
 
+    // Round 61.1: reset FU clock so LG-Follow Up doesn't fire moments after a
+    // template-triggered phase change. Admin's template message is itself the
+    // outbound communication — LG-Follow Up should start its window from now.
+    // Touches: Last Bot Msg Time (AD), Last Follow Up At (AL), Follow Up Count (AK).
+    if (prevStatus !== body.status) {
+      const rowNum = i + 1;
+      const nowIso = new Date().toISOString();
+      try { setCellByHeader(sheet, rowNum, 'Last Bot Msg Time (AD)', nowIso); } catch (_e) {}
+      try { setCellByHeader(sheet, rowNum, 'Last Follow Up At (AL)', nowIso); } catch (_e) {}
+      try { setCellByHeader(sheet, rowNum, 'Follow Up Count (AK)', 0); } catch (_e) {}
+    }
+
     // Admin DM (only on actual transition, not idempotent re-sends)
     if (body.notifyAdmin !== false && prevStatus !== body.status) {
       try {
