@@ -109,6 +109,12 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-repair:hover{background:#E5E7EB}
 .cd-repair.tagged{background:#DC2626;color:#fff}
 .cd-repair.tagged:hover{background:#B91C1C}
+/* Round 64: payment verification badge + button */
+.cd-verify-row{display:flex;align-items:center;gap:6px;margin:3px 0;padding:4px 6px;background:#FEF3C7;border:.5px solid #FDE68A;border-radius:6px}
+.cd-verify-badge{flex:1;font-size:11px;font-weight:700;color:#92400E}
+.cd-verify-btn{font-size:10px;padding:2px 8px;border-radius:6px;background:#10B981;color:#fff;border:none;cursor:pointer;font-family:inherit;font-weight:700;line-height:1.4}
+.cd-verify-btn:hover{background:#059669}
+.cd-verify-btn:disabled{background:#9CA3AF;cursor:not-allowed}
 .kc-empty{text-align:center;padding:18px 8px;color:var(--mt);font-size:11px;font-style:italic}
 
 /* Archive view */
@@ -278,6 +284,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <option value="cancel_request">cancel_request</option>
     <option value="cold_lead">cold_lead</option>
     <option value="repair">repair</option>
+    <option value="pending_verification">pending_verification</option>
   </select>
   <select id="redFilter" title="Show only red-border (urgent) cards or non-red cards">
     <option value="">All cards</option>
@@ -838,11 +845,39 @@ function renderKanban(leads) {
     const body = document.createElement('div');
     body.className = 'kb-body';
 
-    if (byStatus[status].length === 0) {
+    // Round 64.4: Completed column hides non-repair cards by default. Toggle
+    // via localStorage 'lg_completed_show_all' = '1' to show everything.
+    let cardsToRender = byStatus[status];
+    let hiddenCount = 0;
+    const completedShowAll = (localStorage.getItem('lg_completed_show_all') === '1');
+    if (status === 'Completed' && !completedShowAll) {
+      const repairOnly = byStatus[status].filter(l => String(l['Tags']||'').toLowerCase().includes('repair'));
+      hiddenCount = byStatus[status].length - repairOnly.length;
+      cardsToRender = repairOnly;
+    }
+
+    if (cardsToRender.length === 0 && hiddenCount === 0) {
       body.innerHTML = '<div class="kc-empty">No leads</div>';
     } else {
-      byStatus[status].forEach(l => body.appendChild(renderCard(l)));
+      cardsToRender.forEach(l => body.appendChild(renderCard(l)));
     }
+
+    // Show-all toggle for Completed column
+    if (status === 'Completed' && (hiddenCount > 0 || completedShowAll)) {
+      const toggle = document.createElement('div');
+      toggle.className = 'kc-completed-toggle';
+      toggle.style.cssText = 'padding:8px;text-align:center;cursor:pointer;background:#F3F4F6;border-radius:6px;margin:6px 4px;font-size:11px;color:#374151;font-weight:600';
+      toggle.textContent = completedShowAll
+        ? '↑ Hide non-repair (show repair only)'
+        : '+' + hiddenCount + ' hidden · Show all';
+      toggle.onclick = () => {
+        if (completedShowAll) localStorage.removeItem('lg_completed_show_all');
+        else localStorage.setItem('lg_completed_show_all', '1');
+        render();
+      };
+      body.appendChild(toggle);
+    }
+
     col.appendChild(body);
     board.appendChild(col);
   });
@@ -950,6 +985,19 @@ function renderCard(lead) {
   const fuCount = parseInt(String(lead['Follow Up Count (AK)'] || '0'), 10) || 0;
   const fuLastAt = String(lead['Last Follow Up At (AL)'] || '').trim();
 
+  // Round 64: payment verification badge data
+  const isPendingVerify = tags.includes('pending_verification');
+  const verifyAmount = String(lead['Verification Amount'] || '').trim();
+  const verifyDateRaw = String(lead['Verification Date'] || '').trim();
+  let verifyDateShort = '';
+  if (verifyDateRaw) {
+    try {
+      const _vd = new Date(verifyDateRaw);
+      const _myt = new Date(_vd.getTime() + 8*3600*1000);
+      verifyDateShort = _myt.getUTCDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][_myt.getUTCMonth()];
+    } catch (_e) {}
+  }
+
   // "Urgent" cards get a red left-border:
   //   - SVC expired (already handled below via `expired` class)
   //   - SVC with cancel_request tag (customer wants to cancel — admin must act)
@@ -989,6 +1037,12 @@ function renderCard(lead) {
     (apptShort ? '<div class="cd-apptdate">📅 ' + apptShort + '</div>' : '') +
     (loc ? '<div class="cd-loc">📍 ' + escapeHtml(loc) + '</div>' : '') +
     (lastMsg ? '<div class="cd-lastmsg" title="' + escapeHtml(lastMsgRaw) + '">💬 ' + escapeHtml(lastMsg) + '</div>' : '') +
+    (isPendingVerify
+      ? '<div class="cd-verify-row">' +
+          '<span class="cd-verify-badge">💰 ' + (verifyAmount || '(amount?)') + (verifyDateShort ? ' · ' + verifyDateShort : '') + '</span>' +
+          '<button class="cd-verify-btn" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();verifyPayment(this);" title="Mark as verified — clears tag + amount + date">✓ Verify</button>' +
+        '</div>'
+      : '') +
     '<div class="cd-row">' +
       '<div class="cd-tags">' +
         tags.map(t =>
@@ -1482,6 +1536,34 @@ async function toggleRepairTag(btn) {
     toast('Failed to update — refresh', 'error');
     btn.textContent = wasLabel;
     btn.classList.toggle('tagged', isTagged);
+  }
+}
+
+// Round 64 — account team ticks ✓ Verify to clear pending_verification queue
+async function verifyPayment(btn) {
+  const phone = btn.dataset.phone || '';
+  if (!phone) return;
+  const lead = (allLeads || []).find(l => String(l['Phone'] || '') === phone);
+  if (!lead) { toast('Lead not found in cache — refresh', 'error'); return; }
+
+  const amount = String(lead['Verification Amount'] || '').trim() || '(amount?)';
+  if (!confirm('Verify payment of ' + amount + ' for ' + (lead['Name'] || phone) + '?\n\nThis clears the pending_verification tag.')) return;
+
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳';
+  const r = await apiCall('clearPaymentVerification', { phone: phone, changedBy: 'Kanban_Verify' });
+  if (r && r.status === 'ok') {
+    // Sync local cache
+    lead['Tags'] = String(r.tags || '');
+    lead['Verification Amount'] = '';
+    lead['Verification Date'] = '';
+    toast('Verified ' + (lead['Name'] || phone) + ' (' + amount + ')', 'success');
+    if (typeof render === 'function') render();
+  } else {
+    toast('Verify failed — refresh', 'error');
+    btn.disabled = false;
+    btn.textContent = orig;
   }
 }
 
