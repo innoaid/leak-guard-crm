@@ -195,6 +195,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 /* Expired site visit signal */
 .cd.expired{border-left:3px solid #DC2626}
 .cd.urgent{border-left:3px solid #DC2626}
+.cd.repair-flag{border-left:3px solid #DC2626}
 .cd-expired-badge{display:inline-block;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;background:#FEE2E2;color:#991B1B;margin-bottom:5px;letter-spacing:.3px}
 .kh-expired{padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;background:#FEE2E2;color:#991B1B;margin-left:4px}
 
@@ -701,6 +702,8 @@ function render() {
     if (status === 'Pending QT') return true;
     if (status === 'Site Visit Confirmed' && tags.includes('cancel_request')) return true;
     if (status === 'Site Visit Confirmed' && isVisitExpired(lead)) return true;
+    // Round 63.3: repair-tagged cards are red-flagged regardless of phase
+    if (tags.includes('repair')) return true;
     return false;
   }
 
@@ -944,6 +947,9 @@ function renderCard(lead) {
   if (isUrgentPsv || isUrgentPqt || isUrgentSvcCancel) c.classList.add('urgent');
 
   if (expired) c.classList.add('expired');
+
+  // Round 63.3: red flag any card tagged 'repair' (needs callback inspection)
+  if (tags.includes('repair')) c.classList.add('repair-flag');
 
   // Days in stage
   const changedAt = lead['Status Changed At'];
