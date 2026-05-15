@@ -785,6 +785,20 @@ function renderKanban(leads) {
     });
   }
 
+  // Round 63.4: across every active column, repair-tagged cards float to the
+  // top. Stable sort preserves the in-group order from the per-column sorts
+  // above (PSV state-based, SVC cancel/expired/appt-date) AND the natural
+  // insertion order for the other phases.
+  ACTIVE_STATUSES.forEach(s => {
+    if (byStatus[s] && byStatus[s].length > 1) {
+      byStatus[s].sort((a, b) => {
+        const aR = String(a['Tags']||'').toLowerCase().includes('repair') ? 0 : 1;
+        const bR = String(b['Tags']||'').toLowerCase().includes('repair') ? 0 : 1;
+        return aR - bR;
+      });
+    }
+  });
+
   ACTIVE_STATUSES.forEach(status => {
     const col = document.createElement('div');
     col.className = 'kc' + (collapsedCols.has(status) ? ' collapsed' : '');
