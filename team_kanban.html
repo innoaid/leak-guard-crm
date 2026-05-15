@@ -105,6 +105,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-pause:hover{background:#E5E7EB}
 .cd-pause.paused{background:#FEF3C7;color:#92400E}
 .cd-pause.paused:hover{background:#FDE68A}
+.cd-repair{font-size:10px;padding:1px 6px;border-radius:8px;background:#F3F4F6;color:#374151;border:none;cursor:pointer;font-family:inherit;font-weight:600;line-height:1.4}
+.cd-repair:hover{background:#E5E7EB}
+.cd-repair.tagged{background:#DC2626;color:#fff}
+.cd-repair.tagged:hover{background:#B91C1C}
 .kc-empty{text-align:center;padding:18px 8px;color:var(--mt);font-size:11px;font-style:italic}
 
 /* Archive view */
@@ -987,6 +991,9 @@ function renderCard(lead) {
             ? '<button class="cd-setappt" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();setApptFromCard(this);" title="Set site visit appointment for this lead">📅 Set</button>'
             : '') +
           '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume bot (group + FU)' : 'Pause bot (silent in group + no FU)') + '">' + (tags.includes('fu_paused') ? '▶ Bot' : '⏸ Bot') + '</button>' +
+          (['Pending Balance','Completed','Job Complete','Receipt Sent'].includes(status)
+            ? '<button class="cd-repair' + (tags.includes('repair') ? ' tagged' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();toggleRepairTag(this);" title="' + (tags.includes('repair') ? 'Remove repair tag' : 'Tag as needing repair callback') + '">🔧 ' + (tags.includes('repair') ? 'Repair ✓' : 'Repair') + '</button>'
+            : '') +
           (inviteLink
             ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
             : '<span class="cd-wa disabled" title="No invite link saved for this lead">💬 WA</span>') +
@@ -1421,6 +1428,40 @@ async function togglePauseFu(btn) {
     toast('Failed to update — refresh', 'error');
     btn.textContent = wasLabel;
     btn.classList.toggle('paused', isPaused);
+  }
+}
+
+// Round 63.2 — manual toggle for the 'repair' tag (called from card 🔧 button).
+// Independent of Round 63's auto-tag from template detection (same tag, two
+// entry points). Uses existing 'updateTag' Apps Script action which overwrites
+// the full tag list, so we read-modify-write the comma-separated cell.
+async function toggleRepairTag(btn) {
+  const phone = btn.dataset.phone || '';
+  if (!phone) return;
+  const lead = (allLeads || []).find(l => String(l['Phone'] || '') === phone);
+  if (!lead) { toast('Lead not found in cache — refresh', 'error'); return; }
+
+  const current = String(lead['Tags'] || '').split(',').map(t => t.trim()).filter(Boolean);
+  const isTagged = current.includes('repair');
+  const next = isTagged ? current.filter(t => t !== 'repair') : [...current, 'repair'];
+
+  btn.disabled = true;
+  const wasLabel = btn.textContent;
+  // Optimistic UI
+  btn.textContent = isTagged ? '🔧 Repair' : '🔧 Repair ✓';
+  btn.classList.toggle('tagged', !isTagged);
+  btn.title = isTagged ? 'Tag as needing repair callback' : 'Remove repair tag';
+
+  const r = await apiCall('updateTag', { phone: phone, tags: next.join(',') });
+  btn.disabled = false;
+  if (r && r.status === 'ok') {
+    lead['Tags'] = next.join(',');
+    toast(isTagged ? 'Removed repair tag from ' + (lead['Name'] || phone) : 'Tagged ' + (lead['Name'] || phone) + ' for repair', 'success');
+    if (typeof render === 'function') render();
+  } else {
+    toast('Failed to update — refresh', 'error');
+    btn.textContent = wasLabel;
+    btn.classList.toggle('tagged', isTagged);
   }
 }
 
