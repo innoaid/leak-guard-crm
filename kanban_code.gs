@@ -57,6 +57,8 @@ function doPost(e) {
       case 'claimCooldown':      return handleClaimCooldown(body);  // round 54 — atomic check-and-set for v2 link cooldown
       case 'updateStatusByGroup': return handleUpdateStatusByGroup(body);  // round 61 — auto phase-shift from template detection
       case 'addTagByGroup':      return handleAddTagByGroup(body);  // round 63 — auto-tag from template detection
+      case 'addPaymentVerification':   return handleAddPaymentVerification(body);  // round 64 — payment-noted template
+      case 'clearPaymentVerification': return handleClearPaymentVerification(body);  // round 64 — account tick verify
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -225,6 +227,23 @@ function handleUpdateStatusByGroup(body) {
       changedBy: body.changedBy || 'Auto-Template'
     });
 
+    // Round 64: when shifting INTO Completed (via the Google review template),
+    // defensively clear pending_verification — by this point payment is settled
+    // so the account-team queue should drop this row.
+    if (body.status === 'Completed' && prevStatus !== 'Completed') {
+      const rowNum = i + 1;
+      const tagsColX = headers.colByName['Tags'];
+      if (tagsColX) {
+        const cur = String(data[i][tagsColX - 1] || '').trim();
+        const cleaned = cur.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t && t !== 'pending_verification'; }).join(',');
+        if (cleaned !== cur) {
+          setCellByHeader(sheet, rowNum, 'Tags', cleaned);
+          try { setCellByHeader(sheet, rowNum, 'Verification Amount', ''); } catch (_e) {}
+          try { setCellByHeader(sheet, rowNum, 'Verification Date', ''); } catch (_e) {}
+        }
+      }
+    }
+
     // Round 61.1: reset FU clock so LG-Follow Up doesn't fire moments after a
     // template-triggered phase change. Admin's template message is itself the
     // outbound communication — LG-Follow Up should start its window from now.
@@ -301,6 +320,104 @@ function handleAddTagByGroup(body) {
     return jsonResponse({status: 'ok', rowNum: rowNum, tags: tagList.join(','), added: added});
   }
   return jsonResponse({status: 'error', message: 'group not found', groupId: target});
+}
+
+// ================================================================
+// Round 64 — payment verification queue (Pending Downpayment + Pending Balance)
+// ================================================================
+// WA Receiver detects admin's "Noted with thx" template, extracts the RM amount,
+// and fires this handler. Adds 'pending_verification' tag + writes the amount
+// + sent date to two CRM columns so account team can see the queue at a glance.
+//
+// Companion handler handleClearPaymentVerification is fired by the kanban
+// ✓ Verify button when account confirms payment received.
+
+function handleAddPaymentVerification(body) {
+  // body: {action, secret, groupId, amount, changedBy?}
+  if (!body.groupId) {
+    return jsonResponse({status: 'error', message: 'groupId required'});
+  }
+  const sheet = getSheet();
+  const headers = getHeaders(sheet);
+  const groupIdCol = headers.colByName['Group ID (AB)'];
+  const tagsCol    = headers.colByName['Tags'];
+  const statusCol  = headers.colByName['Status'];
+  const amountCol  = headers.colByName['Verification Amount'];
+  const dateCol    = headers.colByName['Verification Date'];
+  if (!groupIdCol || !tagsCol) {
+    return jsonResponse({status: 'error', message: 'required columns missing'});
+  }
+  if (!amountCol || !dateCol) {
+    return jsonResponse({status: 'error', message: 'run bootstrapVerificationColumns() first'});
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const target = String(body.groupId).trim();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][groupIdCol - 1] || '').trim() !== target) continue;
+    const rowNum = i + 1;
+    const status = String(data[i][statusCol - 1] || '').trim();
+
+    // Gate: only fire for Pending Downpayment or Pending Balance phases.
+    // If admin sends the template in another phase (e.g., wrong group), no-op.
+    if (status !== 'Pending Downpayment' && status !== 'Pending Balance') {
+      return jsonResponse({status: 'ok', skipped: true, reason: 'phase not eligible: ' + status, rowNum: rowNum});
+    }
+
+    // Append pending_verification tag (idempotent)
+    const existing = String(data[i][tagsCol - 1] || '').trim();
+    const tagList = existing.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t; });
+    if (tagList.indexOf('pending_verification') === -1) tagList.push('pending_verification');
+    setCellByHeader(sheet, rowNum, 'Tags', tagList.join(','));
+
+    // Write amount (whatever bot parsed, e.g., "RM850") + date (now)
+    if (body.amount) {
+      setCellByHeader(sheet, rowNum, 'Verification Amount', String(body.amount));
+    }
+    setCellByHeader(sheet, rowNum, 'Verification Date', new Date().toISOString());
+
+    return jsonResponse({status: 'ok', rowNum: rowNum, tags: tagList.join(','), amount: body.amount || ''});
+  }
+  return jsonResponse({status: 'error', message: 'group not found', groupId: target});
+}
+
+function handleClearPaymentVerification(body) {
+  // body: {action, secret, phone, changedBy?}
+  // Removes 'pending_verification' tag + clears Verification Amount + Verification Date.
+  // Called from the kanban ✓ Verify button.
+  if (!body.phone) return jsonResponse({status: 'error', message: 'phone required'});
+  const sheet = getSheet();
+  const rowNum = findRowByPhone(sheet, body.phone);
+  if (!rowNum) return jsonResponse({status: 'error', message: 'lead not found'});
+
+  const h = getHeaders(sheet);
+  const tagsCol = h.colByName['Tags'];
+  if (!tagsCol) return jsonResponse({status: 'error', message: 'Tags column missing'});
+
+  const existing = String(sheet.getRange(rowNum, tagsCol).getValue() || '').trim();
+  const next = existing.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t && t !== 'pending_verification'; });
+  setCellByHeader(sheet, rowNum, 'Tags', next.join(','));
+  try { setCellByHeader(sheet, rowNum, 'Verification Amount', ''); } catch (_e) {}
+  try { setCellByHeader(sheet, rowNum, 'Verification Date', ''); } catch (_e) {}
+  if (h.colByName['Changed By']) {
+    sheet.getRange(rowNum, h.colByName['Changed By']).setValue(body.changedBy || 'Account-Verified');
+  }
+  return jsonResponse({status: 'ok', rowNum: rowNum, tags: next.join(',')});
+}
+
+// Run ONCE from Apps Script editor to add the two new columns.
+function bootstrapVerificationColumns() {
+  const sheet = getSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h){ return String(h || '').trim(); });
+  const wanted = ['Verification Amount', 'Verification Date'];
+  const missing = wanted.filter(function(n){ return headers.indexOf(n) === -1; });
+  if (missing.length === 0) {
+    Logger.log('bootstrapVerificationColumns: both columns already present.');
+    return;
+  }
+  sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+  Logger.log('bootstrapVerificationColumns: appended ' + missing.length + ' column(s) at col ' + (lastCol + 1) + ': ' + missing.join(', '));
 }
 
 function handleArchive(body) {
