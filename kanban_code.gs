@@ -236,24 +236,25 @@ function handleUpdateStatusByGroup(body) {
       try { setCellByHeader(sheet, rowNum, 'Follow Up Count (AK)', 0); } catch (_e) {}
     }
 
-    // Admin DM (only on actual transition, not idempotent re-sends)
-    if (body.notifyAdmin !== false && prevStatus !== body.status) {
-      try {
-        UrlFetchApp.fetch(N8N_WAGROUP_URL, {
-          method: 'post',
-          contentType: 'application/json',
-          headers: {'Authorization': 'Bearer ' + WHAPI_TOKEN},
-          payload: JSON.stringify({
-            to: '60183639321',  // main admin
-            body: '✓ Auto-shifted ' + (groupName || ('group ' + target)) +
-                  '\n  ' + prevStatus + ' → ' + body.status +
-                  '\n  (template detected from ' + (body.changedBy || 'staff') + ')',
-            typing_time: 0
-          }),
-          muteHttpExceptions: true
-        });
-      } catch (_e) { /* best-effort */ }
-    }
+    // Round 62: admin DM disabled per user directive ("stop all notification msg
+    // that will send back to admin"). To re-enable, restore the block below.
+    // if (body.notifyAdmin !== false && prevStatus !== body.status) {
+    //   try {
+    //     UrlFetchApp.fetch(N8N_WAGROUP_URL, {
+    //       method: 'post',
+    //       contentType: 'application/json',
+    //       headers: {'Authorization': 'Bearer ' + WHAPI_TOKEN},
+    //       payload: JSON.stringify({
+    //         to: '60183639321',  // main admin
+    //         body: '✓ Auto-shifted ' + (groupName || ('group ' + target)) +
+    //               '\n  ' + prevStatus + ' → ' + body.status +
+    //               '\n  (template detected from ' + (body.changedBy || 'staff') + ')',
+    //         typing_time: 0
+    //       }),
+    //       muteHttpExceptions: true
+    //     });
+    //   } catch (_e) { /* best-effort */ }
+    // }
 
     return result;
   }
