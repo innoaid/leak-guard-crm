@@ -711,6 +711,8 @@ function render() {
     if (status === 'Site Visit Confirmed' && isVisitExpired(lead)) return true;
     // Round 63.3: repair-tagged cards are red-flagged regardless of phase
     if (tags.includes('repair')) return true;
+    // Round 65: pending-verification cards also red-flagged (account team queue)
+    if (tags.includes('pending_verification')) return true;
     return false;
   }
 
@@ -792,16 +794,19 @@ function renderKanban(leads) {
     });
   }
 
-  // Round 63.4: across every active column, repair-tagged cards float to the
-  // top. Stable sort preserves the in-group order from the per-column sorts
-  // above (PSV state-based, SVC cancel/expired/appt-date) AND the natural
-  // insertion order for the other phases.
+  // Round 63.4 / Round 65: across every active column, repair-tagged cards
+  // float to the top, then pending_verification cards, then everything else.
+  // Stable sort preserves the in-group order from the per-column sorts above
+  // (PSV state-based, SVC cancel/expired/appt-date) AND the natural insertion
+  // order for the other phases.
   ACTIVE_STATUSES.forEach(s => {
     if (byStatus[s] && byStatus[s].length > 1) {
       byStatus[s].sort((a, b) => {
-        const aR = String(a['Tags']||'').toLowerCase().includes('repair') ? 0 : 1;
-        const bR = String(b['Tags']||'').toLowerCase().includes('repair') ? 0 : 1;
-        return aR - bR;
+        const at = String(a['Tags']||'').toLowerCase();
+        const bt = String(b['Tags']||'').toLowerCase();
+        const aP = at.includes('repair') ? 0 : at.includes('pending_verification') ? 1 : 2;
+        const bP = bt.includes('repair') ? 0 : bt.includes('pending_verification') ? 1 : 2;
+        return aP - bP;
       });
     }
   });
@@ -1012,6 +1017,8 @@ function renderCard(lead) {
 
   // Round 63.3: red flag any card tagged 'repair' (needs callback inspection)
   if (tags.includes('repair')) c.classList.add('repair-flag');
+  // Round 65: red flag pending_verification cards too (reuse the same class)
+  if (tags.includes('pending_verification')) c.classList.add('repair-flag');
 
   // Days in stage
   const changedAt = lead['Status Changed At'];
@@ -1558,7 +1565,15 @@ async function verifyPayment(btn) {
     lead['Tags'] = String(r.tags || '');
     lead['Verification Amount'] = '';
     lead['Verification Date'] = '';
-    toast('Verified ' + (lead['Name'] || phone) + ' (' + amount + ')', 'success');
+    // Round 65: if backend auto-jumped Pending Downpayment → Pending Balance,
+    // update cache so the card visibly moves to the next column on re-render.
+    if (r.newStatus && r.newStatus !== lead['Status']) {
+      const prevS = lead['Status'];
+      lead['Status'] = r.newStatus;
+      toast('Verified ' + (lead['Name'] || phone) + ' (' + amount + ') — ' + prevS + ' → ' + r.newStatus, 'success');
+    } else {
+      toast('Verified ' + (lead['Name'] || phone) + ' (' + amount + ')', 'success');
+    }
     if (typeof render === 'function') render();
   } else {
     toast('Verify failed — refresh', 'error');
