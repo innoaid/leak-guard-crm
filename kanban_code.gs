@@ -364,6 +364,9 @@ function handleAddPaymentVerification(body) {
       return jsonResponse({status: 'ok', skipped: true, reason: 'phase not eligible: ' + status, rowNum: rowNum});
     }
 
+    // Round 65: route account verification to Alvin regardless of original sales owner
+    try { setCellByHeader(sheet, rowNum, 'Assigned To', 'Alvin'); } catch (_e) {}
+
     // Append pending_verification tag (idempotent)
     const existing = String(data[i][tagsCol - 1] || '').trim();
     const tagList = existing.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t; });
@@ -394,6 +397,10 @@ function handleClearPaymentVerification(body) {
   const tagsCol = h.colByName['Tags'];
   if (!tagsCol) return jsonResponse({status: 'error', message: 'Tags column missing'});
 
+  // Round 65: capture current status before mutating so we can decide auto-jump.
+  const _statusColR65 = h.colByName['Status'];
+  const curStatus = _statusColR65 ? String(sheet.getRange(rowNum, _statusColR65).getValue() || '').trim() : '';
+
   const existing = String(sheet.getRange(rowNum, tagsCol).getValue() || '').trim();
   const next = existing.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t && t !== 'pending_verification'; });
   setCellByHeader(sheet, rowNum, 'Tags', next.join(','));
@@ -402,7 +409,20 @@ function handleClearPaymentVerification(body) {
   if (h.colByName['Changed By']) {
     sheet.getRange(rowNum, h.colByName['Changed By']).setValue(body.changedBy || 'Account-Verified');
   }
-  return jsonResponse({status: 'ok', rowNum: rowNum, tags: next.join(',')});
+
+  // Round 65: only Pending Downpayment auto-jumps to Pending Balance on ✓ Verify.
+  // Pending Balance is template-driven (Google-review template -> Completed via R64.2).
+  let newStatus = curStatus;
+  if (curStatus === 'Pending Downpayment') {
+    handleUpdateStatus({
+      action: 'updateStatus',
+      phone: body.phone,
+      status: 'Pending Balance',
+      changedBy: body.changedBy || 'Kanban_Verify_AutoShift'
+    });
+    newStatus = 'Pending Balance';
+  }
+  return jsonResponse({status: 'ok', rowNum: rowNum, tags: next.join(','), newStatus: newStatus});
 }
 
 // Run ONCE from Apps Script editor to add the two new columns.
