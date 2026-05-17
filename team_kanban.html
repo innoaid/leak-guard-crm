@@ -698,11 +698,6 @@ function render() {
   const staff = document.getElementById('staffFilter').value;
   const tagFilter = document.getElementById('tagFilter').value;
   const redFilter = document.getElementById('redFilter').value;
-  // Round 65.1: when ANY filter is active on mobile, auto-expand columns that
-  // contain matching cards so the user actually sees the filtered results.
-  // Without this, narrowing by Staff/Tag/Red leaves the user looking at
-  // collapsed column headers and wondering where their cards went.
-  const _filterActive = !!search || !!staff || !!tagFilter || (!!redFilter && redFilter !== '');
 
   // Mirror of the urgent-card flags computed in renderCard. Kept in sync if
   // those conditions ever expand.
@@ -761,6 +756,16 @@ function render() {
 function renderKanban(leads) {
   const board = document.getElementById('kanbanBoard');
   board.innerHTML = '';
+
+  // Round 65.1: read filter state directly from the DOM (render() already
+  // pulled these values, but renderKanban is a separate function so it can't
+  // see those locals — re-read here to know if ANY filter is active).
+  const _filterActive = !!(
+    (document.getElementById('searchInput').value || '').trim() ||
+    document.getElementById('staffFilter').value ||
+    document.getElementById('tagFilter').value ||
+    document.getElementById('redFilter').value
+  );
 
   const byStatus = {};
   ACTIVE_STATUSES.forEach(s => byStatus[s] = []);
