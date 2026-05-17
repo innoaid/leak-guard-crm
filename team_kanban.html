@@ -698,6 +698,11 @@ function render() {
   const staff = document.getElementById('staffFilter').value;
   const tagFilter = document.getElementById('tagFilter').value;
   const redFilter = document.getElementById('redFilter').value;
+  // Round 65.1: when ANY filter is active on mobile, auto-expand columns that
+  // contain matching cards so the user actually sees the filtered results.
+  // Without this, narrowing by Staff/Tag/Red leaves the user looking at
+  // collapsed column headers and wondering where their cards went.
+  const _filterActive = !!search || !!staff || !!tagFilter || (!!redFilter && redFilter !== '');
 
   // Mirror of the urgent-card flags computed in renderCard. Kept in sync if
   // those conditions ever expand.
@@ -813,12 +818,16 @@ function renderKanban(leads) {
 
   ACTIVE_STATUSES.forEach(status => {
     const col = document.createElement('div');
-    col.className = 'kc' + (collapsedCols.has(status) ? ' collapsed' : '');
+    // Round 65.1: filter-active + non-empty column overrides the user's
+    // collapsed pref. The collapsedCols Set itself is NOT mutated, so the
+    // user's collapsed prefs are restored as soon as filters clear.
+    const _autoExpand = _filterActive && (byStatus[status] || []).length > 0;
+    const isCollapsed = collapsedCols.has(status) && !_autoExpand;
+    col.className = 'kc' + (isCollapsed ? ' collapsed' : '');
     col.dataset.status = status;
 
     const head = document.createElement('div');
     head.className = 'kh';
-    const isCollapsed = collapsedCols.has(status);
     // Count expired leads in this column (only for Site Visit Confirmed)
     const expiredCount = (status === 'Site Visit Confirmed')
       ? byStatus[status].filter(isVisitExpired).length : 0;
