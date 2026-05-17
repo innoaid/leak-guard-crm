@@ -440,6 +440,33 @@ function bootstrapVerificationColumns() {
   Logger.log('bootstrapVerificationColumns: appended ' + missing.length + ' column(s) at col ' + (lastCol + 1) + ': ' + missing.join(', '));
 }
 
+// Round 65.1 — one-off backfill: any row already tagged 'pending_verification'
+// gets re-assigned to Alvin. Use this after the initial R65 deploy to fix
+// pre-existing tagged rows that missed the auto-assign in handleAddPaymentVerification.
+// Idempotent: re-running skips rows already assigned to Alvin.
+function backfillPendingVerifAlvin() {
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const tagsCol = h.colByName['Tags'];
+  const assignedCol = h.colByName['Assigned To'];
+  if (!tagsCol || !assignedCol) {
+    Logger.log('backfillPendingVerifAlvin: Tags or Assigned To column missing.');
+    return;
+  }
+  const data = sheet.getDataRange().getValues();
+  let fixed = 0;
+  for (let i = 1; i < data.length; i++) {
+    const tags = String(data[i][tagsCol - 1] || '').toLowerCase();
+    if (tags.indexOf('pending_verification') === -1) continue;
+    const cur = String(data[i][assignedCol - 1] || '').trim();
+    if (cur === 'Alvin') continue;
+    setCellByHeader(sheet, i + 1, 'Assigned To', 'Alvin');
+    Logger.log('Row ' + (i + 1) + ': "' + cur + '" -> Alvin');
+    fixed++;
+  }
+  Logger.log('backfillPendingVerifAlvin: ' + fixed + ' row(s) reassigned.');
+}
+
 function handleArchive(body) {
   // body: {phone, archiveStatus, archiveNote, secret}
   //   archiveStatus = Lost / Cold Lead / Rejected / Out of Area / Human Handoff
