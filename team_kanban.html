@@ -1001,7 +1001,10 @@ function renderCard(lead) {
   const apptDateStr = String(lead['Date Appt Confirmed'] || '').slice(0, 10);
   const apptShort = (status === 'Site Visit Confirmed' && apptDateStr) ? formatApptShort(apptDateStr) : '';
   const lastMsgRaw = String(lead['Last Customer Msg (AM)'] || '').trim();
-  const lastMsg = (status === 'Pending Site Visit' && lastMsgRaw)
+  // Round 65.4: show last customer msg on EVERY phase, not just PSV. The
+  // urgency flag (isUrgentPsv) and red-border match remain PSV-only — for
+  // other phases the 💬 line is informational, not "act now".
+  const lastMsg = lastMsgRaw
     ? (lastMsgRaw.length > 60 ? lastMsgRaw.slice(0, 60) + '…' : lastMsgRaw)
     : '';
   const fuCount = parseInt(String(lead['Follow Up Count (AK)'] || '0'), 10) || 0;
