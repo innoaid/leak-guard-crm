@@ -564,10 +564,13 @@ const N8N_AVAIL_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-availability';
 const N8N_BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
 
 // Slot times (matches booking page + lg-booking webhook)
+// Round 65.3: slot 3 (12:00 PM - 1:00 PM) removed — KL team's lunch hour
+// should never be a bookable slot from the kanban PSV appointment modal.
+// klMap at parseSlotFromChosen() retains '12:00 PM':3 so any legacy lead
+// already at slot 3 still parses for the reschedule flow.
 const SLOT_TIMES_KL = {
   1: '9:00 AM - 10:00 AM',
   2: '10:30 AM - 11:30 AM',
-  3: '12:00 PM - 1:00 PM',
   4: '2:00 PM - 3:00 PM',
   5: '3:30 PM - 4:30 PM'
 };
