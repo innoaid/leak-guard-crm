@@ -28,6 +28,20 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .toolbar .quickfilter.active{background:#FEF3C7;border-color:#F59E0B;color:#92400E}
 .toolbar .quickfilter.active:hover{background:#FDE68A}
 .last-sync{font-size:11px;color:var(--mt);margin-left:auto}
+/* Round 66: notification bell + activity panel */
+#btnBell{position:relative}
+.bell-dot{position:absolute;top:2px;right:2px;width:8px;height:8px;background:#DC2626;border-radius:50%;border:1.5px solid #fff}
+.bell-panel{position:absolute;top:48px;right:14px;width:380px;max-height:70vh;overflow-y:auto;background:#fff;border:.5px solid #D1D5DB;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:200;display:none}
+.bell-panel.open{display:block}
+.bell-panel-head{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:.5px solid #E5E7EB;font-size:13px;font-weight:600;color:var(--ink);background:#F9FAFB;position:sticky;top:0}
+.bell-panel-close{background:none;border:none;font-size:18px;cursor:pointer;color:var(--mt);padding:0 4px}
+.bell-event{padding:10px 14px;border-bottom:.5px solid #F3F4F6;font-size:12px;line-height:1.45}
+.bell-event:last-child{border-bottom:none}
+.bell-event-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:3px}
+.bell-event-when{font-size:11px;color:var(--mt);font-variant-numeric:tabular-nums;flex-shrink:0}
+.bell-event-title{font-weight:600;color:var(--ink)}
+.bell-event-meta{font-size:11px;color:var(--mt);margin-top:2px}
+.bell-empty{padding:30px 14px;text-align:center;color:var(--mt);font-size:12px}
 
 .err{background:#FEE2E2;color:#991B1B;padding:9px 16px;font-size:13px;font-weight:600;text-align:center;display:none}
 .ld{text-align:center;padding:48px;color:var(--mt)}
@@ -240,6 +254,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   .cd-move{display:block}                       /* show move-to on mobile */
   .kh-name{font-size:13px}
   .kh-toggle{font-size:13px;padding:4px 8px}    /* bigger tap target */
+  /* Round 66: notification panel becomes full-width drawer on mobile */
+  .bell-panel{position:fixed;top:auto;left:0;right:0;bottom:0;width:100%;max-height:75vh;border-radius:10px 10px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.18)}
 }
 .nl-row{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
 .nl-row label{font-size:12px;color:#6B7280;font-weight:600}
@@ -293,8 +309,16 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   </select>
   <button class="btn-newlead" id="btnNewLead" title="Create a new lead manually">+ New Lead</button>
   <button class="refresh" id="btnBulkLink" title="Auto-link pre-CRM WA groups to CRM rows (bot stays silent)" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">🔗 Bulk Link</button>
+  <button class="refresh" id="btnBell" title="Recent activity (last 24h)">🔔<span id="bellDot" class="bell-dot" style="display:none"></span></button>
   <button class="refresh" id="btnRefresh">🔄 Refresh</button>
   <span class="last-sync" id="lastSync">—</span>
+</div>
+<div class="bell-panel" id="bellPanel">
+  <div class="bell-panel-head">
+    <span>🔔 Recent activity (last 24h)</span>
+    <button class="bell-panel-close" id="btnBellClose" title="Close">×</button>
+  </div>
+  <div id="bellPanelBody"></div>
 </div>
 
 <div class="err" id="err"></div>
@@ -754,6 +778,9 @@ function render() {
     renderArchive(allLeads.filter(passesFilters));
   }
   updateActionBar();
+  // Round 66: refresh notification bell on every render so the panel and dot
+  // reflect the latest data without separate polling.
+  updateBell();
 }
 
 function renderKanban(leads) {
@@ -1144,6 +1171,133 @@ function computeDaysInStage(changedAtStr, status) {
   }
   if (status === 'Site Visit Confirmed') cls = 'green';
   return {label: days + 'd', cls: cls};
+}
+
+// ================================================================
+// Round 66 — notification bell + activity panel
+// ================================================================
+// Pure client-side feed derived from allLeads. Zero extra n8n executions,
+// no separate polling — re-runs on every render() pass (every 60s + on
+// every manual refresh / filter change).
+
+function _parseIso(s) {
+  if (!s) return 0;
+  const t = new Date(s).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+function _fmtTimeMyt(ms) {
+  // HH:MM in Malaysia time (UTC+8). No date suffix unless not-today.
+  const d = new Date(ms + 8*3600*1000);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const today = new Date(Date.now() + 8*3600*1000);
+  const isToday = (d.getUTCFullYear() === today.getUTCFullYear() &&
+                   d.getUTCMonth() === today.getUTCMonth() &&
+                   d.getUTCDate() === today.getUTCDate());
+  if (isToday) return hh + ':' + mm;
+  const day = d.getUTCDate();
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+  return day + ' ' + mon + ' ' + hh + ':' + mm;
+}
+
+function buildActivityFeed(leads, windowMs) {
+  const cutoff = Date.now() - windowMs;
+  const events = [];
+  leads.forEach(l => {
+    const tags = String(l['Tags'] || '').toLowerCase();
+    const sca = _parseIso(l['Status Changed At']);
+    if (sca && sca >= cutoff) {
+      events.push({t: sca, type: 'status', lead: l});
+    }
+    const ts = _parseIso(l['Timestamp']);
+    if (ts && ts >= cutoff) {
+      events.push({t: ts, type: 'new', lead: l});
+    }
+    const vd = _parseIso(l['Verification Date']);
+    if (vd && vd >= cutoff) {
+      events.push({
+        t: vd,
+        type: tags.includes('pending_verification') ? 'verify_queued' : 'verify_done',
+        lead: l
+      });
+    }
+  });
+  // Dedupe: a Pending Downpayment ✓ Verify writes BOTH Verification Date AND
+  // a Pending Balance status change (Round 65 auto-jump). Without dedupe the
+  // panel double-counts. If a verify_done is within 10s of a status change
+  // for the same phone, drop the status event (the verify is more informative).
+  const byPhone = {};
+  events.forEach(e => {
+    const key = String(e.lead['Phone'] || '');
+    (byPhone[key] = byPhone[key] || []).push(e);
+  });
+  const keep = new Set();
+  events.forEach(e => keep.add(e));
+  Object.values(byPhone).forEach(arr => {
+    const verifyDone = arr.find(x => x.type === 'verify_done');
+    if (!verifyDone) return;
+    arr.forEach(x => {
+      if (x.type === 'status' && Math.abs(x.t - verifyDone.t) < 10000) keep.delete(x);
+    });
+  });
+  return Array.from(keep).sort((a, b) => b.t - a.t).slice(0, 50);
+}
+
+function _renderActivityEvent(ev) {
+  const l = ev.lead;
+  const name = String(l['Name'] || '(no name)');
+  const phone = String(l['Phone'] || '');
+  const status = String(l['Status'] || '');
+  const changedBy = String(l['Changed By'] || '').trim();
+  const groupName = String(l['Group Name (AE)'] || '').trim();
+  const when = _fmtTimeMyt(ev.t);
+  let icon = '•', title = name, meta = '';
+  if (ev.type === 'status') {
+    icon = '🔄';
+    title = 'Phase shift — ' + name;
+    meta = (STATUS_LABELS[status] || status) + (changedBy ? ' · by ' + changedBy : '');
+  } else if (ev.type === 'new') {
+    icon = '🆕';
+    title = 'New lead — ' + name;
+    meta = (STATUS_LABELS[status] || status) + (groupName ? ' · ' + groupName : '');
+  } else if (ev.type === 'verify_queued') {
+    icon = '💰';
+    const amt = String(l['Verification Amount'] || '').trim() || '(amount?)';
+    title = 'Queued for verify — ' + name;
+    meta = amt + ' · ' + (STATUS_LABELS[status] || status);
+  } else if (ev.type === 'verify_done') {
+    icon = '✅';
+    const amt = String(l['Verification Amount'] || '').trim() || '(amount?)';
+    title = 'Verified — ' + name;
+    const actorBit = changedBy.indexOf('Kanban_Verify') === 0 ? 'Alvin' : (changedBy || '—');
+    meta = amt + ' · by ' + actorBit + ' · now at ' + (STATUS_LABELS[status] || status);
+  }
+  return '<div class="bell-event">' +
+    '<div class="bell-event-head">' +
+      '<span class="bell-event-title">' + escapeHtml(icon + ' ' + title) + '</span>' +
+      '<span class="bell-event-when">' + escapeHtml(when) + '</span>' +
+    '</div>' +
+    (meta ? '<div class="bell-event-meta">' + escapeHtml(meta) + '</div>' : '') +
+    (phone ? '<div class="bell-event-meta">📞 ' + escapeHtml(phone) + '</div>' : '') +
+  '</div>';
+}
+
+function updateBell() {
+  const feed = buildActivityFeed(allLeads || [], 24 * 3600 * 1000);
+  // Dot = anything in last 1 hour
+  const hourAgo = Date.now() - 3600000;
+  const fresh = feed.some(e => e.t >= hourAgo);
+  const dot = document.getElementById('bellDot');
+  if (dot) dot.style.display = fresh ? 'block' : 'none';
+  // Panel body
+  const body = document.getElementById('bellPanelBody');
+  if (!body) return;
+  if (feed.length === 0) {
+    body.innerHTML = '<div class="bell-empty">No activity in the last 24h.</div>';
+  } else {
+    body.innerHTML = feed.map(_renderActivityEvent).join('');
+  }
 }
 
 function populateStaffFilter() {
@@ -3154,6 +3308,28 @@ function showError(msg) {
 
 document.getElementById('btnRefresh').onclick = loadLeads;
 document.getElementById('btnNewLead').onclick = openNewLeadModal;
+// Round 66: notification bell — toggle panel; close on × or outside-click; Esc.
+document.getElementById('btnBell').onclick = function(e){
+  e.stopPropagation();
+  const p = document.getElementById('bellPanel');
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) updateBell();
+};
+document.getElementById('btnBellClose').onclick = function(){
+  document.getElementById('bellPanel').classList.remove('open');
+};
+document.addEventListener('click', function(e){
+  const p = document.getElementById('bellPanel');
+  if (!p.classList.contains('open')) return;
+  if (p.contains(e.target) || e.target.id === 'btnBell') return;
+  p.classList.remove('open');
+});
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    const p = document.getElementById('bellPanel');
+    if (p && p.classList.contains('open')) p.classList.remove('open');
+  }
+});
 document.getElementById('btnBulkLink').onclick = openBulkLinkModal;
 document.getElementById('btnBulkLinkClose').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkCloseFooter').onclick = closeBulkLinkModal;
