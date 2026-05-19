@@ -404,8 +404,12 @@ function handleClearPaymentVerification(body) {
   const existing = String(sheet.getRange(rowNum, tagsCol).getValue() || '').trim();
   const next = existing.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t && t !== 'pending_verification'; });
   setCellByHeader(sheet, rowNum, 'Tags', next.join(','));
-  try { setCellByHeader(sheet, rowNum, 'Verification Amount', ''); } catch (_e) {}
-  try { setCellByHeader(sheet, rowNum, 'Verification Date', ''); } catch (_e) {}
+  // Round 66: don't clear amount/date — repurpose Verification Date as
+  // "last verification activity timestamp" (queue OR completion). With the
+  // pending_verification tag gone after this handler runs, the kanban's
+  // notification panel reads: tag present + date = queued event; tag absent
+  // + date = completed event. Amount stays so the panel can display "RM850".
+  try { setCellByHeader(sheet, rowNum, 'Verification Date', new Date().toISOString()); } catch (_e) {}
   if (h.colByName['Changed By']) {
     sheet.getRange(rowNum, h.colByName['Changed By']).setValue(body.changedBy || 'Account-Verified');
   }
