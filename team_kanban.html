@@ -89,6 +89,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-apptdate{font-size:10px;font-weight:600;color:#065F46;background:#D1FAE5;padding:1px 7px;border-radius:9px;display:inline-block;margin-bottom:4px}
 .cd-loc{font-size:11px;color:#6B7280;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd-lastmsg{font-size:10.5px;color:#4B5563;font-style:italic;background:#FFFBEB;border-left:2px solid #F59E0B;padding:3px 6px;margin-bottom:5px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Round 68: admin's last reply — blue palette to distinguish from customer's amber */
+.cd-adminmsg{font-size:10.5px;color:#1E3A8A;font-style:italic;background:#EFF6FF;border-left:2px solid #3B82F6;padding:3px 6px;margin-bottom:5px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd-row{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}
 .cd-tags{display:flex;gap:3px;flex-wrap:wrap}
 .cd-tag{padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;display:inline-flex;align-items:center;gap:3px}
@@ -301,6 +303,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <option value="cold_lead">cold_lead</option>
     <option value="repair">repair</option>
     <option value="pending_verification">pending_verification</option>
+    <option value="discount_offered">discount_offered</option>
+    <option value="final_followup">final_followup</option>
   </select>
   <select id="redFilter" title="Show only red-border (urgent) cards or non-red cards">
     <option value="">All cards</option>
@@ -1034,6 +1038,12 @@ function renderCard(lead) {
   const lastMsg = lastMsgRaw
     ? (lastMsgRaw.length > 60 ? lastMsgRaw.slice(0, 60) + '…' : lastMsgRaw)
     : '';
+  // Round 68: admin's last reply, captured from Parse & Route. Stored as
+  // "<senderName>: <text>"; shown on every phase parallel to customer's 💬.
+  const adminMsgRaw = String(lead['Last Admin Msg'] || '').trim();
+  const adminMsg = adminMsgRaw
+    ? (adminMsgRaw.length > 60 ? adminMsgRaw.slice(0, 60) + '…' : adminMsgRaw)
+    : '';
   const fuCount = parseInt(String(lead['Follow Up Count (AK)'] || '0'), 10) || 0;
   const fuLastAt = String(lead['Last Follow Up At (AL)'] || '').trim();
 
@@ -1091,6 +1101,7 @@ function renderCard(lead) {
     (apptShort ? '<div class="cd-apptdate">📅 ' + apptShort + '</div>' : '') +
     (loc ? '<div class="cd-loc">📍 ' + escapeHtml(loc) + '</div>' : '') +
     (lastMsg ? '<div class="cd-lastmsg" title="' + escapeHtml(lastMsgRaw) + '">💬 ' + escapeHtml(lastMsg) + '</div>' : '') +
+    (adminMsg ? '<div class="cd-adminmsg" title="' + escapeHtml(adminMsgRaw) + '">💼 ' + escapeHtml(adminMsg) + '</div>' : '') +
     (isPendingVerify
       ? '<div class="cd-verify-row">' +
           '<span class="cd-verify-badge">💰 ' + (verifyAmount || '(amount?)') + (verifyDateShort ? ' · ' + verifyDateShort : '') + '</span>' +
