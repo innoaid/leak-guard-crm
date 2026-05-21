@@ -59,6 +59,7 @@ function doPost(e) {
       case 'addTagByGroup':      return handleAddTagByGroup(body);  // round 63 — auto-tag from template detection
       case 'addPaymentVerification':   return handleAddPaymentVerification(body);  // round 64 — payment-noted template
       case 'clearPaymentVerification': return handleClearPaymentVerification(body);  // round 64 — account tick verify
+      case 'updateLastAdminMsg': return handleUpdateLastAdminMsg(body);  // round 68 — admin-msg capture from Parse & Route
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -323,6 +324,36 @@ function handleAddTagByGroup(body) {
 }
 
 // ================================================================
+// Round 68 — capture admin's last message into a CRM column
+// ================================================================
+// Parse & Route fires this for every staff message in a linked group (commands
+// are routed away upstream). Apps Script writes "<senderName>: <text>" to the
+// 'Last Admin Msg' column so the kanban can show what admin most recently said
+// to that lead — symmetric to the existing 'Last Customer Msg (AM)' display.
+// Idempotent overwrite: latest message wins. Silently no-ops if group not linked.
+
+function handleUpdateLastAdminMsg(body) {
+  // body: {action, secret, groupId, senderName, msgText}
+  if (!body.groupId) return jsonResponse({status: 'error', message: 'groupId required'});
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const gidCol = h.colByName['Group ID (AB)'];
+  const lamCol = h.colByName['Last Admin Msg'];
+  if (!gidCol) return jsonResponse({status: 'error', message: 'Group ID (AB) column missing'});
+  if (!lamCol) return jsonResponse({status: 'error', message: 'Last Admin Msg column missing — run bootstrapLastAdminMsgColumn()'});
+  const data = sheet.getDataRange().getValues();
+  const target = String(body.groupId).trim();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][gidCol - 1] || '').trim() !== target) continue;
+    const sender = String(body.senderName || '').trim() || 'Staff';
+    const text = String(body.msgText || '').trim().slice(0, 500); // cap storage
+    setCellByHeader(sheet, i + 1, 'Last Admin Msg', sender + ': ' + text);
+    return jsonResponse({status: 'ok', rowNum: i + 1});
+  }
+  return jsonResponse({status: 'ok', skipped: true, reason: 'group not linked'});
+}
+
+// ================================================================
 // Round 64 — payment verification queue (Pending Downpayment + Pending Balance)
 // ================================================================
 // WA Receiver detects admin's "Noted with thx" template, extracts the RM amount,
@@ -442,6 +473,20 @@ function bootstrapVerificationColumns() {
   }
   sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
   Logger.log('bootstrapVerificationColumns: appended ' + missing.length + ' column(s) at col ' + (lastCol + 1) + ': ' + missing.join(', '));
+}
+
+// Round 68 — Run ONCE from Apps Script editor to add the Last Admin Msg column.
+// Idempotent: re-running is a no-op if the column already exists.
+function bootstrapLastAdminMsgColumn() {
+  const sheet = getSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h){ return String(h || '').trim(); });
+  if (headers.indexOf('Last Admin Msg') !== -1) {
+    Logger.log('bootstrapLastAdminMsgColumn: column already present.');
+    return;
+  }
+  sheet.getRange(1, lastCol + 1).setValue('Last Admin Msg');
+  Logger.log('bootstrapLastAdminMsgColumn: appended at col ' + (lastCol + 1));
 }
 
 // Round 65.1 — one-off backfill: any row already tagged 'pending_verification'
