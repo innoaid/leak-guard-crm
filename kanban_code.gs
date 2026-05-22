@@ -24,6 +24,7 @@ const SHEET_NAME    = 'Leak Guard Leads';
 const SHARED_SECRET = 'ABC'; // matches team_kanban.html
 const N8N_BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
 const N8N_WAGROUP_URL = 'https://gate.whapi.cloud/messages/text';
+const N8N_RENAME_GROUP_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-rename-group'; // Round 70 — auto-rename WA group on QT-PDF detection
 const WHAPI_TOKEN     = 'tjJeSotqcmnYBfQulcRxcFHHQ8QtDcC5';
 
 // ================================================================
@@ -122,6 +123,31 @@ function setCellByHeader(sheet, rowNum, headerName, value) {
   sheet.getRange(rowNum, col).setValue(value);
 }
 
+// Round 70 — compute the new group name when a QT-MMYY-NNN PDF is detected.
+// - Strips a leading SV-/SVJB- booking prefix
+// - If a QT-MMYY-NNN[/NNN...] prefix already exists with the same MMYY,
+//   slash-appends NNN; if NNN is already present, returns null (no-op)
+// - Otherwise prepends QT-MMYY-NNN
+function _buildQtGroupName(currentName, qtCode) {
+  if (!/^\d{4}-\d{3}$/.test(String(qtCode || ''))) return null;
+  const mmyy = qtCode.slice(0, 4);
+  const nnn  = qtCode.slice(5);
+  const work = String(currentName || '').replace(/^(SV|SVJB)-\d{4}-\d{3}\s*/i, '').trim();
+  const m = work.match(/^(?:QT-)?(\d{4})-([\d\/]+)\b(.*)$/i);
+  if (m) {
+    const exMmyy = m[1];
+    const exCodes = m[2].split('/').filter(function(s) { return s; });
+    const tail = (m[3] || '').replace(/^\s+/, ' ');
+    if (exMmyy === mmyy) {
+      if (exCodes.indexOf(nnn) !== -1) return null;
+      exCodes.push(nnn);
+      return ('QT-' + mmyy + '-' + exCodes.join('/') + (tail ? ' ' + tail.trim() : '')).trim();
+    }
+    return ('QT-' + exMmyy + '-' + exCodes.join('/') + '/' + mmyy + '-' + nnn + (tail ? ' ' + tail.trim() : '')).trim();
+  }
+  return ('QT-' + mmyy + '-' + nnn + (work ? ' ' + work : '')).trim();
+}
+
 // ================================================================
 // Action handlers
 // ================================================================
@@ -218,6 +244,28 @@ function handleUpdateStatusByGroup(body) {
     const name      = nameCol  ? String(data[i][nameCol  - 1] || '').trim() : '';
     const groupName = gnameCol ? String(data[i][gnameCol - 1] || '').trim() : '';
     const prevStatus = statusCol ? String(data[i][statusCol - 1] || '').trim() : '';
+
+    // Round 70: if Parse & Route attached a QT code (Round 70 n8n patch),
+    // rebuild Group Name (AE) with "QT-MMYY-NNN" prefix (slash-append on
+    // subsequent QTs) and push the new subject to the live WA group via
+    // lg-rename-group. Runs BEFORE the regression guard so a revised QT
+    // sent to a card already past QS still updates the group name even
+    // when the status shift itself is blocked.
+    if (body.qtCode && /^\d{4}-\d{3}$/.test(body.qtCode)) {
+      const newName = _buildQtGroupName(groupName, body.qtCode);
+      if (newName && newName !== groupName) {
+        const rowNum = i + 1;
+        try { setCellByHeader(sheet, rowNum, 'Group Name (AE)', newName); } catch (_e) {}
+        try {
+          UrlFetchApp.fetch(N8N_RENAME_GROUP_URL, {
+            method: 'post',
+            contentType: 'application/json',
+            payload: JSON.stringify({secret: SHARED_SECRET, groupId: target, newGroupName: newName}),
+            muteHttpExceptions: true,
+          });
+        } catch (_e) { /* best-effort; CRM is source of truth either way */ }
+      }
+    }
 
     // Round 69: refuse auto-template shifts that would regress a card backward
     // in the funnel. Prevents re-sent quotation PDFs (and accidental template
