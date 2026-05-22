@@ -219,6 +219,26 @@ function handleUpdateStatusByGroup(body) {
     const groupName = gnameCol ? String(data[i][gnameCol - 1] || '').trim() : '';
     const prevStatus = statusCol ? String(data[i][statusCol - 1] || '').trim() : '';
 
+    // Round 69: refuse auto-template shifts that would regress a card backward
+    // in the funnel. Prevents re-sent quotation PDFs (and accidental template
+    // re-sends) from pulling Pending Downpayment / Balance / Completed cards
+    // back to an earlier phase. Manual kanban clicks (changedBy='Kanban') are
+    // unaffected; only calls tagged 'Auto-Template:*' from Parse & Route gate.
+    if (String(body.changedBy || '').indexOf('Auto-Template') === 0) {
+      const _funnel = ['New Lead','Pending Invitation','Pending Site Visit',
+                       'Site Visit Confirmed','Pending QT','Quotation Sent',
+                       'Pending Downpayment','Pending I.Date','I.Date Confirmed',
+                       'Job In Progress','Pending Balance','Job Complete',
+                       'Receipt Sent','Completed'];
+      const _cur = _funnel.indexOf(prevStatus);
+      const _tgt = _funnel.indexOf(body.status);
+      if (_cur >= 0 && _tgt >= 0 && _tgt < _cur) {
+        return jsonResponse({status: 'ignored',
+                             reason: 'auto-template regression blocked',
+                             prev: prevStatus, attempted: body.status});
+      }
+    }
+
     // Delegate to existing handleUpdateStatus — inherits Round 58 CAPI fan-out,
     // Status Changed At update, Changed By audit, prev-status snapshot.
     const result = handleUpdateStatus({
