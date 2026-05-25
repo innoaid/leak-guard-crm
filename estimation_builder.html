@@ -614,7 +614,8 @@ async function handlePhotoFiles(slabId, files){
       if (currentLead && currentLead['Phone']) {
         fetch(APPS_SCRIPT_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          // Round 72.3: text/plain avoids CORS preflight on Apps Script.
+          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
             action: 'uploadEstimationPhoto',
             secret: SHARED_SECRET,
@@ -1255,7 +1256,9 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     ut.textContent = '1/5 Issuing SE number…';
     const seRes = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // Round 72.3: text/plain avoids CORS preflight (Apps Script Web Apps
+      // reject preflight). Same pattern as team_kanban.html.
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ action: 'nextSeNumber', secret: SHARED_SECRET })
     });
     if (!seRes.ok) throw new Error('SE counter HTTP ' + seRes.status);
@@ -1282,8 +1285,16 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Capture as Blob (no local download).
-    const estBlob = await html2pdf().set(opts).from(pv).output('blob');
+    // Round 72.3: move printView into viewport (invisible) for the duration
+    // of the capture so html2canvas reliably paints it across browsers.
+    const _origLeft = pv.style.left, _origOpacity = pv.style.opacity, _origZ = pv.style.zIndex;
+    pv.style.left = '0'; pv.style.opacity = '0'; pv.style.zIndex = '-1'; pv.style.pointerEvents = 'none';
+    let estBlob;
+    try {
+      estBlob = await html2pdf().set(opts).from(pv).output('blob');
+    } finally {
+      pv.style.left = _origLeft; pv.style.opacity = _origOpacity; pv.style.zIndex = _origZ; pv.style.pointerEvents = '';
+    }
     const estBytes = new Uint8Array(await estBlob.arrayBuffer());
     // 3/5 — Fetch boilerplate.
     ut.textContent = '3/5 Fetching boilerplate…';
@@ -1631,7 +1642,15 @@ async function generateEstimatePdf() {
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    await html2pdf().set(opts).from(pv).save();
+    // Round 72.3: visible-during-capture (opacity 0) so html2canvas paints
+    // reliably across browsers — see submit flow for the same pattern.
+    const _origLeft = pv.style.left, _origOpacity = pv.style.opacity, _origZ = pv.style.zIndex;
+    pv.style.left = '0'; pv.style.opacity = '0'; pv.style.zIndex = '-1'; pv.style.pointerEvents = 'none';
+    try {
+      await html2pdf().set(opts).from(pv).save();
+    } finally {
+      pv.style.left = _origLeft; pv.style.opacity = _origOpacity; pv.style.zIndex = _origZ; pv.style.pointerEvents = '';
+    }
     toast('✓ Estimate PDF generated (' + ref + ')', 'success');
   } catch (e) {
     toast('PDF failed: ' + (e.message || e), 'error');
