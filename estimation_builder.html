@@ -148,6 +148,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .toast{padding:11px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);text-align:center}
 .toast.success{background:#10B981}.toast.error{background:#DC2626}.toast.info{background:#3B82F6}
 
+/* Round 73 — iScanner auto-detect button + X-mark info banner */
+.iscan-btn{background:#EFF6FF !important;border-color:#BFDBFE !important;color:#1E3A8A !important;font-weight:600 !important;margin-bottom:6px}
+.iscan-btn:active{background:#DBEAFE !important;border-color:#93C5FD !important}
+.iscan-info{font-size:11px;line-height:1.5;background:#FEF3C7;border:.5px solid #FDE68A;color:#92400E;padding:8px 12px;border-radius:6px;margin:6px 0 8px;font-weight:500}
+
 .upload-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:200;flex-direction:column;gap:12px;color:#fff;font-size:14px;font-weight:600}
 .upload-overlay.on{display:flex}
 .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
@@ -400,6 +405,7 @@ const GVIZ_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
   '/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent(SHEET_NAME);
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
 const QT_SEND_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-send';
+const ISCANNER_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-analyze-iscanner';
 const BOILERPLATE_URL = './boilerplate.pdf';
 const SHARED_SECRET = 'ABC';
 let currentLead = null; // populated by loadLead()
@@ -534,6 +540,7 @@ function loadState(){
             floorSqft:Number(s.floorSqft)||0,
             upturns:(s.upturns||[]).map(function(u){ return {id:u.id||uuid(),label:u.label||'',runFt:Number(u.runFt)||0,upturnFt:Number(u.upturnFt)||0}; }),
             extras:(s.extras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; }),
+            iscannerXMarks: s.iscannerXMarks || null,  // Round 73 — persist X-mark info across reloads
             photos:[],
             manualFloor:(s.manualFloor||[]).map(function(r){ return {id:r.id||uuid(),label:r.label||'',length:Number(r.length)||0,width:Number(r.width)||0}; }),
             collapsed:!!s.collapsed
@@ -553,7 +560,7 @@ function saveState(){
   try {
     const slim = {
       submittedBy:state.submittedBy, notes:state.notes,
-      slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor,collapsed:!!s.collapsed}; }),
+      slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor,collapsed:!!s.collapsed,iscannerXMarks:s.iscannerXMarks||null}; }),
       siteExtras:state.siteExtras
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
@@ -643,6 +650,68 @@ async function handlePhotoFiles(slabId, files){
   // filling the form while OCR runs in background.
   for (const p of newPhotos) {
     runOcrOnPhoto(slab, p);  // no await — parallel
+  }
+}
+
+// Round 73 — Upload iScanner photo, ask backend (gpt-4o vision via n8n)
+// to detect color/X marks and group sides. Replaces slab.upturns entirely.
+async function handleIscannerFile(slabId, file) {
+  const slab = state.slabs.find(function(s){ return s.id === slabId; });
+  if (!slab) return;
+  const ov = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
+  ov.classList.add('on');
+  ut.textContent = 'Compressing iScanner image…';
+  try {
+    const dataUrl = await compressImage(file, 1280);
+    ut.textContent = 'Analyzing measurements with AI… (5-10s)';
+    const res = await fetch(ISCANNER_URL, {
+      method: 'POST',
+      // text/plain to dodge CORS preflight (matches kanban/Apps Script pattern)
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: SHARED_SECRET, imageBase64: dataUrl })
+    });
+    if (!res.ok) throw new Error('Analyze HTTP ' + res.status);
+    const data = await res.json();
+    if (data.status !== 'ok' || !data.result) {
+      throw new Error(data.message || 'Analysis failed');
+    }
+    const result = data.result;
+    if (result.error) throw new Error('Not an iScanner drawing (' + result.error + ')');
+
+    // Build new upturns array. X-mark group is excluded (info-only banner).
+    const newUpturns = [];
+    let xMarkInfo = null;
+    (result.groups || []).forEach(function(g){
+      const tot = Number(g.total_ft || 0);
+      const sides = Array.isArray(g.sides_ft) ? g.sides_ft : [];
+      if (!sides.length || tot <= 0) return;
+      if (g.label === 'X mark') {
+        xMarkInfo = { expr: sides.map(function(n){ return Number(n).toFixed(2); }).join(' + '), total_ft: tot };
+        return;
+      }
+      const breakdown = sides.length > 1
+        ? ' (' + sides.map(function(n){ return Number(n).toFixed(2); }).join('+') + ')'
+        : '';
+      newUpturns.push({
+        id: uuid(),
+        label: String(g.label || 'Group') + breakdown,
+        runFt: tot,
+        upturnFt: 0
+      });
+    });
+
+    slab.upturns = newUpturns;
+    slab.iscannerXMarks = xMarkInfo;
+    saveState();
+    renderAll();
+    const fixHint = ' — review each row & correct if AI got it wrong';
+    toast('iScanner: ' + newUpturns.length + ' upturn group' + (newUpturns.length === 1 ? '' : 's') + fixHint, 'success');
+  } catch (e) {
+    console.error('iScanner failed:', e);
+    toast('iScanner analysis failed: ' + (e.message || e), 'error');
+  } finally {
+    ov.classList.remove('on');
   }
 }
 
@@ -847,7 +916,14 @@ function renderSlabExpanded(s){
   } else {
     measBody += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:5px">Linear sections ('+s.upturns.length+')</div>';
   }
+  // Round 73 — iScanner auto-detect button + X-mark info banner
+  const xMarkBanner = s.iscannerXMarks
+    ? '<div class="iscan-info">ℹ️ X-marked sides excluded from upturn: '+escapeHtml(s.iscannerXMarks.expr)+' = '+Number(s.iscannerXMarks.total_ft||0).toFixed(2)+' ft</div>'
+    : '';
   measBody +=
+    '<button class="add-row iscan-btn" type="button" data-iscan-slab="'+s.id+'">📐 Auto-detect Upturns from iScanner photo</button>'+
+    '<input type="file" accept="image/*" data-iscan-input="'+s.id+'" style="display:none">'+
+    xMarkBanner +
     upturnsHtml +
     '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn')+'</button>';
 
@@ -1073,6 +1149,21 @@ function wireSlabHandlers(list){
   });
   list.querySelectorAll('[data-add-upturn]').forEach(function(b){
     b.onclick = function(){ const s = state.slabs.find(function(x){ return x.id===b.dataset.addUpturn; }); if (s){ s.upturns.push(newUpturn()); saveState(); renderAll(); } };
+  });
+  // Round 73 — iScanner auto-detect: click button triggers hidden file input
+  list.querySelectorAll('[data-iscan-slab]').forEach(function(b){
+    b.onclick = function(){
+      const inp = list.querySelector('input[data-iscan-input="'+b.dataset.iscanSlab+'"]');
+      if (inp) inp.click();
+    };
+  });
+  list.querySelectorAll('input[data-iscan-input]').forEach(function(inp){
+    inp.onchange = function(){
+      const file = inp.files && inp.files[0];
+      const slabId = inp.dataset.iscanInput;
+      inp.value = '';
+      if (file && slabId) handleIscannerFile(slabId, file);
+    };
   });
   list.querySelectorAll('[data-del-upturn]').forEach(function(b){
     b.onclick = function(){
