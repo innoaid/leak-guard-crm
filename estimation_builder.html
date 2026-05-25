@@ -1253,7 +1253,7 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
   ov.classList.add('on');
   try {
     // 1/5 — Issue SE-MMYY-NNN from Apps Script Counters sheet.
-    ut.textContent = '1/5 Issuing SE number…';
+    ut.textContent = '1/4 Issuing SE number…';
     const seRes = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
       // Round 72.3: text/plain avoids CORS preflight (Apps Script Web Apps
@@ -1268,7 +1268,7 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     }
     const docNo = seData.docNo;
     // 2/5 — Render the estimate PDF preview into #printView.
-    ut.textContent = '2/5 Rendering estimate…';
+    ut.textContent = '2/4 Rendering estimate…';
     buildPrintView(docNo);
     const pv = document.getElementById('printView');
     const imgs = [...pv.querySelectorAll('img')];
@@ -1285,44 +1285,32 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Round 72.3: move printView into viewport (invisible) for the duration
-    // of the capture so html2canvas reliably paints it across browsers.
-    const _origLeft = pv.style.left, _origOpacity = pv.style.opacity, _origZ = pv.style.zIndex;
-    pv.style.left = '0'; pv.style.opacity = '0'; pv.style.zIndex = '-1'; pv.style.pointerEvents = 'none';
-    let estBlob;
-    try {
-      estBlob = await html2pdf().set(opts).from(pv).output('blob');
-    } finally {
-      pv.style.left = _origLeft; pv.style.opacity = _origOpacity; pv.style.zIndex = _origZ; pv.style.pointerEvents = '';
-    }
+    // Round 72.4: revert Round 72.3's opacity:0 trick — html2canvas
+    // respected it and rendered every pixel transparent (blank PDF).
+    // Base CSS (#printView at position:absolute;left:-9999px) is enough
+    // for off-screen capture; html2canvas paints it correctly.
+    const estBlob = await html2pdf().set(opts).from(pv).output('blob');
     const estBytes = new Uint8Array(await estBlob.arrayBuffer());
-    // 3/5 — Fetch boilerplate.
-    ut.textContent = '3/5 Fetching boilerplate…';
-    const bRes = await fetch(BOILERPLATE_URL);
-    const boilerBytes = bRes.ok ? new Uint8Array(await bRes.arrayBuffer()) : null;
-    // 4/5 — Merge with pdf-lib.
-    ut.textContent = '4/5 Merging PDFs…';
-    const { PDFDocument } = window.PDFLib;
-    const merged = await PDFDocument.create();
-    for (const bytes of [estBytes, boilerBytes].filter(Boolean)) {
-      const doc = await PDFDocument.load(bytes);
-      const pages = await merged.copyPages(doc, doc.getPageIndices());
-      pages.forEach(function(p){ merged.addPage(p); });
-    }
-    const mergedBytes = await merged.save();
-    // 5/5 — POST to lg-quotation-send (relays to WA group; doesn't care about prefix).
-    ut.textContent = '5/5 Sending to customer…';
+    // 3/4 — Encode to base64. Round 72.4: boilerplate.pdf (~50MB) is NOT
+    // merged for SE; the estimation page already includes T&C +
+    // signatures, and merging would push the request body past the
+    // browser's fetch upload limit (cause of prior "Failed to fetch").
+    ut.textContent = '3/4 Preparing PDF…';
     let binary = '';
     const chunk = 0x8000;
-    for (let i = 0; i < mergedBytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(null, mergedBytes.subarray(i, i + chunk));
+    for (let i = 0; i < estBytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, estBytes.subarray(i, i + chunk));
     }
     const pdfBase64 = btoa(binary);
+    console.log('SE submit payload —', estBytes.length, 'bytes PDF,', pdfBase64.length, 'bytes base64');
+    // 4/4 — POST to lg-quotation-send (relays to WA group).
+    ut.textContent = '4/4 Sending to customer…';
     const sendRes = await fetch(QT_SEND_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        phone:    currentLead['Phone'],
+        // Round 72.4: gviz can return numeric phone — coerce to string.
+        phone:    String(currentLead['Phone'] || '').trim(),
         name:     currentLead['Name'] || '',
         docNo:    docNo,
         total:    grandTotal(),
@@ -1642,15 +1630,9 @@ async function generateEstimatePdf() {
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Round 72.3: visible-during-capture (opacity 0) so html2canvas paints
-    // reliably across browsers — see submit flow for the same pattern.
-    const _origLeft = pv.style.left, _origOpacity = pv.style.opacity, _origZ = pv.style.zIndex;
-    pv.style.left = '0'; pv.style.opacity = '0'; pv.style.zIndex = '-1'; pv.style.pointerEvents = 'none';
-    try {
-      await html2pdf().set(opts).from(pv).save();
-    } finally {
-      pv.style.left = _origLeft; pv.style.opacity = _origOpacity; pv.style.zIndex = _origZ; pv.style.pointerEvents = '';
-    }
+    // Round 72.4: opacity:0 trick from Round 72.3 made html2canvas render
+    // transparent pixels (blank PDF). Off-screen position alone is enough.
+    await html2pdf().set(opts).from(pv).save();
     toast('✓ Estimate PDF generated (' + ref + ')', 'success');
   } catch (e) {
     toast('PDF failed: ' + (e.message || e), 'error');
