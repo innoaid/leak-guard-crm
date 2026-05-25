@@ -2483,8 +2483,9 @@ function openLeadDetail(lead) {
   const showEditAppt = (status === 'Site Visit Confirmed');
   document.getElementById('btnEditAppt').style.display = showEditAppt ? '' : 'none';
 
-  // Show "Generate Quotation" only if lead is in Pending QT
-  const showGenQt = (status === 'Pending QT');
+  // Round 72.2 — show "Generate Estimation" at SVC + Pending QT (admin
+  // issues estimations right after the site visit, before formal QT).
+  const showGenQt = (status === 'Pending QT' || status === 'Site Visit Confirmed');
   document.getElementById('btnGenQt').style.display = showGenQt ? '' : 'none';
 
   document.getElementById('leadModal').classList.add('open');
