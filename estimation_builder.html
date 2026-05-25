@@ -1281,24 +1281,37 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     const opts = {
       margin: 0,
       image: { type: 'jpeg', quality: 0.92 },
-      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
+      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: true },
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Round 72.6: position:fixed (not :absolute) for capture, so the
-    // element sits at viewport top regardless of how far the user has
-    // scrolled down the form. Previously position:absolute + top:0 was
-    // document-relative, putting the element ~2000px above the viewport
-    // when user scrolled to reach Submit, which produced blank captures.
+    // Round 72.7: switch back to position:absolute with scrollY offset
+    // (html2canvas has known issues with position:fixed elements that may
+    // have caused Round 72.6's blank capture). Drill into html2pdf's chained
+    // worker API to log canvas dimensions + a pixel sample, so we can tell
+    // exactly where the rendering is failing.
     const _pvOrigPos = pv.style.position;
     const _pvOrigLeft = pv.style.left;
     const _pvOrigTop = pv.style.top;
-    pv.style.position = 'fixed'; pv.style.left = '0'; pv.style.top = '0';
+    pv.style.position = 'absolute'; pv.style.left = '0'; pv.style.top = window.scrollY + 'px';
     console.log('SE submit capture — printView HTML chars:', pv.outerHTML.length,
-                'rect:', JSON.stringify(pv.getBoundingClientRect()));
+                'rect:', JSON.stringify(pv.getBoundingClientRect()),
+                'scrollY:', window.scrollY);
     let estBlob;
     try {
-      estBlob = await html2pdf().set(opts).from(pv).output('blob');
+      const worker = html2pdf().set(opts).from(pv);
+      await worker.toContainer();
+      await worker.toCanvas();
+      const canvas = worker.canvas;
+      let pixelSample = 'N/A';
+      try {
+        if (canvas && canvas.width > 100 && canvas.height > 100) {
+          pixelSample = Array.from(canvas.getContext('2d').getImageData(100, 100, 1, 1).data).join(',');
+        }
+      } catch (_e) { pixelSample = 'err:' + _e.message; }
+      console.log('SE submit capture — canvas:', canvas ? (canvas.width + 'x' + canvas.height) : 'NULL',
+                  'pixel(100,100):', pixelSample);
+      estBlob = await worker.toPdf().output('blob');
     } finally {
       pv.style.position = _pvOrigPos; pv.style.left = _pvOrigLeft; pv.style.top = _pvOrigTop;
     }
@@ -1638,19 +1651,33 @@ async function generateEstimatePdf() {
       image: { type: 'jpeg', quality: 0.92 },
       // Round v3.4: scale 1.5 (was 2) — keeps canvas area below iPad's 2^24 px²
       // limit even with 3 slabs × 2 photos.
-      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
+      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: true },
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Round 72.6: position:fixed for capture — see submit flow for why.
+    // Round 72.7: absolute + scrollY top, with canvas diagnostics.
+    // See submit flow for the full rationale.
     const _pvOrigPos = pv.style.position;
     const _pvOrigLeft = pv.style.left;
     const _pvOrigTop = pv.style.top;
-    pv.style.position = 'fixed'; pv.style.left = '0'; pv.style.top = '0';
+    pv.style.position = 'absolute'; pv.style.left = '0'; pv.style.top = window.scrollY + 'px';
     console.log('SE preview capture — printView HTML chars:', pv.outerHTML.length,
-                'rect:', JSON.stringify(pv.getBoundingClientRect()));
+                'rect:', JSON.stringify(pv.getBoundingClientRect()),
+                'scrollY:', window.scrollY);
     try {
-      await html2pdf().set(opts).from(pv).save();
+      const worker = html2pdf().set(opts).from(pv);
+      await worker.toContainer();
+      await worker.toCanvas();
+      const canvas = worker.canvas;
+      let pixelSample = 'N/A';
+      try {
+        if (canvas && canvas.width > 100 && canvas.height > 100) {
+          pixelSample = Array.from(canvas.getContext('2d').getImageData(100, 100, 1, 1).data).join(',');
+        }
+      } catch (_e) { pixelSample = 'err:' + _e.message; }
+      console.log('SE preview capture — canvas:', canvas ? (canvas.width + 'x' + canvas.height) : 'NULL',
+                  'pixel(100,100):', pixelSample);
+      await worker.toPdf().save();
     } finally {
       pv.style.position = _pvOrigPos; pv.style.left = _pvOrigLeft; pv.style.top = _pvOrigTop;
     }
