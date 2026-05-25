@@ -1293,7 +1293,13 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
                 'scrollY:', window.scrollY);
     let estBytes;
     try {
-      const canvas = await html2canvas(pv, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: true });
+      const SCALE = 1.5;
+      // Round 72.9: record Y-positions of section boundaries BEFORE capture
+      // so we can slice the canvas at logical breaks instead of fixed page heights.
+      const _pvRectTop = pv.getBoundingClientRect().top;
+      const breakYs = Array.from(pv.querySelectorAll('.pv-slab, .pv-grand, .pv-tnc, .pv-sig'))
+        .map(function(el){ return (el.getBoundingClientRect().top - _pvRectTop) * SCALE; });
+      const canvas = await html2canvas(pv, { scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: true });
       let pixelSample = 'N/A';
       try {
         if (canvas && canvas.width > 100 && canvas.height > 100) {
@@ -1301,23 +1307,28 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
         }
       } catch (_e) { pixelSample = 'err:' + _e.message; }
       console.log('SE submit capture — canvas:', canvas ? (canvas.width + 'x' + canvas.height) : 'NULL',
-                  'pixel(100,100):', pixelSample);
+                  'pixel(100,100):', pixelSample, 'breakYs:', breakYs.length);
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF('p', 'pt', 'a4');
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = canvas.height * pageW / canvas.width;
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      let heightLeft = imgH;
-      let y = 0;
-      pdf.addImage(imgData, 'JPEG', 0, y, imgW, imgH);
-      heightLeft -= pageH;
-      while (heightLeft > 0) {
-        y -= pageH;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, y, imgW, imgH);
-        heightLeft -= pageH;
+      const pxPerPage = pageH * canvas.width / pageW;
+      let yStart = 0, pageNum = 0;
+      while (yStart < canvas.height) {
+        const yMaxEnd = Math.min(yStart + pxPerPage, canvas.height);
+        let yEnd = yMaxEnd;
+        for (let i = breakYs.length - 1; i >= 0; i--) {
+          if (breakYs[i] > yStart + 100 && breakYs[i] <= yMaxEnd) { yEnd = breakYs[i]; break; }
+        }
+        const sliceH = yEnd - yStart;
+        const sub = document.createElement('canvas');
+        sub.width = canvas.width; sub.height = sliceH;
+        sub.getContext('2d').drawImage(canvas, 0, yStart, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        const subData = sub.toDataURL('image/jpeg', 0.92);
+        const subHpt = sliceH * pageW / canvas.width;
+        if (pageNum > 0) pdf.addPage();
+        pdf.addImage(subData, 'JPEG', 0, 0, pageW, subHpt);
+        yStart = yEnd; pageNum++;
       }
       estBytes = new Uint8Array(pdf.output('arraybuffer'));
     } finally {
@@ -1661,7 +1672,12 @@ async function generateEstimatePdf() {
                 'rect:', JSON.stringify(pv.getBoundingClientRect()),
                 'scrollY:', window.scrollY);
     try {
-      const canvas = await html2canvas(pv, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: true });
+      const SCALE = 1.5;
+      // Round 72.9: section-aware page slicing — see submit flow for rationale.
+      const _pvRectTop = pv.getBoundingClientRect().top;
+      const breakYs = Array.from(pv.querySelectorAll('.pv-slab, .pv-grand, .pv-tnc, .pv-sig'))
+        .map(function(el){ return (el.getBoundingClientRect().top - _pvRectTop) * SCALE; });
+      const canvas = await html2canvas(pv, { scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: true });
       let pixelSample = 'N/A';
       try {
         if (canvas && canvas.width > 100 && canvas.height > 100) {
@@ -1669,23 +1685,28 @@ async function generateEstimatePdf() {
         }
       } catch (_e) { pixelSample = 'err:' + _e.message; }
       console.log('SE preview capture — canvas:', canvas ? (canvas.width + 'x' + canvas.height) : 'NULL',
-                  'pixel(100,100):', pixelSample);
+                  'pixel(100,100):', pixelSample, 'breakYs:', breakYs.length);
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF('p', 'pt', 'a4');
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = canvas.height * pageW / canvas.width;
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      let heightLeft = imgH;
-      let y = 0;
-      pdf.addImage(imgData, 'JPEG', 0, y, imgW, imgH);
-      heightLeft -= pageH;
-      while (heightLeft > 0) {
-        y -= pageH;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, y, imgW, imgH);
-        heightLeft -= pageH;
+      const pxPerPage = pageH * canvas.width / pageW;
+      let yStart = 0, pageNum = 0;
+      while (yStart < canvas.height) {
+        const yMaxEnd = Math.min(yStart + pxPerPage, canvas.height);
+        let yEnd = yMaxEnd;
+        for (let i = breakYs.length - 1; i >= 0; i--) {
+          if (breakYs[i] > yStart + 100 && breakYs[i] <= yMaxEnd) { yEnd = breakYs[i]; break; }
+        }
+        const sliceH = yEnd - yStart;
+        const sub = document.createElement('canvas');
+        sub.width = canvas.width; sub.height = sliceH;
+        sub.getContext('2d').drawImage(canvas, 0, yStart, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        const subData = sub.toDataURL('image/jpeg', 0.92);
+        const subHpt = sliceH * pageW / canvas.width;
+        if (pageNum > 0) pdf.addPage();
+        pdf.addImage(subData, 'JPEG', 0, 0, pageW, subHpt);
+        yStart = yEnd; pageNum++;
       }
       pdf.save(filename);
     } finally {
