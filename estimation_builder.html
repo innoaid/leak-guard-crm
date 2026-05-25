@@ -182,8 +182,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   .slab-collapsed-mode{display:none}
 }
 
-/* PDF print view — captured by html2pdf, rendered off-DOM but PAINTED (Round v3.4 iPad fix) */
-#printView{position:fixed;top:0;left:0;width:794px;clip-path:inset(100%);pointer-events:none;background:#fff;font-family:'Inter',sans-serif;color:#111;z-index:-1}
+/* PDF print view — Round 72.1: off-screen at left:-9999px instead of clip-path,
+   because html2canvas respects clip-path and was producing empty PDFs. */
+#printView{position:absolute;top:0;left:-9999px;width:794px;background:#fff;font-family:'Inter',sans-serif;color:#111}
 .pv-page{width:794px;padding:46px 50px;background:#fff;page-break-after:always;display:flex;flex-direction:column}
 .pv-page:last-child{page-break-after:auto}
 .pv-band{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #2D2A6E;padding-bottom:14px;margin-bottom:18px}
