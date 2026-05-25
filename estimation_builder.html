@@ -663,15 +663,27 @@ async function handleIscannerFile(slabId, file) {
   ov.classList.add('on');
   ut.textContent = 'Compressing iScanner image…';
   try {
-    const dataUrl = await compressImage(file, 1280);
+    // Round 73.4: lower compression target (1024 not 1280) — smaller upload
+    // reduces HTTP/2 frame surface area; gpt-4o vision tiles are 512x512 so
+    // 1024px is a clean 2-tile width with no quality loss for OCR.
+    const dataUrl = await compressImage(file, 1024);
     ut.textContent = 'Analyzing measurements with AI… (5-10s)';
-    const res = await fetch(ISCANNER_URL, {
-      method: 'POST',
-      // text/plain to dodge CORS preflight (matches kanban/Apps Script pattern)
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: SHARED_SECRET, imageBase64: dataUrl })
-    });
-    if (!res.ok) throw new Error('Analyze HTTP ' + res.status);
+    const reqBody = JSON.stringify({ secret: SHARED_SECRET, imageBase64: dataUrl });
+    const reqHeaders = { 'Content-Type': 'text/plain' };
+    // Round 73.4: one-shot retry on transient network errors
+    // (ERR_HTTP2_PROTOCOL_ERROR, ERR_NETWORK_CHANGED, connection abort all
+    // surface as TypeError 'Failed to fetch'). Most are transient.
+    let res;
+    try {
+      res = await fetch(ISCANNER_URL, { method: 'POST', headers: reqHeaders, body: reqBody });
+    } catch (netErr) {
+      if (!(netErr instanceof TypeError)) throw netErr;
+      console.warn('iScanner fetch transient failure, retrying in 1.5s:', netErr.message);
+      ut.textContent = 'Network hiccup — retrying…';
+      await new Promise(function(r){ setTimeout(r, 1500); });
+      res = await fetch(ISCANNER_URL, { method: 'POST', headers: reqHeaders, body: reqBody });
+    }
+    if (!res.ok) throw new Error('Server error ' + res.status + ' — please retry');
     const data = await res.json();
     if (data.status !== 'ok' || !data.result) {
       throw new Error(data.message || 'Analysis failed');
@@ -710,7 +722,12 @@ async function handleIscannerFile(slabId, file) {
     toast('iScanner: ' + newUpturns.length + ' upturn group' + (newUpturns.length === 1 ? '' : 's') + fixHint, 'success');
   } catch (e) {
     console.error('iScanner failed:', e);
-    toast('iScanner analysis failed: ' + (e.message || e), 'error');
+    // Round 73.4: distinguish network errors (retry-friendly) from
+    // server/LLM errors (likely a real problem).
+    const msg = e instanceof TypeError
+      ? 'Network error — please try again in a moment'
+      : 'iScanner analysis failed: ' + (e.message || e);
+    toast(msg, 'error');
   } finally {
     ov.classList.remove('on');
   }
