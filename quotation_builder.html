@@ -681,11 +681,15 @@ async function generateZonePdf() {
 // ================================================================
 function buildQuotationView(acData) {
   // acData = { docNo, debtorCode, master, details } from /webhook/lg-quotation-create
+  // (or assembled locally in Round 71.2 SE mode — same shape either way)
   const m = acData.master || {};
   const d = acData.details || [];
   const subtotal = d.reduce((s, item) => s + (Number(item.qty || 0) * Number(item.unitPrice || 0)), 0);
   const dateStr = new Date().toLocaleDateString('en-MY', { day:'numeric', month:'long', year:'numeric' });
   const phone = (lead && lead['Phone']) || '';
+  // Round 71.2 — title + copy follow docType so SE renders "ESTIMATION" / "estimation"
+  const _docLabel = (docType === 'SE') ? 'ESTIMATION' : 'QUOTATION';
+  const _docNoun  = (docType === 'SE') ? 'estimation' : 'quotation';
 
   const rowsHtml = d.map((item, i) =>
     '<tr>' +
@@ -713,7 +717,7 @@ function buildQuotationView(acData) {
           '</div>' +
         '</div>' +
         '<div>' +
-          '<div class="qv-doc-title">QUOTATION</div>' +
+          '<div class="qv-doc-title">' + _docLabel + '</div>' +
           '<div class="qv-doc-meta">' +
             '<b>No:</b> ' + escapeHtml(acData.docNo) + '<br>' +
             '<b>Date:</b> ' + dateStr + '<br>' +
@@ -729,7 +733,7 @@ function buildQuotationView(acData) {
         '<div>Tel: ' + escapeHtml(phone) + '</div>' +
       '</div>' +
 
-      '<div class="qv-thank">Thank you for your inquiry. We are pleased to submit our quotation as below:</div>' +
+      '<div class="qv-thank">Thank you for your inquiry. We are pleased to submit our ' + _docNoun + ' as below:</div>' +
 
       '<div class="qv-svc-hdr">' + escapeHtml(m.description || 'Torch-On Membrane Waterproofing Services') + '</div>' +
 
@@ -761,7 +765,7 @@ function buildQuotationView(acData) {
           escapeHtml(COMPANY.bankName) + ': ' + escapeHtml(COMPANY.bankAcc) +
         '</div>' +
         '<div class="qv-foot-section" style="font-size:9px;color:#6b7280">' +
-          'This quotation is valid for 30 days from the date issued.' +
+          'This ' + _docNoun + ' is valid for 30 days from the date issued.' +
         '</div>' +
       '</div>' +
     '</div>'
@@ -854,7 +858,27 @@ async function generateAndSend() {
       if (seData.status !== 'ok' || !seData.docNo) {
         throw new Error('SE number failed: ' + (seData.message || JSON.stringify(seData).slice(0, 200)));
       }
-      acData = { success: true, docNo: seData.docNo };
+      // Round 71.2 — assemble the master + details shape locally so
+      // buildQuotationView renders a fully-populated estimation page.
+      acData = {
+        success: true,
+        docNo:   seData.docNo,
+        debtorCode: '',
+        master: {
+          debtorName: lead['Name'] || '',
+          address:    lead['Full Address'] || lead['Location'] || '',
+          description:'Torch-On Membrane Waterproofing Services',
+        },
+        details: lineItemsForApi.map(function(item){
+          return {
+            description:        item.desc,
+            furtherDescription: item.furtherDescription || '',
+            qty:                item.qty,
+            uom:                item.unit,
+            unitPrice:          item.price,
+          };
+        }),
+      };
       document.getElementById('qtNum').textContent = acData.docNo;
     } else {
       btn.textContent = '1/5 Creating in AutoCount…';
