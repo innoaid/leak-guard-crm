@@ -1312,10 +1312,14 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
       const pdf = new jsPDF('p', 'pt', 'a4');
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const pxPerPage = pageH * canvas.width / pageW;
+      // Round 72.10: pages 2+ get a 40pt top margin so content doesn't butt
+      // against the page edge. Page 1's spacing comes from .pv-page's own padding.
+      const TOP_MARGIN = 40;
       let yStart = 0, pageNum = 0;
       while (yStart < canvas.height) {
-        const yMaxEnd = Math.min(yStart + pxPerPage, canvas.height);
+        const availableH = pageNum === 0 ? pageH : (pageH - TOP_MARGIN);
+        const pxThisPage = availableH * canvas.width / pageW;
+        const yMaxEnd = Math.min(yStart + pxThisPage, canvas.height);
         let yEnd = yMaxEnd;
         for (let i = breakYs.length - 1; i >= 0; i--) {
           if (breakYs[i] > yStart + 100 && breakYs[i] <= yMaxEnd) { yEnd = breakYs[i]; break; }
@@ -1327,7 +1331,8 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
         const subData = sub.toDataURL('image/jpeg', 0.92);
         const subHpt = sliceH * pageW / canvas.width;
         if (pageNum > 0) pdf.addPage();
-        pdf.addImage(subData, 'JPEG', 0, 0, pageW, subHpt);
+        const dropY = pageNum === 0 ? 0 : TOP_MARGIN;
+        pdf.addImage(subData, 'JPEG', 0, dropY, pageW, subHpt);
         yStart = yEnd; pageNum++;
       }
       estBytes = new Uint8Array(pdf.output('arraybuffer'));
@@ -1690,10 +1695,13 @@ async function generateEstimatePdf() {
       const pdf = new jsPDF('p', 'pt', 'a4');
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const pxPerPage = pageH * canvas.width / pageW;
+      // Round 72.10: top margin on pages 2+ (see submit flow for rationale).
+      const TOP_MARGIN = 40;
       let yStart = 0, pageNum = 0;
       while (yStart < canvas.height) {
-        const yMaxEnd = Math.min(yStart + pxPerPage, canvas.height);
+        const availableH = pageNum === 0 ? pageH : (pageH - TOP_MARGIN);
+        const pxThisPage = availableH * canvas.width / pageW;
+        const yMaxEnd = Math.min(yStart + pxThisPage, canvas.height);
         let yEnd = yMaxEnd;
         for (let i = breakYs.length - 1; i >= 0; i--) {
           if (breakYs[i] > yStart + 100 && breakYs[i] <= yMaxEnd) { yEnd = breakYs[i]; break; }
@@ -1705,7 +1713,8 @@ async function generateEstimatePdf() {
         const subData = sub.toDataURL('image/jpeg', 0.92);
         const subHpt = sliceH * pageW / canvas.width;
         if (pageNum > 0) pdf.addPage();
-        pdf.addImage(subData, 'JPEG', 0, 0, pageW, subHpt);
+        const dropY = pageNum === 0 ? 0 : TOP_MARGIN;
+        pdf.addImage(subData, 'JPEG', 0, dropY, pageW, subHpt);
         yStart = yEnd; pageNum++;
       }
       pdf.save(filename);
