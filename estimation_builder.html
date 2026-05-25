@@ -686,7 +686,8 @@ async function handleIscannerFile(slabId, file) {
       const tot = Number(g.total_ft || 0);
       const sides = Array.isArray(g.sides_ft) ? g.sides_ft : [];
       if (!sides.length || tot <= 0) return;
-      if (g.label === 'X mark') {
+      // Round 73.2: prompt now outputs label 'X' (was 'X mark'). Keep both for safety.
+      if (g.label === 'X' || g.label === 'X mark') {
         xMarkInfo = { expr: sides.map(function(n){ return Number(n).toFixed(2); }).join(' + '), total_ft: tot };
         return;
       }
@@ -921,8 +922,9 @@ function renderSlabExpanded(s){
     ? '<div class="iscan-info">ℹ️ X-marked sides excluded from upturn: '+escapeHtml(s.iscannerXMarks.expr)+' = '+Number(s.iscannerXMarks.total_ft||0).toFixed(2)+' ft</div>'
     : '';
   measBody +=
-    '<button class="add-row iscan-btn" type="button" data-iscan-slab="'+s.id+'">📐 Auto-detect Upturns from iScanner photo</button>'+
+    '<button class="add-row iscan-btn" type="button" data-iscan-slab="'+s.id+'">📐 Auto-detect Upturns (mark sides with A, B, C…)</button>'+
     '<input type="file" accept="image/*" data-iscan-input="'+s.id+'" style="display:none">'+
+    '<div style="font-size:10px;color:var(--mt);margin:-4px 0 6px;line-height:1.4">Tip: on the iScanner photo, write a single letter (A, B, C…) on each side to group them. Write X to exclude. Leave blank for unmarked.</div>'+
     xMarkBanner +
     upturnsHtml +
     '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn')+'</button>';
