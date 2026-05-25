@@ -520,7 +520,7 @@ function parseIScanner(text) {
 function newSlab(name){
   return { id:uuid(), name:name||('Slab '+(state.slabs.length+1)), mode:'slab', floorSqft:0, upturns:[], extras:[], photos:[], manualFloor:[], collapsed:false };
 }
-function newUpturn(){ return { id:uuid(), label:'', runFt:0, upturnFt:0 }; }
+function newUpturn(){ return { id:uuid(), label:'', runFt:0, upturnFt:0, include:true }; }
 function newManualRow(){ return { id:uuid(), label:'', length:0, width:0 }; }
 function manualRowSqft(r){ return (Number(r.length)||0)*(Number(r.width)||0); }
 function slabManualFloorTotal(s){ return (s.manualFloor||[]).reduce(function(sum,r){ return sum+manualRowSqft(r); },0); }
@@ -538,7 +538,7 @@ function loadState(){
           return {
             id:s.id||uuid(), name:s.name||'Slab', mode:s.mode||'slab',
             floorSqft:Number(s.floorSqft)||0,
-            upturns:(s.upturns||[]).map(function(u){ return {id:u.id||uuid(),label:u.label||'',runFt:Number(u.runFt)||0,upturnFt:Number(u.upturnFt)||0}; }),
+            upturns:(s.upturns||[]).map(function(u){ return {id:u.id||uuid(),label:u.label||'',runFt:Number(u.runFt)||0,upturnFt:Number(u.upturnFt)||0,include:(u.include !== false)}; }),
             extras:(s.extras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; }),
             iscannerXMarks: s.iscannerXMarks || null,  // Round 73 — persist X-mark info across reloads
             photos:[],
@@ -570,7 +570,7 @@ function saveState(){
 // ========= COMPUTED =========
 function membraneRate(){ return Number(settings.membraneRate)||0; }
 function upturnSqft(u){ return (Number(u.runFt)||0)*(Number(u.upturnFt)||0); }
-function slabUpturnTotal(s){ return s.upturns.reduce(function(sum,u){ return sum+upturnSqft(u); },0); }
+function slabUpturnTotal(s){ return s.upturns.reduce(function(sum,u){ return sum + ((u.include === false) ? 0 : upturnSqft(u)); },0); }
 function slabFloorContribution(s){ return s.mode==='flashing' ? 0 : (Number(s.floorSqft)||0); }
 function slabSqft(s){ return slabFloorContribution(s)+slabUpturnTotal(s); }
 function slabMembraneRm(s){ return slabSqft(s)*membraneRate(); }
@@ -691,35 +691,23 @@ async function handleIscannerFile(slabId, file) {
     const result = data.result;
     if (result.error) throw new Error('Not an iScanner drawing (' + result.error + ')');
 
-    // Build new upturns array. X-mark group is excluded (info-only banner).
-    const newUpturns = [];
-    let xMarkInfo = null;
-    (result.groups || []).forEach(function(g){
-      const tot = Number(g.total_ft || 0);
-      const sides = Array.isArray(g.sides_ft) ? g.sides_ft : [];
-      if (!sides.length || tot <= 0) return;
-      // Round 73.2: prompt now outputs label 'X' (was 'X mark'). Keep both for safety.
-      if (g.label === 'X' || g.label === 'X mark') {
-        xMarkInfo = { expr: sides.map(function(n){ return Number(n).toFixed(2); }).join(' + '), total_ft: tot };
-        return;
-      }
-      const breakdown = sides.length > 1
-        ? ' (' + sides.map(function(n){ return Number(n).toFixed(2); }).join('+') + ')'
-        : '';
-      newUpturns.push({
+    // Round 73.5: one row per detected side, default upturnFt = 1.0,
+    // include = true. Inspector toggles + edits per row.
+    const sides = Array.isArray(result.sides) ? result.sides : [];
+    if (!sides.length) throw new Error('No sides detected in the iScanner drawing');
+    slab.upturns = sides.map(function(s, i){
+      return {
         id: uuid(),
-        label: String(g.label || 'Group') + breakdown,
-        runFt: tot,
-        upturnFt: 0
-      });
+        label: 'Side ' + (s.index || i + 1),
+        runFt: Number(s.length_ft) || 0,
+        upturnFt: 1.0,
+        include: true
+      };
     });
-
-    slab.upturns = newUpturns;
-    slab.iscannerXMarks = xMarkInfo;
+    slab.iscannerXMarks = null;  // clear any legacy X-mark banner state
     saveState();
     renderAll();
-    const fixHint = ' — review each row & correct if AI got it wrong';
-    toast('iScanner: ' + newUpturns.length + ' upturn group' + (newUpturns.length === 1 ? '' : 's') + fixHint, 'success');
+    toast('iScanner: ' + sides.length + ' sides detected — toggle ✓ to include, edit ft as needed', 'success');
   } catch (e) {
     console.error('iScanner failed:', e);
     // Round 73.4: distinguish network errors (retry-friendly) from
@@ -867,14 +855,17 @@ function renderSlabExpanded(s){
 
   let upturnsHtml = '';
   s.upturns.forEach(function(u){
+    // Round 73.5: include checkbox controls whether row counts toward upturn sqft
+    const includeChecked = (u.include !== false);
+    const rowStyle = includeChecked ? '' : ' style="opacity:0.45"';
     upturnsHtml +=
-      '<div class="row" data-upturn="'+u.id+'">'+
-        '<div class="row-label"><span>Section</span><button class="row-x" data-del-upturn="'+s.id+'|'+u.id+'" type="button" aria-label="Remove">×</button></div>'+
+      '<div class="row" data-upturn="'+u.id+'"'+rowStyle+'>'+
+        '<div class="row-label"><span><input type="checkbox" '+(includeChecked?'checked':'')+' data-up-include="'+s.id+'|'+u.id+'" style="margin-right:5px;vertical-align:middle"> Section</span><button class="row-x" data-del-upturn="'+s.id+'|'+u.id+'" type="button" aria-label="Remove">×</button></div>'+
         '<div class="row-fields">'+
           '<input type="text" placeholder="e.g. Left wall" value="'+escapeHtml(u.label)+'" data-up-field="label" data-slab="'+s.id+'" data-up="'+u.id+'">'+
           '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Run ft" value="'+(u.runFt||'')+'" data-up-field="runFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
           '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Upturn ft" value="'+(u.upturnFt||'')+'" data-up-field="upturnFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
-          '<span class="fld-out" data-up-out="'+u.id+'">= '+sqft(upturnSqft(u))+'</span>'+
+          '<span class="fld-out" data-up-out="'+u.id+'">'+(includeChecked ? '= '+sqft(upturnSqft(u)) : '<span style="text-decoration:line-through;color:#9ca3af">excluded</span>')+'</span>'+
         '</div>'+
       '</div>';
   });
@@ -934,15 +925,12 @@ function renderSlabExpanded(s){
   } else {
     measBody += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:5px">Linear sections ('+s.upturns.length+')</div>';
   }
-  // Round 73 — iScanner auto-detect button + X-mark info banner
-  const xMarkBanner = s.iscannerXMarks
-    ? '<div class="iscan-info">ℹ️ X-marked sides excluded from upturn: '+escapeHtml(s.iscannerXMarks.expr)+' = '+Number(s.iscannerXMarks.total_ft||0).toFixed(2)+' ft</div>'
-    : '';
+  // Round 73.5: no-marking flow. Upload unmarked iScanner photo →
+  // LLM enumerates sides → inspector toggles include + edits upturn ft per row.
   measBody +=
-    '<button class="add-row iscan-btn" type="button" data-iscan-slab="'+s.id+'">📐 Auto-detect Upturns (mark sides with A, B, C…)</button>'+
+    '<button class="add-row iscan-btn" type="button" data-iscan-slab="'+s.id+'">📐 Auto-detect Upturns from iScanner photo</button>'+
     '<input type="file" accept="image/*" data-iscan-input="'+s.id+'" style="display:none">'+
-    '<div style="font-size:10px;color:var(--mt);margin:-4px 0 6px;line-height:1.4">Tip: on the iScanner photo, write a single letter (A, B, C…) on each side to group them. Write X to exclude. Leave blank for unmarked.</div>'+
-    xMarkBanner +
+    '<div style="font-size:10px;color:var(--mt);margin:-4px 0 6px;line-height:1.4">Upload your iScanner photo as-is — no marking needed. Each side becomes a row you can toggle on/off and adjust.</div>'+
     upturnsHtml +
     '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn')+'</button>';
 
@@ -1190,6 +1178,18 @@ function wireSlabHandlers(list){
       const s = state.slabs.find(function(x){ return x.id===parts[0]; });
       if (!s) return;
       s.upturns = s.upturns.filter(function(u){ return u.id!==parts[1]; });
+      saveState(); renderAll();
+    };
+  });
+  // Round 73.5: include checkbox per upturn row
+  list.querySelectorAll('input[data-up-include]').forEach(function(cb){
+    cb.onchange = function(){
+      const parts = cb.dataset.upInclude.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      const u = s.upturns.find(function(x){ return x.id===parts[1]; });
+      if (!u) return;
+      u.include = !!cb.checked;
       saveState(); renderAll();
     };
   });
