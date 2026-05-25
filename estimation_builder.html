@@ -1285,21 +1285,22 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Round 72.5: move printView into the visible viewport for the
-    // duration of capture. The bare left:-9999px off-screen positioning
-    // produced blank captures for this complex flex-layout page (the
-    // mockup author had already discovered this — see their original
-    // clip-path comment). uploadOverlay is .on, so the user doesn't see
-    // the flash. No opacity tricks (those break html2canvas — see Round 72.4).
+    // Round 72.6: position:fixed (not :absolute) for capture, so the
+    // element sits at viewport top regardless of how far the user has
+    // scrolled down the form. Previously position:absolute + top:0 was
+    // document-relative, putting the element ~2000px above the viewport
+    // when user scrolled to reach Submit, which produced blank captures.
+    const _pvOrigPos = pv.style.position;
     const _pvOrigLeft = pv.style.left;
-    pv.style.left = '0'; pv.style.top = '0';
+    const _pvOrigTop = pv.style.top;
+    pv.style.position = 'fixed'; pv.style.left = '0'; pv.style.top = '0';
     console.log('SE submit capture — printView HTML chars:', pv.outerHTML.length,
                 'rect:', JSON.stringify(pv.getBoundingClientRect()));
     let estBlob;
     try {
       estBlob = await html2pdf().set(opts).from(pv).output('blob');
     } finally {
-      pv.style.left = _pvOrigLeft;
+      pv.style.position = _pvOrigPos; pv.style.left = _pvOrigLeft; pv.style.top = _pvOrigTop;
     }
     const estBytes = new Uint8Array(await estBlob.arrayBuffer());
     // 3/4 — Encode to base64. Round 72.4: boilerplate.pdf (~50MB) is NOT
@@ -1641,17 +1642,17 @@ async function generateEstimatePdf() {
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Round 72.5: move printView into viewport for capture. Bare
-    // left:-9999px produced blank PDFs for this complex page. Overlay
-    // covers the flash. No opacity tricks (would re-introduce Round 72.3 bug).
+    // Round 72.6: position:fixed for capture — see submit flow for why.
+    const _pvOrigPos = pv.style.position;
     const _pvOrigLeft = pv.style.left;
-    pv.style.left = '0'; pv.style.top = '0';
+    const _pvOrigTop = pv.style.top;
+    pv.style.position = 'fixed'; pv.style.left = '0'; pv.style.top = '0';
     console.log('SE preview capture — printView HTML chars:', pv.outerHTML.length,
                 'rect:', JSON.stringify(pv.getBoundingClientRect()));
     try {
       await html2pdf().set(opts).from(pv).save();
     } finally {
-      pv.style.left = _pvOrigLeft;
+      pv.style.position = _pvOrigPos; pv.style.left = _pvOrigLeft; pv.style.top = _pvOrigTop;
     }
     toast('✓ Estimate PDF generated (' + ref + ')', 'success');
   } catch (e) {
