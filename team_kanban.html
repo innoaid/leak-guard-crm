@@ -415,7 +415,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-actions">
       <button class="modal-btn modal-btn-info" id="btnEditAppt" style="display:none">Edit appointment</button>
-      <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Quotation</button>
+      <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Estimation</button>
       <button class="modal-btn modal-btn-info" id="btnEditDetails">✏️ Edit details</button>
       <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
       <button class="modal-btn modal-btn-info" id="btnArchiveLead" style="background:#FEE2E2;color:#991B1B">🗄 Archive</button>
@@ -3433,7 +3433,7 @@ document.getElementById('editLeadModal').addEventListener('click', function(e){
 document.getElementById('btnGenQt').onclick = function() {
   if (!currentModalLead) return;
   const phone = currentModalLead['Phone'];
-  window.open('quotation_builder.html?phone=' + encodeURIComponent(phone), '_blank');
+  window.open('quotation_builder.html?phone=' + encodeURIComponent(phone) + '&type=estimation', '_blank');
 };
 document.getElementById('leadModal').addEventListener('click', function(e){
   if (e.target.id === 'leadModal') closeLeadDetail();
