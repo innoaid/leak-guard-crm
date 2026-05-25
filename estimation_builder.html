@@ -1285,11 +1285,22 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Round 72.4: revert Round 72.3's opacity:0 trick — html2canvas
-    // respected it and rendered every pixel transparent (blank PDF).
-    // Base CSS (#printView at position:absolute;left:-9999px) is enough
-    // for off-screen capture; html2canvas paints it correctly.
-    const estBlob = await html2pdf().set(opts).from(pv).output('blob');
+    // Round 72.5: move printView into the visible viewport for the
+    // duration of capture. The bare left:-9999px off-screen positioning
+    // produced blank captures for this complex flex-layout page (the
+    // mockup author had already discovered this — see their original
+    // clip-path comment). uploadOverlay is .on, so the user doesn't see
+    // the flash. No opacity tricks (those break html2canvas — see Round 72.4).
+    const _pvOrigLeft = pv.style.left;
+    pv.style.left = '0'; pv.style.top = '0';
+    console.log('SE submit capture — printView HTML chars:', pv.outerHTML.length,
+                'rect:', JSON.stringify(pv.getBoundingClientRect()));
+    let estBlob;
+    try {
+      estBlob = await html2pdf().set(opts).from(pv).output('blob');
+    } finally {
+      pv.style.left = _pvOrigLeft;
+    }
     const estBytes = new Uint8Array(await estBlob.arrayBuffer());
     // 3/4 — Encode to base64. Round 72.4: boilerplate.pdf (~50MB) is NOT
     // merged for SE; the estimation page already includes T&C +
@@ -1630,9 +1641,18 @@ async function generateEstimatePdf() {
       jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
-    // Round 72.4: opacity:0 trick from Round 72.3 made html2canvas render
-    // transparent pixels (blank PDF). Off-screen position alone is enough.
-    await html2pdf().set(opts).from(pv).save();
+    // Round 72.5: move printView into viewport for capture. Bare
+    // left:-9999px produced blank PDFs for this complex page. Overlay
+    // covers the flash. No opacity tricks (would re-introduce Round 72.3 bug).
+    const _pvOrigLeft = pv.style.left;
+    pv.style.left = '0'; pv.style.top = '0';
+    console.log('SE preview capture — printView HTML chars:', pv.outerHTML.length,
+                'rect:', JSON.stringify(pv.getBoundingClientRect()));
+    try {
+      await html2pdf().set(opts).from(pv).save();
+    } finally {
+      pv.style.left = _pvOrigLeft;
+    }
     toast('✓ Estimate PDF generated (' + ref + ')', 'success');
   } catch (e) {
     toast('PDF failed: ' + (e.message || e), 'error');
