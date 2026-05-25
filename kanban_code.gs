@@ -62,6 +62,7 @@ function doPost(e) {
       case 'clearPaymentVerification': return handleClearPaymentVerification(body);  // round 64 — account tick verify
       case 'updateLastAdminMsg': return handleUpdateLastAdminMsg(body);  // round 68 — admin-msg capture from Parse & Route
       case 'nextSeNumber':       return handleNextSeNumber(body);  // round 71 — atomic SE-MMYY-NNN counter for Estimation Builder
+      case 'uploadEstimationPhoto': return handleUploadEstimationPhoto(body);  // round 72 — Drive upload from Estimation Builder
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -561,6 +562,69 @@ function handleClearPaymentVerification(body) {
 }
 
 // Run ONCE from Apps Script editor to add the two new columns.
+// Round 72 — one-time creation of the Drive folder for Estimation photos.
+// Idempotent: looks for an existing folder by name, stores ID in
+// ScriptProperties so handleUploadEstimationPhoto can find it without
+// hardcoding. Run ONCE from the Apps Script editor.
+function bootstrapEstimationPhotosFolder() {
+  const props = PropertiesService.getScriptProperties();
+  const existingId = props.getProperty('EST_PHOTOS_FOLDER_ID');
+  if (existingId) {
+    try {
+      const f = DriveApp.getFolderById(existingId);
+      Logger.log('bootstrapEstimationPhotosFolder: existing folder found — ' + f.getName() + ' (' + existingId + ')');
+      return;
+    } catch (_e) {
+      Logger.log('bootstrapEstimationPhotosFolder: stored ID no longer valid, recreating');
+    }
+  }
+  const name = 'Leak Guard Estimation Photos';
+  const it = DriveApp.getFoldersByName(name);
+  let folder;
+  if (it.hasNext()) {
+    folder = it.next();
+    Logger.log('bootstrapEstimationPhotosFolder: reusing existing folder named ' + name);
+  } else {
+    folder = DriveApp.createFolder(name);
+    Logger.log('bootstrapEstimationPhotosFolder: created folder ' + name);
+  }
+  props.setProperty('EST_PHOTOS_FOLDER_ID', folder.getId());
+  Logger.log('bootstrapEstimationPhotosFolder: stored ID ' + folder.getId());
+}
+
+// Round 72 — accept a base64 dataURL photo from the Estimation Builder,
+// save into the Drive folder, return a shareable URL for audit. Best-effort:
+// caller fires-and-forgets, PDF render does not depend on this returning.
+function handleUploadEstimationPhoto(body) {
+  if (!body.phone || !body.dataUrl) {
+    return jsonResponse({status: 'error', message: 'phone and dataUrl required'});
+  }
+  const props = PropertiesService.getScriptProperties();
+  const folderId = props.getProperty('EST_PHOTOS_FOLDER_ID');
+  if (!folderId) {
+    return jsonResponse({status: 'error', message: 'EST_PHOTOS_FOLDER_ID not set — run bootstrapEstimationPhotosFolder() once'});
+  }
+  try {
+    const folder = DriveApp.getFolderById(folderId);
+    // dataUrl format: "data:image/jpeg;base64,<base64>"
+    const comma = String(body.dataUrl).indexOf(',');
+    if (comma < 0) return jsonResponse({status: 'error', message: 'malformed dataUrl'});
+    const meta = String(body.dataUrl).slice(0, comma);
+    const b64 = String(body.dataUrl).slice(comma + 1);
+    const mime = (meta.match(/data:([^;]+);/) || [])[1] || 'image/jpeg';
+    const ext = mime.indexOf('png') >= 0 ? 'png' : 'jpg';
+    const ts = Utilities.formatDate(new Date(Date.now() + 8*60*60*1000), 'UTC', 'yyyyMMdd-HHmmss');
+    const slabPart = String(body.slabName || 'slab').replace(/[^A-Za-z0-9-_]+/g, '-').slice(0, 30);
+    const filename = String(body.phone) + '_' + slabPart + '_' + ts + '.' + ext;
+    const blob = Utilities.newBlob(Utilities.base64Decode(b64), mime, filename);
+    const file = folder.createFile(blob);
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_e) {}
+    return jsonResponse({status: 'ok', url: file.getUrl(), id: file.getId()});
+  } catch (e) {
+    return jsonResponse({status: 'error', message: String(e && e.message || e)});
+  }
+}
+
 // Round 71 — one-time creation of the Counters tab + seeding the SE row.
 // Idempotent: skips if tab exists, only seeds SE row if missing.
 function bootstrapCountersSheet() {

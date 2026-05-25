@@ -1,0 +1,1798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Estimation Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;min-height:100vh;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:760px;margin:0 auto;padding:14px;padding-bottom:140px}
+
+.demo-banner{background:#FEF3C7;border:.5px solid #FDE68A;color:#92400E;padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:10px;text-align:center}
+
+.hdr{background:var(--pri);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.hdr-l{flex:1;min-width:0}
+.hdr-t{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
+.hdr-s{font-size:11px;opacity:.78;margin-top:3px}
+.hdr-gear{background:rgba(255,255,255,.14);color:#fff;border:none;width:38px;height:38px;border-radius:8px;font-size:18px;cursor:pointer;font-family:inherit;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.hdr-gear:active{background:rgba(255,255,255,.28)}
+
+/* STEP zones (Round v3.4) */
+.step{background:#fff;border-radius:10px;margin-bottom:11px;border:.5px solid var(--bdr);overflow:hidden}
+.step-h{padding:11px 16px;background:#FAFAFA;border-bottom:.5px solid var(--bdr);display:flex;align-items:center;gap:10px}
+.step-num{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:var(--pri);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.step-title{font-size:13px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:.4px}
+.step-summary{margin-left:auto;font-size:11px;color:var(--mt);font-weight:600;text-align:right}
+.step-body{padding:14px 16px}
+
+.section-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mt);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+
+.cust-grid{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px;line-height:1.5}
+.cust-grid dt{color:var(--mt);font-weight:500}
+.cust-grid dd{color:var(--ink);font-weight:600}
+
+.field{margin-bottom:12px}
+.field:last-child{margin-bottom:0}
+.field-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--mt);margin-bottom:5px;display:block}
+.field-required:after{content:'*';color:var(--err);margin-left:3px}
+.input,.textarea,.select{width:100%;padding:10px 12px;border:.5px solid #D1D5DB;border-radius:6px;font-size:15px;font-family:inherit;background:#fff;color:var(--ink)}
+.input:focus,.textarea:focus,.select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(29,158,117,.12)}
+.textarea{resize:vertical;min-height:64px;line-height:1.4}
+.field-hint{font-size:11px;color:var(--mt);margin-top:4px}
+.input-with-suffix{position:relative}
+.input-with-suffix .suffix{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--mt);pointer-events:none}
+.input-with-suffix .input{padding-right:42px}
+
+/* SLAB CARD */
+.slab{background:#FAFAFA;border:.5px solid var(--bdr);border-radius:10px;margin-bottom:11px;overflow:hidden}
+.slab.expanded{padding:12px 14px}
+
+/* Collapsed slab — single row only (Round v3.4) */
+.slab.collapsed{padding:0;cursor:pointer}
+.slab.collapsed:active{background:#F0FDF4}
+.slab-collapsed-row{display:flex;align-items:center;gap:10px;padding:11px 14px}
+.slab-collapsed-name{flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slab-collapsed-mode{font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0;background:#fff;padding:2px 7px;border-radius:10px;border:.5px solid var(--bdr)}
+.slab-collapsed-area{font-size:12px;color:var(--mt);font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+.slab-collapsed-total{font-size:13px;color:var(--acc);font-weight:800;font-variant-numeric:tabular-nums;flex-shrink:0}
+.slab-collapsed-chev{color:var(--mt);font-size:14px;flex-shrink:0;margin-left:2px}
+
+.slab-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px}
+.slab-name{flex:1;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:14px;font-weight:600;font-family:inherit;background:#fff}
+.slab-collapse-btn{background:#fff;border:.5px solid var(--bdr);color:var(--mt);width:32px;height:32px;border-radius:5px;font-size:14px;cursor:pointer;font-family:inherit;flex-shrink:0;font-weight:700}
+.slab-remove{padding:6px 10px;background:#FEE2E2;color:#991B1B;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
+.slab-mode-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.slab-mode-row label{font-size:11px;font-weight:600;color:var(--mt);text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}
+.slab-mode-row select{flex:1;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;background:#fff;font-family:inherit}
+
+/* Sub-zones inside expanded slab (Round v3.4) */
+.subzone{background:#fff;border:.5px solid var(--bdr);border-radius:8px;margin-top:10px;overflow:hidden}
+.subzone-h{padding:9px 12px;background:#FFF;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.subzone-h.static{cursor:default}
+.subzone-h:not(.static):active{background:#F9FAFB}
+.subzone-h-icon{font-size:14px;flex-shrink:0}
+.subzone-h-title{flex:1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--ink)}
+.subzone-h-summary{font-size:11px;color:var(--mt);font-weight:600;flex-shrink:0;margin-right:6px}
+.subzone-h-chev{color:var(--mt);font-size:12px;flex-shrink:0}
+.subzone-body{padding:0 12px 11px 12px;border-top:.5px solid #F3F4F6}
+.subzone-body.tight{padding-top:9px}
+
+/* PHOTOS */
+.slab-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.photo-slot{position:relative;aspect-ratio:1;border:1.5px solid #D1D5DB;border-radius:8px;background:#fff;overflow:hidden}
+.photo-slot img{width:100%;height:100%;object-fit:cover}
+.photo-slot-del{position:absolute;top:5px;right:5px;background:rgba(220,38,38,.94);color:#fff;border:none;border-radius:6px;width:26px;height:26px;font-size:14px;cursor:pointer;font-family:inherit;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center}
+.photo-slot-meta{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.65);color:#fff;font-size:9px;padding:2px 5px;font-weight:500}
+
+/* Photo upload buttons — split into Camera + Album (Round v3.4) */
+.photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.photo-btn{padding:9px;border:.5px dashed #D1D5DB;border-radius:8px;background:#fff;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;position:relative}
+.photo-btn .ico{font-size:16px}
+.photo-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.photo-btn:active{background:#F0FDF4;border-color:var(--acc);color:var(--acc)}
+
+/* UPTURN / EXTRAS row */
+.row{display:grid;grid-template-columns:1fr;gap:5px;padding:8px;background:#FAFAFA;border-radius:6px;margin-bottom:6px;border:.5px solid #F3F4F6}
+.row .row-label{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
+.row-x{background:none;border:none;color:#dc2626;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;padding:0 5px}
+.row-fields{display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:5px;align-items:center}
+.row-fields .fld-out{font-size:13px;font-weight:700;color:var(--acc);text-align:right;padding:0 4px}
+.row-fields input{padding:7px 9px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;font-family:inherit;background:#fff;width:100%;min-width:0}
+.row-fields input:focus{outline:none;border-color:var(--acc)}
+.extras-fields{display:grid;grid-template-columns:1.5fr .8fr .8fr 1fr auto;gap:5px;align-items:center}
+.extras-fields input{padding:7px 9px;border:.5px solid #D1D5DB;border-radius:5px;font-size:13px;font-family:inherit;background:#fff;width:100%;min-width:0}
+.extras-fields .fld-out{font-size:13px;font-weight:700;color:var(--acc);text-align:right;padding:0 4px}
+
+.add-row{padding:8px;border:.5px dashed #D1D5DB;border-radius:6px;background:#fff;color:var(--mt);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;width:100%;margin-top:4px}
+.add-row:active{background:#F0FDF4;border-color:var(--acc);color:var(--acc)}
+
+.chip-row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px}
+.chip{padding:5px 10px;background:#EFF6FF;color:#1E3A8A;border:.5px solid #BFDBFE;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.chip:active{background:#DBEAFE}
+
+.slab-subtotal{margin-top:11px;padding:9px 12px;background:#F0FDF4;border:.5px solid #BBF7D0;border-radius:7px;font-size:12px;color:#065F46}
+.slab-subtotal .line{display:flex;justify-content:space-between;line-height:1.6}
+.slab-subtotal .line.total{font-size:13px;font-weight:800;border-top:.5px solid #BBF7D0;margin-top:4px;padding-top:5px}
+
+.add-slab-btn{padding:11px;border:.5px dashed var(--acc);border-radius:8px;background:#F0FDF4;color:var(--acc);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;width:100%;margin-top:6px}
+
+/* GRAND CARD — per-slab blocks (Round v3.4) */
+.grand-card{background:linear-gradient(135deg,#2D2A6E,#1D2862);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:11px}
+.grand-card-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;opacity:.7;margin-bottom:9px}
+.grand-block{margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.16)}
+.grand-block:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.grand-block-h{font-size:12px;font-weight:800;margin-bottom:5px;color:#fff}
+.grand-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.65;opacity:.9}
+.grand-line.indent{padding-left:9px;font-size:11.5px;opacity:.82}
+.grand-line.subtotal{font-weight:800;opacity:1;margin-top:3px;border-top:.5px dashed rgba(255,255,255,.3);padding-top:4px}
+.grand-total-line{display:flex;justify-content:space-between;font-size:18px;font-weight:800;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.3)}
+.grand-total-line .l-val{font-variant-numeric:tabular-nums}
+
+.submit-bar{position:fixed;bottom:0;left:0;right:0;padding:10px 14px;background:#fff;border-top:.5px solid var(--bdr);box-shadow:0 -2px 10px rgba(0,0,0,.05);z-index:50}
+.submit-bar-inner{max-width:760px;margin:0 auto;display:flex;gap:8px}
+.btn-submit{flex:1;padding:14px;border:none;border-radius:8px;background:var(--acc);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-submit:disabled{background:#9CA3AF;cursor:not-allowed}
+.btn-clear{padding:14px 16px;border:.5px solid var(--bdr);border-radius:8px;background:#fff;color:var(--mt);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+
+.toast-container{position:fixed;top:14px;left:14px;right:14px;display:flex;flex-direction:column;gap:8px;z-index:1000;pointer-events:none}
+.toast{padding:11px 14px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);text-align:center}
+.toast.success{background:#10B981}.toast.error{background:#DC2626}.toast.info{background:#3B82F6}
+
+.upload-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:200;flex-direction:column;gap:12px;color:#fff;font-size:14px;font-weight:600}
+.upload-overlay.on{display:flex}
+.spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Settings modal (Round v3.4) */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;z-index:300;padding:30px 12px;overflow-y:auto}
+.modal-overlay.on{display:flex}
+.modal{background:#fff;border-radius:12px;width:100%;max-width:560px;padding:0;box-shadow:0 8px 28px rgba(0,0,0,.25);max-height:calc(100vh - 60px);display:flex;flex-direction:column;overflow:hidden}
+.modal-h{padding:14px 18px;background:var(--pri);color:#fff;display:flex;justify-content:space-between;align-items:center}
+.modal-h-t{font-size:15px;font-weight:800}
+.modal-x{background:rgba(255,255,255,.14);border:none;color:#fff;width:30px;height:30px;border-radius:6px;font-size:16px;cursor:pointer;font-family:inherit;font-weight:700}
+.modal-body{padding:14px 18px;overflow-y:auto;flex:1}
+.modal-foot{padding:11px 18px;border-top:.5px solid var(--bdr);background:#FAFAFA;display:flex;justify-content:space-between;gap:8px}
+.modal-foot .left{display:flex;gap:8px}
+.btn-secondary{padding:10px 14px;background:#fff;color:var(--mt);border:.5px solid var(--bdr);border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-primary{padding:10px 16px;background:var(--acc);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-warn{padding:10px 14px;background:#FEF3C7;color:#92400E;border:.5px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+
+.settings-section{margin-bottom:16px}
+.settings-section-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+.settings-section-h .add-row{width:auto;padding:5px 10px;margin-top:0;font-size:11px}
+.preset-tbl{display:grid;gap:6px}
+.preset-row{display:grid;grid-template-columns:1.5fr .7fr .7fr 1fr auto;gap:5px;align-items:center;padding:7px;background:#FAFAFA;border:.5px solid var(--bdr);border-radius:6px}
+.preset-row input{padding:6px 8px;border:.5px solid #D1D5DB;border-radius:5px;font-size:12px;font-family:inherit;background:#fff;width:100%;min-width:0}
+.preset-row input:focus{outline:none;border-color:var(--acc)}
+.preset-row .row-x{padding:0 6px;font-size:14px}
+@media (max-width:480px){
+  .preset-row{grid-template-columns:1fr 1fr 1fr 1fr auto;font-size:11px}
+}
+
+@media (max-width: 480px){
+  .row-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:12px}
+  .row-fields .fld-out{font-size:12px}
+  .extras-fields{grid-template-columns:1fr 1fr 1fr auto;font-size:11px}
+  .extras-fields input[data-extra-field="unit"], .extras-fields input[data-site-field="unit"]{display:none}
+  .slab-collapsed-mode{display:none}
+}
+
+/* PDF print view — captured by html2pdf, rendered off-DOM but PAINTED (Round v3.4 iPad fix) */
+#printView{position:fixed;top:0;left:0;width:794px;clip-path:inset(100%);pointer-events:none;background:#fff;font-family:'Inter',sans-serif;color:#111;z-index:-1}
+.pv-page{width:794px;padding:46px 50px;background:#fff;page-break-after:always;display:flex;flex-direction:column}
+.pv-page:last-child{page-break-after:auto}
+.pv-band{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #2D2A6E;padding-bottom:14px;margin-bottom:18px}
+.pv-band-l .pv-brand{font-size:24px;font-weight:800;color:#2D2A6E;letter-spacing:.3px}
+.pv-band-l .pv-brand-sub{font-size:11px;color:#6b7280;margin-top:3px;font-weight:500}
+.pv-band-r{text-align:right;font-size:11px;color:#333;line-height:1.7}
+.pv-band-r b{font-weight:700;color:#111}
+.pv-title{font-size:20px;font-weight:800;color:#2D2A6E;letter-spacing:.5px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #e5e7eb}
+.pv-cust{font-size:12px;line-height:1.85;margin-bottom:18px;background:#FAFAFA;border:.5px solid #e5e7eb;border-radius:8px;padding:12px 16px}
+.pv-cust .pv-cust-row{display:flex}
+.pv-cust .pv-cust-row .lbl{color:#6b7280;font-weight:600;width:110px;flex-shrink:0;text-transform:uppercase;font-size:10px;letter-spacing:.3px;padding-top:3px}
+.pv-cust .pv-cust-row .val{color:#111;font-weight:600;font-size:13px}
+
+.pv-slab{margin-bottom:20px;page-break-inside:avoid;border:.5px solid #e5e7eb;border-radius:8px;padding:14px 16px;background:#fff}
+.pv-slab-h{font-size:14px;font-weight:800;color:#111;margin-bottom:10px;padding-bottom:7px;border-bottom:.5px solid #e5e7eb;display:flex;justify-content:space-between;align-items:baseline}
+.pv-slab-h .pv-slab-mode{font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
+.pv-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px}
+.pv-photo{border:.5px solid #e5e7eb;border-radius:6px;overflow:hidden;background:#fff}
+.pv-photo img{width:100%;height:auto;max-height:230px;object-fit:cover;display:block}
+.pv-section{margin-bottom:9px}
+.pv-section-h{font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.pv-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.pv-tbl td{padding:5px 7px;border-bottom:.5px solid #f3f4f6;vertical-align:top}
+.pv-tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.pv-tbl tr:last-child td{border-bottom:none}
+.pv-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.7;padding:2px 0}
+.pv-line.sub{font-weight:700;border-top:.5px solid #e5e7eb;padding-top:6px;margin-top:5px}
+
+/* PDF grand summary — per-slab blocks (Round v3.4) */
+.pv-grand{margin-top:16px;border:1.5px solid #1D9E75;border-radius:10px;padding:14px 18px;background:#F0FDF4}
+.pv-grand-h{font-size:11px;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.pv-grand-block{margin-bottom:8px;padding-bottom:7px;border-bottom:.5px dashed #BBF7D0}
+.pv-grand-block:last-of-type{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.pv-grand-block-h{font-size:12px;font-weight:800;color:#065F46;margin-bottom:3px}
+.pv-grand-line{display:flex;justify-content:space-between;font-size:11.5px;line-height:1.65;color:#065F46}
+.pv-grand-line.indent{padding-left:9px;font-size:11px;color:#047857}
+.pv-grand-line.subtotal{font-weight:800;border-top:.5px solid #BBF7D0;margin-top:3px;padding-top:4px}
+.pv-grand-total{display:flex;justify-content:space-between;font-size:18px;font-weight:800;border-top:1.5px solid #064E3B;margin-top:9px;padding-top:8px;color:#064E3B}
+
+.pv-notes{font-size:11px;line-height:1.6;background:#FFFBEB;border:.5px solid #FDE68A;border-radius:8px;padding:11px 14px;margin-top:14px;color:#92400E;white-space:pre-wrap}
+.pv-notes-h{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#92400E;margin-bottom:5px}
+.pv-tnc{margin-top:18px;font-size:10px;line-height:1.7;color:#444}
+.pv-tnc-h{font-size:11px;font-weight:800;color:#111;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px}
+.pv-tnc ul{padding-left:18px;margin:0}
+.pv-tnc li{margin-bottom:2px}
+.pv-sig{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:32px;font-size:11px}
+.pv-sig-block .lbl{font-size:9px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.3px;margin-bottom:32px}
+.pv-sig-block .line{border-top:1px solid #111;padding-top:5px}
+.pv-sig-block .name{font-weight:700;font-size:12px;color:#111}
+.pv-sig-block .date{color:#6b7280;margin-top:3px;font-size:10px}
+.pv-foot{margin-top:24px;font-size:9px;color:#9ca3af;text-align:center;border-top:.5px solid #e5e7eb;padding-top:8px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="hdr">
+    <div class="hdr-l">
+      <div class="hdr-t">📐 Site Visit + On-Spot Estimate</div>
+      <div class="hdr-s">Measure with iScanner → enter here → estimate generates live</div>
+    </div>
+    <button class="hdr-gear" id="btnSettings" type="button" aria-label="Settings">⚙</button>
+  </div>
+
+  <!-- STEP 1 — Inspector + Customer (read-only customer info merged in) -->
+  <div class="step">
+    <div class="step-h">
+      <span class="step-num">1</span>
+      <span class="step-title">Inspector</span>
+      <span class="step-summary" id="step1Summary">Pick your name to begin</span>
+    </div>
+    <div class="step-body">
+      <div class="field">
+        <label class="field-label field-required">Submitted by</label>
+        <select class="select" id="fSubmittedBy">
+          <option value="">— Select your name —</option>
+          <option>William (KL)</option>
+          <option>Osment (JB)</option>
+          <option>Alvin</option>
+          <option>Ken</option>
+          <option>Other (specify in notes)</option>
+        </select>
+      </div>
+      <div class="section-h" style="margin-top:14px;margin-bottom:6px">Customer</div>
+      <dl class="cust-grid" id="custGrid">
+        <dt>Loading…</dt><dd>—</dd>
+      </dl>
+    </div>
+  </div>
+
+  <!-- STEP 2 — Slabs -->
+  <div class="step">
+    <div class="step-h">
+      <span class="step-num">2</span>
+      <span class="step-title">Slabs / Areas</span>
+      <span class="step-summary" id="step2Summary">No slabs yet</span>
+    </div>
+    <div class="step-body">
+      <div id="slabsList"></div>
+      <button class="add-slab-btn" id="btnAddSlabBig" type="button">+ Add another slab</button>
+    </div>
+  </div>
+
+  <!-- STEP 3 — Additional Costs (was "Site-wide additional services") -->
+  <div class="step">
+    <div class="step-h">
+      <span class="step-num">3</span>
+      <span class="step-title">Additional Costs</span>
+      <span class="step-summary" id="step3Summary">None added</span>
+    </div>
+    <div class="step-body">
+      <div class="chip-row" id="siteChips"></div>
+      <div id="siteExtrasList"></div>
+      <button class="add-row" id="btnAddSiteExtra" type="button">+ Add additional cost</button>
+    </div>
+  </div>
+
+  <!-- STEP 4 — Notes & Submit -->
+  <div class="step">
+    <div class="step-h">
+      <span class="step-num">4</span>
+      <span class="step-title">Notes &amp; Estimate</span>
+      <span class="step-summary" id="step4Summary"></span>
+    </div>
+    <div class="step-body">
+      <div class="field">
+        <label class="field-label">Notes (optional)</label>
+        <textarea class="textarea" id="fNotes" rows="2" placeholder="Concrete cracked at NE corner, recommend full re-screed before membrane…"></textarea>
+      </div>
+
+      <!-- Grand total -->
+      <div class="grand-card" id="grandCard">
+        <div class="grand-card-h">Estimated Total</div>
+        <div id="grandBlocks"></div>
+        <div class="grand-total-line"><span class="l-label">TOTAL</span><span class="l-val" id="gtTotal">RM 0.00</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="submit-bar">
+  <div class="submit-bar-inner">
+    <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
+    <button class="btn-clear" id="btnPdf" type="button" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E">📄 Estimate PDF</button>
+    <button class="btn-submit" id="btnSubmit" type="button" disabled>Submit Visit</button>
+  </div>
+</div>
+
+<div id="printView"></div>
+
+<div class="toast-container" id="toastContainer"></div>
+<div class="upload-overlay" id="uploadOverlay"><div class="spinner"></div><div id="uploadText">Compressing photos…</div></div>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div class="modal-h-t">⚙ Default Pricing & Presets</div>
+      <button class="modal-x" id="settingsClose" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <div class="settings-section-h"><span>Membrane installation rate</span></div>
+        <div class="input-with-suffix">
+          <input class="input" type="number" inputmode="decimal" step="0.10" min="0" id="setMembraneRate" placeholder="8.50">
+          <span class="suffix">RM / sqft</span>
+        </div>
+        <div class="field-hint">Applies to all slabs. Inspector cannot override per-slab in v3.4.</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-h">
+          <span>Per-slab service presets</span>
+          <button class="add-row" id="setAddSlabPreset" type="button">+ Add</button>
+        </div>
+        <div class="preset-tbl" id="setSlabPresetsList"></div>
+        <div class="field-hint">Shown as quick-add chips inside each slab card.</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-h">
+          <span>Additional cost presets (site-wide)</span>
+          <button class="add-row" id="setAddSitePreset" type="button">+ Add</button>
+        </div>
+        <div class="preset-tbl" id="setSitePresetsList"></div>
+        <div class="field-hint">Shown as quick-add chips in the Additional Costs section.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <div class="left">
+        <button class="btn-warn" id="settingsReset" type="button">Reset to defaults</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" id="settingsCancel" type="button">Cancel</button>
+        <button class="btn-primary" id="settingsSave" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// Round 72 — CONFIG (production wiring; matches quotation_builder.html)
+// ================================================================
+const SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+const SHEET_NAME = 'Leak Guard Leads';
+const GVIZ_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+  '/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent(SHEET_NAME);
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const QT_SEND_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-send';
+const BOILERPLATE_URL = './boilerplate.pdf';
+const SHARED_SECRET = 'ABC';
+let currentLead = null; // populated by loadLead()
+
+const LS_KEY = 'lg_site_visit_mockup_v3';
+const SETTINGS_KEY = 'lg_site_visit_settings_v1';
+
+// Defaults — used to seed settings on first run + reset.
+const DEFAULT_SETTINGS = {
+  membraneRate: 8.50,
+  slabPresets: [
+    { label: 'Water tank removal',       qty: 1, unit: 'job',  price: 350 },
+    { label: 'Water pump removal',       qty: 1, unit: 'job',  price: 250 },
+    { label: 'Existing coating removal', qty: 0, unit: 'sqft', price: 5   },
+    { label: 'AC compressor removal',    qty: 1, unit: 'job',  price: 200 },
+  ],
+  sitePresets: [
+    { label: 'Scaffolding supply & deliver', qty: 1, unit: 'job', price: 800 },
+  ],
+};
+
+function deepClonePresets(arr){
+  return arr.map(function(p){ return { label:p.label, qty:p.qty, unit:p.unit, price:p.price }; });
+}
+function loadSettings(){
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed==='object') {
+        return {
+          membraneRate: Number(parsed.membraneRate) || DEFAULT_SETTINGS.membraneRate,
+          slabPresets: Array.isArray(parsed.slabPresets) && parsed.slabPresets.length
+            ? parsed.slabPresets.map(function(p){ return {label:String(p.label||''),qty:Number(p.qty)||0,unit:String(p.unit||'job'),price:Number(p.price)||0}; })
+            : deepClonePresets(DEFAULT_SETTINGS.slabPresets),
+          sitePresets: Array.isArray(parsed.sitePresets) && parsed.sitePresets.length
+            ? parsed.sitePresets.map(function(p){ return {label:String(p.label||''),qty:Number(p.qty)||0,unit:String(p.unit||'job'),price:Number(p.price)||0}; })
+            : deepClonePresets(DEFAULT_SETTINGS.sitePresets),
+        };
+      }
+    }
+  } catch(_){}
+  return {
+    membraneRate: DEFAULT_SETTINGS.membraneRate,
+    slabPresets: deepClonePresets(DEFAULT_SETTINGS.slabPresets),
+    sitePresets: deepClonePresets(DEFAULT_SETTINGS.sitePresets),
+  };
+}
+function saveSettings(s){
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch(_){}
+}
+let settings = loadSettings();
+
+let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[] };
+
+// Ephemeral UI collapse state per slab — not persisted (re-derived on render)
+const uiCollapse = new Map(); // slabId -> { measurements: bool, services: bool }
+function getUi(slabId){
+  if (!uiCollapse.has(slabId)) uiCollapse.set(slabId, { measurements:null, services:true });
+  return uiCollapse.get(slabId);
+}
+
+function uuid(){ return Math.random().toString(36).slice(2,9); }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function rm(n){ return 'RM ' + (Number(n)||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function sqft(n){ return ((Number(n)||0).toFixed(1)) + ' sqft'; }
+
+function toast(msg,type){
+  type=type||'info';
+  const c=document.getElementById('toastContainer'); const el=document.createElement('div');
+  el.className='toast '+type; el.textContent=msg; c.appendChild(el);
+  setTimeout(function(){ el.style.opacity='0'; setTimeout(function(){ el.remove(); },250); },3500);
+}
+
+// ========= TESSERACT (lazy-loaded) =========
+let _tesseractPromise = null;
+function loadTesseract() {
+  if (_tesseractPromise) return _tesseractPromise;
+  _tesseractPromise = new Promise(function(resolve, reject) {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = function(){ resolve(window.Tesseract); };
+    s.onerror = function(){ _tesseractPromise = null; reject(new Error('Tesseract load failed')); };
+    document.head.appendChild(s);
+  });
+  return _tesseractPromise;
+}
+
+async function ocrPhoto(dataUrl, onProgress) {
+  const Tesseract = await loadTesseract();
+  const { data } = await Tesseract.recognize(dataUrl, 'eng', {
+    logger: function(m){ if (onProgress && m.status === 'recognizing text') onProgress(m.progress); }
+  });
+  return data.text || '';
+}
+
+// Parse iScanner's typical output. Examples handled:
+//   "Area = 63.87 kaki²"      (BM)
+//   "Area = 63.87 sqft"
+//   "Area = 63.87 ft²"
+//   "Panjang Keseluruhan = 38.35 kaki"
+//   "Total Perimeter = 38.35 ft"
+function parseIScanner(text) {
+  const t = String(text || '');
+  const areaMatch = t.match(/area\s*[=:]\s*([\d.,]+)\s*(?:kaki|sqft|ft|sq\s*ft)/i);
+  const perimMatch = t.match(/(?:panjang\s+keseluruhan|total\s+(?:perimeter|length)|perimeter)\s*[=:]\s*([\d.,]+)\s*(?:kaki|ft|m)/i);
+  const num = function(s){ if (!s) return null; const n = parseFloat(String(s).replace(/,/g, '')); return isNaN(n) ? null : n; };
+  return { areaSqft: num(areaMatch && areaMatch[1]), perimeterFt: num(perimMatch && perimMatch[1]) };
+}
+
+// ========= STATE =========
+function newSlab(name){
+  return { id:uuid(), name:name||('Slab '+(state.slabs.length+1)), mode:'slab', floorSqft:0, upturns:[], extras:[], photos:[], manualFloor:[], collapsed:false };
+}
+function newUpturn(){ return { id:uuid(), label:'', runFt:0, upturnFt:0 }; }
+function newManualRow(){ return { id:uuid(), label:'', length:0, width:0 }; }
+function manualRowSqft(r){ return (Number(r.length)||0)*(Number(r.width)||0); }
+function slabManualFloorTotal(s){ return (s.manualFloor||[]).reduce(function(sum,r){ return sum+manualRowSqft(r); },0); }
+function newExtra(preset){ return { id:uuid(), label:(preset&&preset.label)||'', qty:(preset&&preset.qty)||1, unit:(preset&&preset.unit)||'job', price:(preset&&preset.price)||0 }; }
+
+function loadState(){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed==='object') {
+        state.submittedBy = parsed.submittedBy || '';
+        state.notes = parsed.notes || '';
+        state.slabs = (parsed.slabs||[]).map(function(s){
+          return {
+            id:s.id||uuid(), name:s.name||'Slab', mode:s.mode||'slab',
+            floorSqft:Number(s.floorSqft)||0,
+            upturns:(s.upturns||[]).map(function(u){ return {id:u.id||uuid(),label:u.label||'',runFt:Number(u.runFt)||0,upturnFt:Number(u.upturnFt)||0}; }),
+            extras:(s.extras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; }),
+            photos:[],
+            manualFloor:(s.manualFloor||[]).map(function(r){ return {id:r.id||uuid(),label:r.label||'',length:Number(r.length)||0,width:Number(r.width)||0}; }),
+            collapsed:!!s.collapsed
+          };
+        });
+        state.siteExtras = (parsed.siteExtras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; });
+      }
+    }
+  } catch(_){}
+  if (!state.slabs.length) state.slabs.push(newSlab('Slab 1'));
+  document.getElementById('fSubmittedBy').value = state.submittedBy || '';
+  document.getElementById('fNotes').value = state.notes || '';
+  renderAll();
+}
+
+function saveState(){
+  try {
+    const slim = {
+      submittedBy:state.submittedBy, notes:state.notes,
+      slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor,collapsed:!!s.collapsed}; }),
+      siteExtras:state.siteExtras
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(slim));
+  } catch(_){}
+}
+
+// ========= COMPUTED =========
+function membraneRate(){ return Number(settings.membraneRate)||0; }
+function upturnSqft(u){ return (Number(u.runFt)||0)*(Number(u.upturnFt)||0); }
+function slabUpturnTotal(s){ return s.upturns.reduce(function(sum,u){ return sum+upturnSqft(u); },0); }
+function slabFloorContribution(s){ return s.mode==='flashing' ? 0 : (Number(s.floorSqft)||0); }
+function slabSqft(s){ return slabFloorContribution(s)+slabUpturnTotal(s); }
+function slabMembraneRm(s){ return slabSqft(s)*membraneRate(); }
+function extraTotal(e){ return (Number(e.qty)||0)*(Number(e.price)||0); }
+function slabExtrasRm(s){ return s.extras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
+function slabTotal(s){ return slabMembraneRm(s)+slabExtrasRm(s); }
+function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
+function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabSqft(s); },0); }
+function grandTotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm(); }
+function totalPhotos(){ return state.slabs.reduce(function(sum,s){ return sum+s.photos.length; },0); }
+
+// ========= PHOTO =========
+async function compressImage(file,maxEdge){
+  maxEdge = maxEdge||1280;
+  return new Promise(function(resolve,reject){
+    const img=new Image(); const r=new FileReader();
+    r.onload=function(e){
+      img.onload=function(){
+        let w=img.width,h=img.height;
+        if (w>h && w>maxEdge){ h=Math.round(h*maxEdge/w); w=maxEdge; }
+        else if (h>=w && h>maxEdge){ w=Math.round(w*maxEdge/h); h=maxEdge; }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',0.82));
+      };
+      img.onerror=reject; img.src=e.target.result;
+    };
+    r.onerror=reject; r.readAsDataURL(file);
+  });
+}
+function dataUrlSizeKB(d){ const i=d.indexOf(','); return Math.round(d.slice(i+1).length*0.75/1024); }
+
+async function handlePhotoFiles(slabId, files){
+  if (!files || !files.length) return;
+  const slab = state.slabs.find(function(s){ return s.id===slabId; });
+  if (!slab) return;
+  const ov = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
+  ov.classList.add('on');
+  let added = 0;
+  const newPhotos = [];
+  for (const f of Array.from(files)) {
+    ut.textContent = 'Compressing… ('+(added+1)+'/'+files.length+')';
+    try {
+      const okb = Math.round(f.size/1024);
+      const dataUrl = await compressImage(f,1280);
+      const photo = { id:uuid(), dataUrl, originalKB:okb, compressedKB:dataUrlSizeKB(dataUrl), ocr:null, driveUrl:null };
+      slab.photos.push(photo);
+      newPhotos.push(photo);
+      added++;
+      // Round 72 — fire-and-forget upload to Drive for audit trail.
+      // PDF render still uses dataUrl; driveUrl is metadata only.
+      if (currentLead && currentLead['Phone']) {
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'uploadEstimationPhoto',
+            secret: SHARED_SECRET,
+            phone: currentLead['Phone'],
+            slabName: slab.name || '',
+            photoLabel: '',
+            dataUrl: dataUrl
+          })
+        }).then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(j){ if (j && j.url) photo.driveUrl = j.url; })
+          .catch(function(){});
+      }
+    } catch(_){ toast('Failed to read one photo','error'); }
+  }
+  if (added) toast('Added '+added+' photo'+(added>1?'s':''),'success');
+  ov.classList.remove('on');
+  renderAll();
+
+  // Try OCR on each new photo. Fire-and-forget per photo so the user can keep
+  // filling the form while OCR runs in background.
+  for (const p of newPhotos) {
+    runOcrOnPhoto(slab, p);  // no await — parallel
+  }
+}
+
+async function runOcrOnPhoto(slab, photo) {
+  photo.ocr = { status: 'running' };
+  renderAll();
+  try {
+    const text = await ocrPhoto(photo.dataUrl, function(progress){
+      photo.ocr = { status: 'running', progress: progress };
+    });
+    const parsed = parseIScanner(text);
+    if (parsed.areaSqft !== null || parsed.perimeterFt !== null) {
+      photo.ocr = { status: 'detected', areaSqft: parsed.areaSqft, perimeterFt: parsed.perimeterFt, rawText: text.slice(0, 400) };
+    } else {
+      photo.ocr = { status: 'no-match', rawText: text.slice(0, 200) };
+    }
+  } catch (e) {
+    photo.ocr = { status: 'error', error: String(e.message || e) };
+  }
+  renderAll();
+}
+
+// ========= RENDER =========
+function renderAll(){
+  renderSlabs(); renderSiteExtras(); renderSiteChips(); renderGrand(); renderStepSummaries(); updateSubmitState();
+}
+
+function renderStepSummaries(){
+  // STEP 1
+  document.getElementById('step1Summary').textContent =
+    state.submittedBy ? '✓ ' + state.submittedBy : 'Pick your name to begin';
+  // STEP 2
+  const nSlabs = state.slabs.length;
+  const totalArea = grandMembraneSqft();
+  const slabPart = nSlabs ? (nSlabs + ' slab' + (nSlabs>1?'s':'')) : 'No slabs';
+  document.getElementById('step2Summary').textContent =
+    nSlabs ? (slabPart + ' · ' + sqft(totalArea)) : 'No slabs yet';
+  // STEP 3
+  const nSite = state.siteExtras.length;
+  document.getElementById('step3Summary').textContent =
+    nSite ? (nSite + ' item' + (nSite>1?'s':'') + ' · ' + rm(siteExtrasRm())) : 'None added';
+  // STEP 4
+  document.getElementById('step4Summary').textContent =
+    grandTotal() > 0 ? rm(grandTotal()) : '';
+}
+
+// OCR banner inside floor-area subsection. Aggregates results from all photos
+// in the slab — most-recent detection wins.
+function ocrBannerHtml(s) {
+  const photos = (s.photos || []).slice().reverse();
+  const running = photos.find(function(p){ return p.ocr && p.ocr.status === 'running'; });
+  if (running) {
+    const pct = running.ocr.progress != null ? Math.round(running.ocr.progress * 100) + '%' : '';
+    return '<div style="margin-bottom:8px;padding:8px 10px;background:#EFF6FF;border:.5px solid #BFDBFE;border-radius:6px;color:#1E3A8A;font-size:11px">'+
+      '⏳ Reading iScanner photo… '+pct+' (first time loads ~20MB OCR engine, cached after)'+
+      '</div>';
+  }
+  const detected = photos.find(function(p){ return p.ocr && p.ocr.status === 'detected'; });
+  if (detected) {
+    const a = detected.ocr.areaSqft;
+    const pft = detected.ocr.perimeterFt;
+    let body = '';
+    if (a != null) body += '<b>Area: '+a.toFixed(2)+' sqft</b>';
+    if (a != null && pft != null) body += ' · ';
+    if (pft != null) body += 'Perimeter: '+pft.toFixed(2)+' ft';
+    return '<div style="margin-bottom:8px;padding:8px 10px;background:#F0FDF4;border:.5px solid #BBF7D0;border-radius:6px;color:#065F46;font-size:11px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap">'+
+        '<span>📐 Detected from iScanner photo: '+body+'</span>'+
+        (a != null
+          ? '<button class="add-row" type="button" data-apply-ocr="'+s.id+'|'+a+'" style="width:auto;padding:5px 10px;margin:0;border-color:var(--acc);background:#fff;color:var(--acc);font-weight:700">↑ Apply '+a.toFixed(1)+' sqft</button>'
+          : '') +
+      '</div>'+
+      '</div>';
+  }
+  const noMatch = photos.find(function(p){ return p.ocr && p.ocr.status === 'no-match'; });
+  if (noMatch) {
+    return '<div style="margin-bottom:8px;padding:7px 10px;background:#FEF3C7;border:.5px solid #FDE68A;border-radius:6px;color:#92400E;font-size:11px">'+
+      '⚠️ Couldn\'t auto-detect Area from latest photo. Type manually or use the L × W panel below.'+
+      '</div>';
+  }
+  return '';
+}
+
+function onApplyOcr(e) {
+  const parts = e.currentTarget.dataset.applyOcr.split('|');
+  const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+  if (!s) return;
+  const val = parseFloat(parts[1]);
+  if (!isFinite(val) || val <= 0) return;
+  s.floorSqft = val;
+  saveState();
+  renderAll();
+  toast('Floor area set to ' + val.toFixed(1) + ' sqft from iScanner', 'success');
+}
+
+// Renders the COLLAPSED row variant of a slab card (header-only).
+function renderSlabCollapsed(s){
+  const isFlashing = s.mode === 'flashing';
+  return '<div class="slab collapsed" data-slab-toggle="'+s.id+'">'+
+    '<div class="slab-collapsed-row">'+
+      '<span class="slab-collapsed-name">'+escapeHtml(s.name)+'</span>'+
+      '<span class="slab-collapsed-mode">'+(isFlashing?'Flashing':'Slab')+'</span>'+
+      '<span class="slab-collapsed-area">'+sqft(slabSqft(s))+'</span>'+
+      '<span class="slab-collapsed-total">'+rm(slabTotal(s))+'</span>'+
+      '<span class="slab-collapsed-chev">▾</span>'+
+    '</div>'+
+  '</div>';
+}
+
+// Renders the EXPANDED slab body.
+function renderSlabExpanded(s){
+  const isFlashing = s.mode === 'flashing';
+  const ui = getUi(s.id);
+
+  // Auto-decide measurement collapse default if not user-toggled yet:
+  // open when empty (sqft=0), collapsed once any area entered.
+  if (ui.measurements === null) {
+    ui.measurements = slabSqft(s) > 0;  // true = collapsed
+  }
+  const measCollapsed = ui.measurements === true;
+  const servicesCollapsed = ui.services === true;
+
+  let photosHtml = '';
+  if (s.photos.length) {
+    photosHtml = '<div class="slab-photos">'+s.photos.map(function(p,i){
+      let badge = '';
+      if (p.ocr && p.ocr.status === 'detected') badge = '<div style="position:absolute;top:5px;left:5px;background:rgba(29,158,117,.92);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">📐 iScanner</div>';
+      else if (p.ocr && p.ocr.status === 'running') badge = '<div style="position:absolute;top:5px;left:5px;background:rgba(59,130,246,.92);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px">⏳ OCR…</div>';
+      return '<div class="photo-slot"><img src="'+p.dataUrl+'" alt="">'+
+             badge +
+             '<button class="photo-slot-del" type="button" data-del-photo="'+s.id+'|'+p.id+'" aria-label="Remove">×</button>'+
+             '<div class="photo-slot-meta">#'+(i+1)+' · '+p.compressedKB+'KB</div></div>';
+    }).join('')+'</div>';
+  }
+
+  let upturnsHtml = '';
+  s.upturns.forEach(function(u){
+    upturnsHtml +=
+      '<div class="row" data-upturn="'+u.id+'">'+
+        '<div class="row-label"><span>Section</span><button class="row-x" data-del-upturn="'+s.id+'|'+u.id+'" type="button" aria-label="Remove">×</button></div>'+
+        '<div class="row-fields">'+
+          '<input type="text" placeholder="e.g. Left wall" value="'+escapeHtml(u.label)+'" data-up-field="label" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+          '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Run ft" value="'+(u.runFt||'')+'" data-up-field="runFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+          '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Upturn ft" value="'+(u.upturnFt||'')+'" data-up-field="upturnFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+          '<span class="fld-out" data-up-out="'+u.id+'">= '+sqft(upturnSqft(u))+'</span>'+
+        '</div>'+
+      '</div>';
+  });
+
+  let extrasHtml = '';
+  s.extras.forEach(function(e){
+    extrasHtml +=
+      '<div class="row" data-extra="'+e.id+'">'+
+        '<div class="row-label"><span>Service</span><button class="row-x" data-del-extra="'+s.id+'|'+e.id+'" type="button" aria-label="Remove">×</button></div>'+
+        '<div class="extras-fields">'+
+          '<input type="text" placeholder="Description" value="'+escapeHtml(e.label)+'" data-extra-field="label" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+          '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Qty" value="'+(e.qty||'')+'" data-extra-field="qty" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+          '<input type="text" placeholder="Unit" value="'+escapeHtml(e.unit)+'" data-extra-field="unit" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+          '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Price" value="'+(e.price||'')+'" data-extra-field="price" data-slab="'+s.id+'" data-extra-id="'+e.id+'">'+
+          '<span class="fld-out" data-extra-out="'+e.id+'">= '+rm(extraTotal(e))+'</span>'+
+        '</div>'+
+      '</div>';
+  });
+
+  const slabChips = settings.slabPresets.map(function(p){
+    return '<button class="chip" type="button" data-add-extra-preset="'+s.id+'|'+escapeHtml(p.label)+'">+ '+escapeHtml(p.label)+'</button>';
+  }).join('');
+
+  // Measurement subzone (Floor area + Manual L×W + Upturns merged)
+  let measBody = '';
+  if (!isFlashing) {
+    measBody +=
+      ocrBannerHtml(s)+
+      '<div class="input-with-suffix">'+
+        '<input class="input" type="number" inputmode="decimal" step="0.5" min="0" placeholder="From iScanner — e.g. 35.5" value="'+(s.floorSqft||'')+'" data-slab="'+s.id+'" data-slab-field="floorSqft">'+
+        '<span class="suffix">sqft</span>'+
+      '</div>'+
+      '<div class="field-hint">Key the iScanner Area value here, or use manual L × W below.</div>'+
+      // Manual fallback calculator
+      '<div style="margin-top:9px;padding:9px;background:#FAFAFA;border:.5px dashed #D1D5DB;border-radius:6px">'+
+        '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'+
+          '<span>📏 Manual L × W (iScanner failed)</span>'+
+          '<span style="font-weight:600;color:var(--acc)">Sum: '+sqft(slabManualFloorTotal(s))+'</span>'+
+        '</div>'+
+        (s.manualFloor||[]).map(function(r){
+          return '<div class="row" data-mfloor="'+r.id+'" style="margin-bottom:5px">'+
+            '<div class="row-label"><span>Section</span><button class="row-x" data-del-mfloor="'+s.id+'|'+r.id+'" type="button" aria-label="Remove">×</button></div>'+
+            '<div class="row-fields">'+
+              '<input type="text" placeholder="e.g. Main floor" value="'+escapeHtml(r.label)+'" data-mf-field="label" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+              '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Length ft" value="'+(r.length||'')+'" data-mf-field="length" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+              '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Width ft" value="'+(r.width||'')+'" data-mf-field="width" data-slab="'+s.id+'" data-mf="'+r.id+'">'+
+              '<span class="fld-out" data-mf-out="'+r.id+'">= '+sqft(manualRowSqft(r))+'</span>'+
+            '</div>'+
+          '</div>';
+        }).join('')+
+        '<div style="display:flex;gap:6px;margin-top:5px">'+
+          '<button class="add-row" type="button" data-add-mfloor="'+s.id+'" style="flex:1;margin-top:0">+ Add section</button>'+
+          ((s.manualFloor||[]).length ? '<button class="add-row" type="button" data-apply-mfloor="'+s.id+'" style="flex:1;margin-top:0;border-color:var(--acc);background:#F0FDF4;color:var(--acc);font-weight:700">↑ Apply '+sqft(slabManualFloorTotal(s))+' to floor area</button>' : '')+
+        '</div>'+
+      '</div>'+
+      '<div style="margin-top:11px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt)">Upturns ('+s.upturns.length+')</div>';
+  } else {
+    measBody += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:5px">Linear sections ('+s.upturns.length+')</div>';
+  }
+  measBody +=
+    upturnsHtml +
+    '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn')+'</button>';
+
+  const measSummary = sqft(slabSqft(s)) + ' total';
+
+  // Build all subzones
+  let bodyHtml =
+    '<div class="slab-h">'+
+      '<input class="slab-name" value="'+escapeHtml(s.name)+'" data-slab-name="'+s.id+'">'+
+      '<button class="slab-collapse-btn" data-slab-toggle="'+s.id+'" type="button" aria-label="Collapse">▴</button>'+
+      '<button class="slab-remove" data-remove-slab="'+s.id+'" type="button">Remove</button>'+
+    '</div>'+
+
+    '<div class="slab-mode-row">'+
+      '<label>Mode:</label>'+
+      '<select data-slab-mode="'+s.id+'">'+
+        '<option value="slab"'+(isFlashing?'':' selected')+'>Slab + upturns</option>'+
+        '<option value="flashing"'+(isFlashing?' selected':'')+'>Flashing / linear only (no floor)</option>'+
+      '</select>'+
+    '</div>'+
+
+    // Photos subzone — always visible (static, not collapsible)
+    '<div class="subzone">'+
+      '<div class="subzone-h static">'+
+        '<span class="subzone-h-icon">📷</span>'+
+        '<span class="subzone-h-title">Photos &amp; iScanner ('+s.photos.length+')</span>'+
+      '</div>'+
+      '<div class="subzone-body tight">'+
+        '<div class="field-hint" style="margin-bottom:7px">💡 First photo: <b>iScanner screenshot</b> showing area + perimeter. Then site condition photos.</div>'+
+        photosHtml+
+        '<div class="photo-actions">'+
+          '<label class="photo-btn"><span class="ico">📷</span><span>Take Photo</span>'+
+            '<input type="file" accept="image/*" capture="environment" data-add-photo="'+s.id+'" multiple></label>'+
+          '<label class="photo-btn"><span class="ico">🖼️</span><span>From Album</span>'+
+            '<input type="file" accept="image/*" data-add-photo="'+s.id+'" multiple></label>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+
+    // Measurements subzone — collapsible (auto-collapse when filled)
+    '<div class="subzone">'+
+      '<div class="subzone-h" data-subzone-toggle="'+s.id+'|measurements">'+
+        '<span class="subzone-h-icon">📐</span>'+
+        '<span class="subzone-h-title">Measurements</span>'+
+        '<span class="subzone-h-summary">'+measSummary+'</span>'+
+        '<span class="subzone-h-chev">'+(measCollapsed?'▾':'▴')+'</span>'+
+      '</div>'+
+      (measCollapsed ? '' :
+        '<div class="subzone-body tight">'+ measBody +'</div>'
+      )+
+    '</div>'+
+
+    // Services subzone — collapsible (default-collapsed)
+    '<div class="subzone">'+
+      '<div class="subzone-h" data-subzone-toggle="'+s.id+'|services">'+
+        '<span class="subzone-h-icon">💼</span>'+
+        '<span class="subzone-h-title">Services for this slab</span>'+
+        '<span class="subzone-h-summary">'+(s.extras.length?(s.extras.length+' · '+rm(slabExtrasRm(s))):'none')+'</span>'+
+        '<span class="subzone-h-chev">'+(servicesCollapsed?'▾':'▴')+'</span>'+
+      '</div>'+
+      (servicesCollapsed ? '' :
+        '<div class="subzone-body tight">'+
+          '<div class="chip-row">'+slabChips+'</div>'+
+          extrasHtml+
+          '<button class="add-row" type="button" data-add-extra="'+s.id+'">+ Add custom service</button>'+
+        '</div>'
+      )+
+    '</div>'+
+
+    '<div class="slab-subtotal">'+
+      '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × '+rm(membraneRate())+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
+      '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
+      '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>'+
+    '</div>';
+
+  return '<div class="slab expanded">'+ bodyHtml +'</div>';
+}
+
+function renderSlabs(){
+  const list = document.getElementById('slabsList');
+  list.innerHTML = state.slabs.map(function(s){
+    return s.collapsed ? renderSlabCollapsed(s) : renderSlabExpanded(s);
+  }).join('');
+  wireSlabHandlers(list);
+}
+
+function renderSiteChips(){
+  const wrap = document.getElementById('siteChips');
+  wrap.innerHTML = settings.sitePresets.map(function(p){
+    return '<button class="chip" type="button" data-add-site-preset="'+escapeHtml(p.label)+'">+ '+escapeHtml(p.label)+'</button>';
+  }).join('');
+  wrap.querySelectorAll('[data-add-site-preset]').forEach(function(b){
+    b.onclick = function(){
+      const preset = settings.sitePresets.find(function(p){ return p.label === b.dataset.addSitePreset; });
+      state.siteExtras.push(newExtra(preset));
+      saveState(); renderAll();
+    };
+  });
+}
+
+function renderSiteExtras(){
+  const list = document.getElementById('siteExtrasList');
+  list.innerHTML = '';
+  state.siteExtras.forEach(function(e){
+    const div = document.createElement('div');
+    div.className = 'row';
+    div.innerHTML =
+      '<div class="row-label"><span>Service</span><button class="row-x" data-del-site-extra="'+e.id+'" type="button" aria-label="Remove">×</button></div>'+
+      '<div class="extras-fields">'+
+        '<input type="text" placeholder="Description" value="'+escapeHtml(e.label)+'" data-site-field="label" data-site-id="'+e.id+'">'+
+        '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Qty" value="'+(e.qty||'')+'" data-site-field="qty" data-site-id="'+e.id+'">'+
+        '<input type="text" placeholder="Unit" value="'+escapeHtml(e.unit)+'" data-site-field="unit" data-site-id="'+e.id+'">'+
+        '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Price" value="'+(e.price||'')+'" data-site-field="price" data-site-id="'+e.id+'">'+
+        '<span class="fld-out" data-site-out="'+e.id+'">= '+rm(extraTotal(e))+'</span>'+
+      '</div>';
+    list.appendChild(div);
+  });
+  list.querySelectorAll('input[data-site-field]').forEach(function(el){
+    const update = function(){
+      const e = state.siteExtras.find(function(x){ return x.id === el.dataset.siteId; });
+      if (!e) return;
+      const f = el.dataset.siteField;
+      e[f] = (f==='qty'||f==='price') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-site-out="'+e.id+'"]');
+      if (out) out.textContent = '= ' + rm(extraTotal(e));
+      renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('[data-del-site-extra]').forEach(function(b){
+    b.onclick = function(){
+      state.siteExtras = state.siteExtras.filter(function(x){ return x.id !== b.dataset.delSiteExtra; });
+      saveState(); renderAll();
+    };
+  });
+}
+
+// Build the per-slab block list + Additional Costs block (Round v3.4)
+function renderGrand(){
+  const blocks = document.getElementById('grandBlocks');
+  let html = '';
+
+  // Per-slab blocks
+  state.slabs.forEach(function(s){
+    const lines = [];
+    if (slabSqft(s) > 0) {
+      lines.push('<div class="grand-line"><span class="l-label">Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(slabMembraneRm(s))+'</span></div>');
+    } else {
+      lines.push('<div class="grand-line"><span class="l-label">Membrane (no measurements yet)</span><span class="l-val">RM 0.00</span></div>');
+    }
+    s.extras.forEach(function(e){
+      const label = e.label && e.label.trim() ? e.label : '(unnamed service)';
+      lines.push('<div class="grand-line indent"><span class="l-label">'+escapeHtml(label)+'</span><span class="l-val">'+rm(extraTotal(e))+'</span></div>');
+    });
+    lines.push('<div class="grand-line subtotal"><span class="l-label">Subtotal</span><span class="l-val">'+rm(slabTotal(s))+'</span></div>');
+
+    html +=
+      '<div class="grand-block">'+
+        '<div class="grand-block-h">'+escapeHtml(s.name)+'</div>'+
+        lines.join('')+
+      '</div>';
+  });
+
+  // Additional Costs block (site-wide)
+  if (state.siteExtras.length) {
+    let acLines = '';
+    state.siteExtras.forEach(function(e){
+      const label = e.label && e.label.trim() ? e.label : '(unnamed cost)';
+      acLines += '<div class="grand-line indent"><span class="l-label">'+escapeHtml(label)+'</span><span class="l-val">'+rm(extraTotal(e))+'</span></div>';
+    });
+    acLines += '<div class="grand-line subtotal"><span class="l-label">Subtotal</span><span class="l-val">'+rm(siteExtrasRm())+'</span></div>';
+    html +=
+      '<div class="grand-block">'+
+        '<div class="grand-block-h">Additional Costs (site-wide)</div>'+
+        acLines+
+      '</div>';
+  }
+
+  blocks.innerHTML = html;
+  document.getElementById('gtTotal').textContent = rm(grandTotal());
+}
+
+function wireSlabHandlers(list){
+  // Slab toggle (collapsed row OR collapse button on expanded)
+  list.querySelectorAll('[data-slab-toggle]').forEach(function(el){
+    el.addEventListener('click', function(ev){
+      // If click came from inside an input/button, ignore unless it's the toggle itself
+      if (ev.target.closest('button[data-slab-toggle]') !== el && ev.target.tagName === 'BUTTON') return;
+      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slabToggle; });
+      if (!s) return;
+      s.collapsed = !s.collapsed;
+      saveState(); renderAll();
+    });
+  });
+
+  // Subzone toggle (measurements / services)
+  list.querySelectorAll('[data-subzone-toggle]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const parts = el.dataset.subzoneToggle.split('|');
+      const ui = getUi(parts[0]);
+      ui[parts[1]] = !ui[parts[1]];
+      renderAll();
+    });
+  });
+
+  list.querySelectorAll('input[data-slab-name]').forEach(function(el){
+    el.oninput = function(){ const s = state.slabs.find(function(x){ return x.id===el.dataset.slabName; }); if (s){ s.name=el.value; saveState(); renderGrand(); renderStepSummaries(); updateSubmitState(); updateSlabSubtotalLabel(s); } };
+  });
+  list.querySelectorAll('select[data-slab-mode]').forEach(function(el){
+    el.onchange = function(){ const s = state.slabs.find(function(x){ return x.id===el.dataset.slabMode; }); if (s){ s.mode=el.value; saveState(); renderAll(); } };
+  });
+  list.querySelectorAll('[data-remove-slab]').forEach(function(b){
+    b.onclick = function(ev){
+      ev.stopPropagation();
+      if (state.slabs.length<=1){ toast('At least 1 slab required','info'); return; }
+      if (!confirm('Remove this slab and its photos?')) return;
+      state.slabs = state.slabs.filter(function(x){ return x.id!==b.dataset.removeSlab; });
+      uiCollapse.delete(b.dataset.removeSlab);
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('[data-add-upturn]').forEach(function(b){
+    b.onclick = function(){ const s = state.slabs.find(function(x){ return x.id===b.dataset.addUpturn; }); if (s){ s.upturns.push(newUpturn()); saveState(); renderAll(); } };
+  });
+  list.querySelectorAll('[data-del-upturn]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.delUpturn.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      s.upturns = s.upturns.filter(function(u){ return u.id!==parts[1]; });
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('input[data-up-field]').forEach(function(el){
+    const update = function(){
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
+      if (!s) return;
+      const u = s.upturns.find(function(x){ return x.id===el.dataset.up; });
+      if (!u) return;
+      const f = el.dataset.upField;
+      u[f] = (f==='runFt'||f==='upturnFt') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-up-out="'+u.id+'"]');
+      if (out) out.textContent = '= ' + sqft(upturnSqft(u));
+      updateSlabSubtotal(s); renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('input[data-slab-field="floorSqft"]').forEach(function(el){
+    const update = function(){
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
+      if (!s) return;
+      s.floorSqft = Number(el.value)||0;
+      updateSlabSubtotal(s); renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('[data-add-mfloor]').forEach(function(b){
+    b.onclick = function(){
+      const s = state.slabs.find(function(x){ return x.id===b.dataset.addMfloor; });
+      if (!s) return;
+      if (!Array.isArray(s.manualFloor)) s.manualFloor = [];
+      s.manualFloor.push(newManualRow());
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('[data-del-mfloor]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.delMfloor.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      s.manualFloor = (s.manualFloor||[]).filter(function(r){ return r.id!==parts[1]; });
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('input[data-mf-field]').forEach(function(el){
+    const update = function(){
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
+      if (!s) return;
+      const r = (s.manualFloor||[]).find(function(x){ return x.id===el.dataset.mf; });
+      if (!r) return;
+      const f = el.dataset.mfField;
+      r[f] = (f==='length'||f==='width') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-mf-out="'+r.id+'"]');
+      if (out) out.textContent = '= ' + sqft(manualRowSqft(r));
+      renderAll();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('[data-apply-mfloor]').forEach(function(b){
+    b.onclick = function(){
+      const s = state.slabs.find(function(x){ return x.id===b.dataset.applyMfloor; });
+      if (!s) return;
+      const total = slabManualFloorTotal(s);
+      if (total <= 0) { toast('Manual rows are empty', 'info'); return; }
+      s.floorSqft = total;
+      saveState(); renderAll();
+      toast('Floor area set to ' + sqft(total), 'success');
+    };
+  });
+  list.querySelectorAll('[data-add-extra]').forEach(function(b){
+    b.onclick = function(){ const s = state.slabs.find(function(x){ return x.id===b.dataset.addExtra; }); if (s){ s.extras.push(newExtra()); saveState(); renderAll(); } };
+  });
+  list.querySelectorAll('[data-add-extra-preset]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.addExtraPreset.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      const preset = settings.slabPresets.find(function(p){ return p.label===parts[1]; });
+      s.extras.push(newExtra(preset));
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('[data-del-extra]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.delExtra.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      s.extras = s.extras.filter(function(e){ return e.id!==parts[1]; });
+      saveState(); renderAll();
+    };
+  });
+  list.querySelectorAll('input[data-extra-field]').forEach(function(el){
+    const update = function(){
+      const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
+      if (!s) return;
+      const e = s.extras.find(function(x){ return x.id===el.dataset.extraId; });
+      if (!e) return;
+      const f = el.dataset.extraField;
+      e[f] = (f==='qty'||f==='price') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-extra-out="'+e.id+'"]');
+      if (out) out.textContent = '= ' + rm(extraTotal(e));
+      updateSlabSubtotal(s); renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  });
+  list.querySelectorAll('input[data-add-photo]').forEach(function(el){
+    el.onchange = function(){ handlePhotoFiles(el.dataset.addPhoto, el.files); el.value=''; };
+  });
+  list.querySelectorAll('[data-apply-ocr]').forEach(function(b){ b.onclick = onApplyOcr; });
+  list.querySelectorAll('[data-del-photo]').forEach(function(b){
+    b.onclick = function(e){
+      e.preventDefault(); e.stopPropagation();
+      const parts = b.dataset.delPhoto.split('|');
+      const s = state.slabs.find(function(x){ return x.id===parts[0]; });
+      if (!s) return;
+      s.photos = s.photos.filter(function(p){ return p.id!==parts[1]; });
+      renderAll();
+    };
+  });
+}
+
+function updateSlabSubtotal(s){
+  const slabEl = document.querySelector('.slab.expanded [data-slab-name="'+s.id+'"]');
+  if (!slabEl) return;
+  const wrap = slabEl.closest('.slab');
+  if (!wrap) return;
+  const sub = wrap.querySelector('.slab-subtotal');
+  if (!sub) return;
+  sub.innerHTML =
+    '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × '+rm(membraneRate())+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
+    '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
+    '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
+}
+function updateSlabSubtotalLabel(s){ updateSlabSubtotal(s); }
+
+function updateSubmitState(){
+  const btn = document.getElementById('btnSubmit');
+  const slabsValid = state.slabs.length>=1 && state.slabs.every(function(s){ return slabSqft(s)>0; });
+  const photosCount = totalPhotos();
+  const ok = state.submittedBy && slabsValid && photosCount>=1;
+  btn.disabled = !ok;
+  btn.textContent = ok ? ('Submit — '+state.slabs.length+' slab'+(state.slabs.length>1?'s':'')+', '+rm(grandTotal())+' est.') : 'Submit Visit';
+}
+
+document.getElementById('fSubmittedBy').addEventListener('change', function(e){ state.submittedBy=e.target.value; saveState(); renderStepSummaries(); updateSubmitState(); });
+document.getElementById('fNotes').addEventListener('input', function(e){ state.notes=e.target.value; saveState(); });
+
+function handleAddSlab(){
+  // Round v3.4: collapse all existing slabs when adding a new one.
+  state.slabs.forEach(function(s){ s.collapsed = true; });
+  const fresh = newSlab();
+  fresh.collapsed = false;
+  state.slabs.push(fresh);
+  saveState(); renderAll();
+  setTimeout(function(){
+    const list = document.getElementById('slabsList');
+    if (list && list.lastElementChild) list.lastElementChild.scrollIntoView({behavior:'smooth',block:'center'});
+  }, 30);
+}
+document.getElementById('btnAddSlabBig').addEventListener('click', handleAddSlab);
+document.getElementById('btnAddSiteExtra').addEventListener('click', function(){ state.siteExtras.push(newExtra()); saveState(); renderAll(); });
+
+// Round 72 — real submit flow: SE counter → render PDF → merge boilerplate → send to WA group.
+document.getElementById('btnSubmit').addEventListener('click', async function(){
+  if (!currentLead || !currentLead['Phone']) { toast('Customer not loaded yet','error'); return; }
+  if (!state.submittedBy) { toast('Pick the inspector first','warn'); return; }
+  if (!state.slabs.length) { toast('Add at least one slab','warn'); return; }
+  const btn = document.getElementById('btnSubmit');
+  const ov = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
+  btn.disabled = true;
+  ov.classList.add('on');
+  try {
+    // 1/5 — Issue SE-MMYY-NNN from Apps Script Counters sheet.
+    ut.textContent = '1/5 Issuing SE number…';
+    const seRes = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'nextSeNumber', secret: SHARED_SECRET })
+    });
+    if (!seRes.ok) throw new Error('SE counter HTTP ' + seRes.status);
+    const seData = await seRes.json();
+    if (seData.status !== 'ok' || !seData.docNo) {
+      throw new Error('SE number failed: ' + (seData.message || JSON.stringify(seData).slice(0, 200)));
+    }
+    const docNo = seData.docNo;
+    // 2/5 — Render the estimate PDF preview into #printView.
+    ut.textContent = '2/5 Rendering estimate…';
+    buildPrintView(docNo);
+    const pv = document.getElementById('printView');
+    const imgs = [...pv.querySelectorAll('img')];
+    await Promise.all(imgs.map(function(img){
+      if (img.complete && img.naturalWidth) return Promise.resolve();
+      if (img.decode) return img.decode().catch(function(){});
+      return new Promise(function(r){ img.onload = img.onerror = r; });
+    }));
+    await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
+    const opts = {
+      margin: 0,
+      image: { type: 'jpeg', quality: 0.92 },
+      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
+      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    };
+    // Capture as Blob (no local download).
+    const estBlob = await html2pdf().set(opts).from(pv).output('blob');
+    const estBytes = new Uint8Array(await estBlob.arrayBuffer());
+    // 3/5 — Fetch boilerplate.
+    ut.textContent = '3/5 Fetching boilerplate…';
+    const bRes = await fetch(BOILERPLATE_URL);
+    const boilerBytes = bRes.ok ? new Uint8Array(await bRes.arrayBuffer()) : null;
+    // 4/5 — Merge with pdf-lib.
+    ut.textContent = '4/5 Merging PDFs…';
+    const { PDFDocument } = window.PDFLib;
+    const merged = await PDFDocument.create();
+    for (const bytes of [estBytes, boilerBytes].filter(Boolean)) {
+      const doc = await PDFDocument.load(bytes);
+      const pages = await merged.copyPages(doc, doc.getPageIndices());
+      pages.forEach(function(p){ merged.addPage(p); });
+    }
+    const mergedBytes = await merged.save();
+    // 5/5 — POST to lg-quotation-send (relays to WA group; doesn't care about prefix).
+    ut.textContent = '5/5 Sending to customer…';
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < mergedBytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, mergedBytes.subarray(i, i + chunk));
+    }
+    const pdfBase64 = btoa(binary);
+    const sendRes = await fetch(QT_SEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone:    currentLead['Phone'],
+        name:     currentLead['Name'] || '',
+        docNo:    docNo,
+        total:    grandTotal(),
+        filename: docNo + '.pdf',
+        pdfBase64: pdfBase64
+      })
+    });
+    if (!sendRes.ok) throw new Error('Send HTTP ' + sendRes.status);
+    toast(docNo + ' sent to ' + (currentLead['Name'] || 'customer'), 'success');
+    btn.textContent = '✅ Sent — ' + docNo;
+  } catch (e) {
+    console.error(e);
+    toast('Failed: ' + (e.message || e), 'error');
+    btn.disabled = false;
+  } finally {
+    ov.classList.remove('on');
+  }
+});
+
+document.getElementById('btnClear').addEventListener('click', function(){
+  if (!confirm('Clear all slabs, services, and photos?')) return;
+  state = { submittedBy:'', notes:'', slabs:[newSlab('Slab 1')], siteExtras:[] };
+  uiCollapse.clear();
+  document.getElementById('fSubmittedBy').value='';
+  document.getElementById('fNotes').value='';
+  saveState(); renderAll(); toast('Cleared','info');
+});
+
+// ========= ESTIMATE PDF =========
+// Round 72 — derive PDF customer block from the live lead loaded by ?phone=.
+// Falls back to placeholders only if the lead hasn't loaded yet (rare edge case).
+function pdfCustomer() {
+  const L = currentLead || {};
+  return {
+    name:    L['Name'] || '',
+    phone:   L['Phone'] || '',
+    group:   L['Group Name (AE)'] || '',
+    address: L['Full Address'] || L['Location'] || '',
+    problem: L['Slab or toilet leaking'] || L['Problem Type'] || ''
+  };
+}
+
+function todayISODate(){
+  const d = new Date(Date.now() + 8*60*60*1000);
+  return d.toISOString().slice(0, 10);
+}
+function todayDisplayDate(){
+  const d = new Date(Date.now() + 8*60*60*1000);
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+}
+function generateEstimateRef(){
+  const d = new Date(Date.now() + 8*60*60*1000);
+  const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+  const yy = String(d.getUTCFullYear()).slice(-2);
+  const sfx = String(Math.floor(Math.random() * 900) + 100);
+  return 'SVE-' + mm + yy + '-' + sfx;
+}
+function sanitizeFilename(s){
+  return String(s||'estimate').replace(/[^A-Za-z0-9-_]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+}
+
+function buildPrintView(overrideRef) {
+  // Round 72 — accept an optional docNo override so the real submit flow can
+  // pass the SE-MMYY-NNN issued by Apps Script. Preview button (btnPdf) calls
+  // without args and falls back to a random ref for local download only.
+  const pv = document.getElementById('printView');
+  const cust = pdfCustomer();
+  const ref = overrideRef || generateEstimateRef();
+  const dateStr = todayDisplayDate();
+
+  let html = '<div class="pv-page">';
+
+  // 1. Header band
+  html +=
+    '<div class="pv-band">'+
+      '<div class="pv-band-l">'+
+        '<div class="pv-brand">LEAK GUARD</div>'+
+        '<div class="pv-brand-sub">Waterproofing Specialists · Innovation AID Sdn Bhd</div>'+
+      '</div>'+
+      '<div class="pv-band-r">'+
+        '<div><b>Date:</b> '+escapeHtml(dateStr)+'</div>'+
+        '<div><b>Ref:</b> '+escapeHtml(ref)+'</div>'+
+      '</div>'+
+    '</div>';
+
+  // 2. Title
+  html += '<div class="pv-title">SITE VISIT ESTIMATE</div>';
+
+  // 3. Customer block
+  html +=
+    '<div class="pv-cust">'+
+      '<div class="pv-cust-row"><span class="lbl">Customer</span><span class="val">'+escapeHtml(cust.name)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Phone</span><span class="val">'+escapeHtml(cust.phone)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Group</span><span class="val">'+escapeHtml(cust.group)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Address</span><span class="val">'+escapeHtml(cust.address)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Problem</span><span class="val">'+escapeHtml(cust.problem)+'</span></div>'+
+      '<div class="pv-cust-row"><span class="lbl">Inspected by</span><span class="val">'+escapeHtml(state.submittedBy || '—')+'</span></div>'+
+    '</div>';
+
+  // 4. Per slab — measurements section + photos
+  state.slabs.forEach(function(s){
+    const isFlashing = s.mode === 'flashing';
+    let slabHtml = '<div class="pv-slab">';
+    slabHtml +=
+      '<div class="pv-slab-h">'+
+        '<span>'+escapeHtml(s.name)+'</span>'+
+        '<span class="pv-slab-mode">'+(isFlashing ? 'Flashing / Linear' : 'Slab + Upturns')+'</span>'+
+      '</div>';
+
+    // Round v3.4: cap photos at 2 per slab to keep canvas area below iPad's
+    // 2^24 px² limit (was 4 in v3.3, hit blank-PDF on iPad).
+    const photoSubset = (s.photos || []).slice(0, 2);
+    if (photoSubset.length) {
+      slabHtml += '<div class="pv-photos">' + photoSubset.map(function(p){
+        return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';
+      }).join('') + '</div>';
+    }
+
+    // Measurements
+    slabHtml += '<div class="pv-section"><div class="pv-section-h">Measurements</div>';
+    if (!isFlashing) {
+      slabHtml += '<div class="pv-line"><span>Floor area</span><span>'+sqft(s.floorSqft)+'</span></div>';
+    }
+    if ((s.upturns || []).length) {
+      slabHtml += '<table class="pv-tbl" style="margin-top:4px"><tr><td colspan="4" style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.3px">'+(isFlashing ? 'Linear sections' : 'Upturns')+'</td></tr>';
+      s.upturns.forEach(function(u){
+        const upSqft = upturnSqft(u);
+        slabHtml += '<tr>'+
+          '<td>'+escapeHtml(u.label || '—')+'</td>'+
+          '<td class="num">'+(Number(u.runFt)||0)+' ft</td>'+
+          '<td class="num">× '+(Number(u.upturnFt)||0)+' ft</td>'+
+          '<td class="num">= '+sqft(upSqft)+'</td>'+
+        '</tr>';
+      });
+      slabHtml += '<tr><td colspan="3" style="font-weight:700;color:#065F46">Total upturn</td><td class="num" style="font-weight:700;color:#065F46">'+sqft(slabUpturnTotal(s))+'</td></tr>';
+      slabHtml += '</table>';
+    }
+    slabHtml += '<div class="pv-line sub"><span>Total membrane area</span><span>'+sqft(slabSqft(s))+'</span></div>';
+    slabHtml += '</div>';
+
+    // Membrane line
+    slabHtml += '<div class="pv-section"><div class="pv-line"><span>Membrane installation @ '+rm(membraneRate())+'/sqft</span><span>'+rm(slabMembraneRm(s))+'</span></div></div>';
+
+    // Per-slab services
+    if ((s.extras || []).length) {
+      slabHtml += '<div class="pv-section"><div class="pv-section-h">Additional services</div>';
+      slabHtml += '<table class="pv-tbl">';
+      s.extras.forEach(function(e){
+        slabHtml += '<tr>'+
+          '<td>'+escapeHtml(e.label || '—')+'</td>'+
+          '<td class="num">'+(Number(e.qty)||0)+' '+escapeHtml(e.unit || '')+'</td>'+
+          '<td class="num">@ '+rm(e.price)+'</td>'+
+          '<td class="num">'+rm(extraTotal(e))+'</td>'+
+        '</tr>';
+      });
+      slabHtml += '</table>';
+      slabHtml += '<div class="pv-line"><span style="color:#6b7280">Services subtotal</span><span style="font-weight:700">'+rm(slabExtrasRm(s))+'</span></div>';
+      slabHtml += '</div>';
+    }
+
+    // Slab subtotal
+    slabHtml += '<div class="pv-line sub" style="font-size:14px;color:#2D2A6E"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
+    slabHtml += '</div>';
+
+    html += slabHtml;
+  });
+
+  // 5. Site-wide services (Additional Costs) — full table
+  if ((state.siteExtras || []).length) {
+    html += '<div class="pv-slab">'+
+      '<div class="pv-slab-h"><span>Additional Costs (site-wide)</span></div>'+
+      '<table class="pv-tbl">';
+    state.siteExtras.forEach(function(e){
+      html += '<tr>'+
+        '<td>'+escapeHtml(e.label || '—')+'</td>'+
+        '<td class="num">'+(Number(e.qty)||0)+' '+escapeHtml(e.unit || '')+'</td>'+
+        '<td class="num">@ '+rm(e.price)+'</td>'+
+        '<td class="num">'+rm(extraTotal(e))+'</td>'+
+      '</tr>';
+    });
+    html += '</table>';
+    html += '<div class="pv-line sub" style="font-size:13px;color:#2D2A6E"><span>Additional Costs subtotal</span><span>'+rm(siteExtrasRm())+'</span></div>';
+    html += '</div>';
+  }
+
+  // 6. Grand total — per-slab line items + Additional Costs (Round v3.4)
+  html += '<div class="pv-grand">';
+  html += '<div class="pv-grand-h">Estimated Total — Breakdown</div>';
+
+  state.slabs.forEach(function(s){
+    let slabBlk = '<div class="pv-grand-block">';
+    slabBlk += '<div class="pv-grand-block-h">'+escapeHtml(s.name)+'</div>';
+    if (slabSqft(s) > 0) {
+      slabBlk += '<div class="pv-grand-line"><span>Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span>'+rm(slabMembraneRm(s))+'</span></div>';
+    }
+    s.extras.forEach(function(e){
+      const lbl = e.label && e.label.trim() ? e.label : '(unnamed service)';
+      slabBlk += '<div class="pv-grand-line indent"><span>'+escapeHtml(lbl)+'</span><span>'+rm(extraTotal(e))+'</span></div>';
+    });
+    slabBlk += '<div class="pv-grand-line subtotal"><span>Subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
+    slabBlk += '</div>';
+    html += slabBlk;
+  });
+
+  if ((state.siteExtras || []).length) {
+    let acBlk = '<div class="pv-grand-block">';
+    acBlk += '<div class="pv-grand-block-h">Additional Costs (site-wide)</div>';
+    state.siteExtras.forEach(function(e){
+      const lbl = e.label && e.label.trim() ? e.label : '(unnamed cost)';
+      acBlk += '<div class="pv-grand-line indent"><span>'+escapeHtml(lbl)+'</span><span>'+rm(extraTotal(e))+'</span></div>';
+    });
+    acBlk += '<div class="pv-grand-line subtotal"><span>Subtotal</span><span>'+rm(siteExtrasRm())+'</span></div>';
+    acBlk += '</div>';
+    html += acBlk;
+  }
+
+  html += '<div class="pv-grand-total"><span>TOTAL</span><span>'+rm(grandTotal())+'</span></div>';
+  html += '</div>';
+
+  // 7. Notes (only if filled)
+  if (state.notes && state.notes.trim()) {
+    html +=
+      '<div class="pv-notes">'+
+        '<div class="pv-notes-h">Inspector\'s Notes</div>'+
+        escapeHtml(state.notes)+
+      '</div>';
+  }
+
+  // 8. T&C
+  html +=
+    '<div class="pv-tnc">'+
+      '<div class="pv-tnc-h">Terms &amp; Conditions</div>'+
+      '<ul>'+
+        '<li>This estimate is valid for <b>14 days</b> from date of issue.</li>'+
+        '<li>A final formal quotation will be issued upon project confirmation.</li>'+
+        '<li>Estimate is subject to actual site conditions on installation day; minor adjustments may apply.</li>'+
+        '<li>Waterproofing membrane carries a <b>5-year workmanship warranty</b> from project completion.</li>'+
+        '<li>All payments must be made via official Innovation AID Sdn Bhd channels only.</li>'+
+        '<li>Customer to ensure site access on the agreed installation date.</li>'+
+      '</ul>'+
+    '</div>';
+
+  // 9. Signatures
+  html +=
+    '<div class="pv-sig">'+
+      '<div class="pv-sig-block">'+
+        '<div class="lbl">Inspected by</div>'+
+        '<div class="line">'+
+          '<div class="name">'+escapeHtml(state.submittedBy || '________________')+'</div>'+
+          '<div class="date">Date: '+escapeHtml(dateStr)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="pv-sig-block">'+
+        '<div class="lbl">Acknowledged by</div>'+
+        '<div class="line">'+
+          '<div class="name">'+escapeHtml(cust.name)+'</div>'+
+          '<div class="date">Date: ____________________</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+
+  // Footer
+  html +=
+    '<div class="pv-foot">'+
+      'Innovation AID Sdn Bhd · Waterproofing Specialists · This document is computer-generated and does not require a stamp.'+
+    '</div>';
+
+  html += '</div>'; // /pv-page
+  pv.innerHTML = html;
+  return { ref: ref, dateStr: dateStr };
+}
+
+async function generateEstimatePdf() {
+  if (typeof html2pdf === 'undefined') {
+    toast('PDF library not loaded — check internet connection', 'error');
+    return;
+  }
+  if (!state.submittedBy) {
+    toast('Pick "Submitted by" before generating the estimate', 'info');
+    return;
+  }
+  if (!state.slabs.length || state.slabs.every(function(s){ return slabSqft(s) === 0; })) {
+    toast('Add at least one slab with measurements before generating', 'info');
+    return;
+  }
+
+  const ov = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
+  ov.classList.add('on');
+  ut.textContent = 'Building estimate PDF…';
+
+  try {
+    const { ref } = buildPrintView();
+
+    // Round v3.4: explicit image-decode wait. Fixes iPad blank-PDF where the
+    // bare 200ms timeout wasn't enough for dataURL images to be fully decoded
+    // before html2canvas read them.
+    const pv = document.getElementById('printView');
+    const imgs = [...pv.querySelectorAll('img')];
+    await Promise.all(imgs.map(function(img){
+      if (img.complete && img.naturalWidth) return Promise.resolve();
+      if (img.decode) return img.decode().catch(function(){});
+      return new Promise(function(r){ img.onload = img.onerror = r; });
+    }));
+    // One extra paint-tick after decode
+    await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
+
+    const filename = 'LeakGuard-Estimate-' + sanitizeFilename(pdfCustomer().group) + '-' + todayISODate() + '.pdf';
+    const opts = {
+      margin: 0,
+      filename: filename,
+      image: { type: 'jpeg', quality: 0.92 },
+      // Round v3.4: scale 1.5 (was 2) — keeps canvas area below iPad's 2^24 px²
+      // limit even with 3 slabs × 2 photos.
+      html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', logging: false },
+      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    };
+    await html2pdf().set(opts).from(pv).save();
+    toast('✓ Estimate PDF generated (' + ref + ')', 'success');
+  } catch (e) {
+    toast('PDF failed: ' + (e.message || e), 'error');
+  } finally {
+    ov.classList.remove('on');
+  }
+}
+
+document.getElementById('btnPdf').addEventListener('click', generateEstimatePdf);
+
+// ========= SETTINGS MODAL (Round v3.4) =========
+let _settingsDraft = null;
+
+function openSettings(){
+  _settingsDraft = JSON.parse(JSON.stringify(settings)); // deep clone
+  document.getElementById('setMembraneRate').value = _settingsDraft.membraneRate;
+  renderSettingsPresetTbl('setSlabPresetsList', _settingsDraft.slabPresets);
+  renderSettingsPresetTbl('setSitePresetsList', _settingsDraft.sitePresets);
+  document.getElementById('settingsModal').classList.add('on');
+}
+function closeSettings(){
+  document.getElementById('settingsModal').classList.remove('on');
+  _settingsDraft = null;
+}
+function renderSettingsPresetTbl(containerId, arr){
+  const c = document.getElementById(containerId);
+  c.innerHTML = arr.map(function(p, i){
+    return '<div class="preset-row" data-idx="'+i+'">'+
+      '<input type="text" placeholder="Label" value="'+escapeHtml(p.label)+'" data-pf="label">'+
+      '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Qty" value="'+(p.qty||'')+'" data-pf="qty">'+
+      '<input type="text" placeholder="Unit" value="'+escapeHtml(p.unit)+'" data-pf="unit">'+
+      '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Price" value="'+(p.price||'')+'" data-pf="price">'+
+      '<button class="row-x" type="button" data-pdel="'+i+'" aria-label="Remove">×</button>'+
+    '</div>';
+  }).join('');
+  c.querySelectorAll('input[data-pf]').forEach(function(el){
+    el.addEventListener('input', function(){
+      const idx = Number(el.closest('[data-idx]').dataset.idx);
+      const f = el.dataset.pf;
+      arr[idx][f] = (f==='qty'||f==='price') ? (Number(el.value)||0) : el.value;
+    });
+  });
+  c.querySelectorAll('[data-pdel]').forEach(function(b){
+    b.addEventListener('click', function(){
+      arr.splice(Number(b.dataset.pdel), 1);
+      renderSettingsPresetTbl(containerId, arr);
+    });
+  });
+}
+
+document.getElementById('btnSettings').addEventListener('click', openSettings);
+document.getElementById('settingsClose').addEventListener('click', closeSettings);
+document.getElementById('settingsCancel').addEventListener('click', closeSettings);
+document.getElementById('settingsModal').addEventListener('click', function(ev){
+  if (ev.target.id === 'settingsModal') closeSettings(); // backdrop click
+});
+document.getElementById('setAddSlabPreset').addEventListener('click', function(){
+  if (!_settingsDraft) return;
+  _settingsDraft.slabPresets.push({ label:'', qty:1, unit:'job', price:0 });
+  renderSettingsPresetTbl('setSlabPresetsList', _settingsDraft.slabPresets);
+});
+document.getElementById('setAddSitePreset').addEventListener('click', function(){
+  if (!_settingsDraft) return;
+  _settingsDraft.sitePresets.push({ label:'', qty:1, unit:'job', price:0 });
+  renderSettingsPresetTbl('setSitePresetsList', _settingsDraft.sitePresets);
+});
+document.getElementById('settingsReset').addEventListener('click', function(){
+  if (!confirm('Reset all settings to factory defaults? This wipes any customizations.')) return;
+  _settingsDraft = {
+    membraneRate: DEFAULT_SETTINGS.membraneRate,
+    slabPresets: deepClonePresets(DEFAULT_SETTINGS.slabPresets),
+    sitePresets: deepClonePresets(DEFAULT_SETTINGS.sitePresets),
+  };
+  document.getElementById('setMembraneRate').value = _settingsDraft.membraneRate;
+  renderSettingsPresetTbl('setSlabPresetsList', _settingsDraft.slabPresets);
+  renderSettingsPresetTbl('setSitePresetsList', _settingsDraft.sitePresets);
+  toast('Defaults restored — click Save to apply','info');
+});
+document.getElementById('settingsSave').addEventListener('click', function(){
+  if (!_settingsDraft) return;
+  // Pull membraneRate from input (others mutate in place via per-row listeners)
+  const rateInput = document.getElementById('setMembraneRate');
+  _settingsDraft.membraneRate = Number(rateInput.value) || 0;
+  if (_settingsDraft.membraneRate <= 0) {
+    toast('Membrane rate must be > 0', 'error'); return;
+  }
+  // Drop blank-label presets so they don't show as empty chips
+  _settingsDraft.slabPresets = _settingsDraft.slabPresets.filter(function(p){ return p.label && p.label.trim(); });
+  _settingsDraft.sitePresets = _settingsDraft.sitePresets.filter(function(p){ return p.label && p.label.trim(); });
+  settings = _settingsDraft;
+  saveSettings(settings);
+  closeSettings();
+  renderAll();
+  toast('Settings saved','success');
+});
+
+// Round 72 — bootstrap: load state from localStorage, then load the live
+// lead by ?phone= (gviz read).
+function getParam(k){ return new URLSearchParams(window.location.search).get(k) || ''; }
+
+function renderCustomerGrid() {
+  const grid = document.getElementById('custGrid');
+  if (!grid) return;
+  if (!currentLead) {
+    grid.innerHTML = '<dt>Loading…</dt><dd>—</dd>';
+    return;
+  }
+  const L = currentLead;
+  const cells = [
+    ['Name',    L['Name'] || ''],
+    ['Phone',   L['Phone'] || ''],
+    ['Group',   L['Group Name (AE)'] || ''],
+    ['Problem', L['Slab or toilet leaking'] || L['Problem Type'] || ''],
+    ['Address', L['Full Address'] || L['Location'] || '']
+  ];
+  grid.innerHTML = cells.map(function(c){
+    return '<dt>' + escapeHtml(c[0]) + '</dt><dd>' + escapeHtml(String(c[1])) + '</dd>';
+  }).join('');
+}
+
+async function loadLead(phone) {
+  try {
+    const r = await fetch(GVIZ_URL + '&nocache=' + Date.now());
+    const t = await r.text();
+    const m = t.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+    if (!m) throw new Error('gviz parse failed');
+    const j = JSON.parse(m[1]);
+    const cols = j.table.cols.map(function(c){ return (c.label || '').trim(); });
+    const found = (j.table.rows || []).find(function(row){
+      const phoneIdx = cols.indexOf('Phone');
+      if (phoneIdx === -1) return false;
+      const cell = row.c[phoneIdx];
+      const cellVal = cell ? String(cell.v || cell.f || '') : '';
+      return cellVal === phone || cellVal.endsWith(phone.slice(-8)) || phone.endsWith(cellVal.slice(-8));
+    });
+    if (!found) {
+      const grid = document.getElementById('custGrid');
+      if (grid) grid.innerHTML = '<dt style="color:#dc2626">Lead not found</dt><dd>phone=' + escapeHtml(phone) + '</dd>';
+      return;
+    }
+    const obj = {};
+    cols.forEach(function(c, i){
+      const cell = found.c[i];
+      obj[c] = cell ? (cell.v != null ? cell.v : (cell.f || '')) : '';
+    });
+    currentLead = obj;
+    renderCustomerGrid();
+  } catch (e) {
+    const grid = document.getElementById('custGrid');
+    if (grid) grid.innerHTML = '<dt style="color:#dc2626">Load failed</dt><dd>' + escapeHtml(e.message || String(e)) + '</dd>';
+  }
+}
+
+loadState();
+const _phone = getParam('phone');
+if (_phone) {
+  loadLead(_phone);
+} else {
+  const grid = document.getElementById('custGrid');
+  if (grid) grid.innerHTML = '<dt style="color:#dc2626">Missing ?phone= in URL</dt><dd>—</dd>';
+}
+</script>
+
+</body>
+</html>

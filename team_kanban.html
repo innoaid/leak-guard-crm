@@ -3433,7 +3433,7 @@ document.getElementById('editLeadModal').addEventListener('click', function(e){
 document.getElementById('btnGenQt').onclick = function() {
   if (!currentModalLead) return;
   const phone = currentModalLead['Phone'];
-  window.open('quotation_builder.html?phone=' + encodeURIComponent(phone) + '&type=estimation', '_blank');
+  window.open('estimation_builder.html?phone=' + encodeURIComponent(phone), '_blank');
 };
 document.getElementById('leadModal').addEventListener('click', function(e){
   if (e.target.id === 'leadModal') closeLeadDetail();
