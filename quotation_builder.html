@@ -228,6 +228,11 @@ const PLUMBER_DEFAULT = 650;      // optional plumber lump sum
 const QT_CREATE_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-create';
 const QT_SEND_URL   = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-send';
 
+// Round 71 — Apps Script Web App URL for the SE-MMYY-NNN counter
+// (used only in estimation mode; user-confirmed 2026-05-25, same deployment
+// already in production for n8n workflow callbacks)
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+
 // Boilerplate PDF — fetched at merge time. Commit boilerplate.pdf into repo
 // at innoaid/leak-guard-crm root. Same origin = no CORS hassle.
 const BOILERPLATE_URL = './boilerplate.pdf';
@@ -251,6 +256,7 @@ let lead = null;
 let zones = [];   // [{id, name, photoDataUrl, floorSqft, upturnSqft}]
 let lines = [];   // [{id, desc, qty, unit, price, isAuto}]
 let qtNumber = '';
+let docType = 'QT'; // Round 71 — 'QT' (default, AutoCount) or 'SE' (estimation, Apps Script counter)
 
 // ================================================================
 // BOOT
@@ -267,8 +273,17 @@ async function init() {
     showCustomerError('Missing ?phone=… in URL');
     return;
   }
+  // Round 71 — estimation mode swaps labels and number source.
+  docType = (getParam('type') || '').toLowerCase() === 'estimation' ? 'SE' : 'QT';
+  if (docType === 'SE') {
+    const t = document.querySelector('.hdr-t'); if (t) t.textContent = '🎯 Estimation Builder';
+    const s = document.querySelector('.hdr-s'); if (s) s.textContent = 'Issues SE-MMYY-NNN + sends estimation PDF to customer';
+    const btn = document.getElementById('btnGenerate'); if (btn) { btn.textContent = '🚀 Generate Estimation & Send'; btn.title = 'Issue SE-MMYY-NNN + send PDF to customer'; }
+    document.title = 'Leak Guard — Estimation Builder';
+  }
   await loadLead(phone);
-  qtNumber = generateQtNumber();
+  // SE number is issued atomically at submit time; show placeholder until then.
+  qtNumber = docType === 'SE' ? 'SE-…' : generateQtNumber();
   document.getElementById('qtNum').textContent = qtNumber;
   document.getElementById('qtDate').textContent =
     new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -812,8 +827,9 @@ async function generateAndSend() {
   btn.disabled = true;
 
   try {
-    // ── 1. POST to /webhook/lg-quotation-create ────────────────
-    btn.textContent = '1/5 Creating in AutoCount…';
+    // ── 1. Issue doc number ───────────────────────────────────
+    //   QT mode: POST to AutoCount via /webhook/lg-quotation-create
+    //   SE mode (Round 71): atomic SE-MMYY-NNN from Apps Script Counters sheet
     const phone = String(lead['Phone'] || '').trim();
     const total = billableLines.reduce((s, l) => s + (Number(l.qty) * Number(l.price)), 0);
 
@@ -825,23 +841,40 @@ async function generateAndSend() {
       furtherDescription: ''
     }));
 
-    const createPayload = {
-      phone:         phone,
-      name:          lead['Name'] || '',
-      address:       lead['Full Address'] || lead['Location'] || '',
-      serviceHeader: 'Torch-On Membrane Waterproofing Services',
-      lineItems:     lineItemsForApi
-    };
-
-    const createRes = await fetch(QT_CREATE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(createPayload)
-    });
-    if (!createRes.ok) throw new Error('Create webhook ' + createRes.status);
-    const acData = await createRes.json();
-    if (!acData.success || !acData.docNo) {
-      throw new Error('AutoCount create failed: ' + (acData.error || JSON.stringify(acData).slice(0, 200)));
+    let acData;
+    if (docType === 'SE') {
+      btn.textContent = '1/5 Issuing SE number…';
+      const seRes = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'nextSeNumber', secret: 'ABC' })
+      });
+      if (!seRes.ok) throw new Error('SE counter webhook ' + seRes.status);
+      const seData = await seRes.json();
+      if (seData.status !== 'ok' || !seData.docNo) {
+        throw new Error('SE number failed: ' + (seData.message || JSON.stringify(seData).slice(0, 200)));
+      }
+      acData = { success: true, docNo: seData.docNo };
+      document.getElementById('qtNum').textContent = acData.docNo;
+    } else {
+      btn.textContent = '1/5 Creating in AutoCount…';
+      const createPayload = {
+        phone:         phone,
+        name:          lead['Name'] || '',
+        address:       lead['Full Address'] || lead['Location'] || '',
+        serviceHeader: 'Torch-On Membrane Waterproofing Services',
+        lineItems:     lineItemsForApi
+      };
+      const createRes = await fetch(QT_CREATE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createPayload)
+      });
+      if (!createRes.ok) throw new Error('Create webhook ' + createRes.status);
+      acData = await createRes.json();
+      if (!acData.success || !acData.docNo) {
+        throw new Error('AutoCount create failed: ' + (acData.error || JSON.stringify(acData).slice(0, 200)));
+      }
     }
 
     // ── 2. Render zone summary PDF ────────────────────────────

@@ -61,6 +61,7 @@ function doPost(e) {
       case 'addPaymentVerification':   return handleAddPaymentVerification(body);  // round 64 — payment-noted template
       case 'clearPaymentVerification': return handleClearPaymentVerification(body);  // round 64 — account tick verify
       case 'updateLastAdminMsg': return handleUpdateLastAdminMsg(body);  // round 68 — admin-msg capture from Parse & Route
+      case 'nextSeNumber':       return handleNextSeNumber(body);  // round 71 — atomic SE-MMYY-NNN counter for Estimation Builder
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -200,6 +201,37 @@ function handleUpdateNotes(body) {
 
   setCellByHeader(sheet, rowNum, 'Notes', body.notes || '');
   return jsonResponse({status: 'ok'});
+}
+
+// Round 71 — atomic SE-MMYY-NNN counter for the Estimation Builder.
+// Estimations live outside AutoCount; this handler owns the numbering.
+// Resets count to 1 on MMYY rollover. Uses LockService for atomicity.
+function handleNextSeNumber(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(5000);
+  try {
+    const sheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName('Counters');
+    if (!sheet) return jsonResponse({status: 'error', message: 'Counters sheet missing — run bootstrapCountersSheet() once from the editor'});
+    const data = sheet.getDataRange().getValues();
+    let rowIdx = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0] || '').trim().toUpperCase() === 'SE') { rowIdx = i; break; }
+    }
+    if (rowIdx < 0) return jsonResponse({status: 'error', message: 'SE row missing in Counters — run bootstrapCountersSheet()'});
+    // MYT-correct MMYY (CLAUDE.md gotcha #3 idiom — extract via getUTC* only)
+    const mytNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const mmyy = String(mytNow.getUTCMonth() + 1).padStart(2, '0') + String(mytNow.getUTCFullYear()).slice(-2);
+    const sheetMmyy = String(data[rowIdx][1] || '').trim();
+    let count = Number(data[rowIdx][2] || 0);
+    if (sheetMmyy !== mmyy) count = 0;
+    count = count + 1;
+    sheet.getRange(rowIdx + 1, 2).setValue(mmyy);
+    sheet.getRange(rowIdx + 1, 3).setValue(count);
+    const docNo = 'SE-' + mmyy + '-' + String(count).padStart(3, '0');
+    return jsonResponse({status: 'ok', docNo: docNo});
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function handleUpdateQuotation(body) {
@@ -529,6 +561,32 @@ function handleClearPaymentVerification(body) {
 }
 
 // Run ONCE from Apps Script editor to add the two new columns.
+// Round 71 — one-time creation of the Counters tab + seeding the SE row.
+// Idempotent: skips if tab exists, only seeds SE row if missing.
+function bootstrapCountersSheet() {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  let sheet = ss.getSheetByName('Counters');
+  if (!sheet) {
+    sheet = ss.insertSheet('Counters');
+    sheet.getRange(1, 1, 1, 3).setValues([['Type', 'Last MMYY', 'Last Count']]);
+    sheet.setFrozenRows(1);
+    Logger.log('bootstrapCountersSheet: created Counters tab');
+  }
+  const data = sheet.getDataRange().getValues();
+  let hasSe = false;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0] || '').trim().toUpperCase() === 'SE') { hasSe = true; break; }
+  }
+  if (!hasSe) {
+    const mytNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const mmyy = String(mytNow.getUTCMonth() + 1).padStart(2, '0') + String(mytNow.getUTCFullYear()).slice(-2);
+    sheet.appendRow(['SE', mmyy, 0]);
+    Logger.log('bootstrapCountersSheet: seeded SE row at MMYY=' + mmyy + ', count=0');
+  } else {
+    Logger.log('bootstrapCountersSheet: SE row already present, nothing to do');
+  }
+}
+
 function bootstrapVerificationColumns() {
   const sheet = getSheet();
   const lastCol = sheet.getLastColumn();
