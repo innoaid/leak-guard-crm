@@ -135,6 +135,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .grand-line{display:flex;justify-content:space-between;font-size:12px;line-height:1.65;opacity:.9}
 .grand-line.indent{padding-left:9px;font-size:11.5px;opacity:.82}
 .grand-line.subtotal{font-weight:800;opacity:1;margin-top:3px;border-top:.5px dashed rgba(255,255,255,.3);padding-top:4px}
+/* Round 74 — discount row inside grand-card */
+.grand-discount{margin-top:8px;padding-top:8px;border-top:.5px dashed rgba(255,255,255,.3);display:flex;gap:6px;align-items:center;font-size:12px}
+.grand-discount label{opacity:.85;font-weight:600;min-width:60px}
+.grand-discount select,.grand-discount input{background:rgba(255,255,255,.15);color:#fff;border:.5px solid rgba(255,255,255,.3);border-radius:5px;padding:5px 8px;font-family:inherit;font-size:12px;font-weight:600}
+.grand-discount select{cursor:pointer}
+.grand-discount input{flex:1;min-width:0;max-width:80px;text-align:right}
+.grand-discount input::placeholder{color:rgba(255,255,255,.4)}
+.grand-discount .out{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700;opacity:.95}
 .grand-total-line{display:flex;justify-content:space-between;font-size:18px;font-weight:800;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.3)}
 .grand-total-line .l-val{font-variant-numeric:tabular-nums}
 
@@ -459,7 +467,7 @@ function saveSettings(s){
 }
 let settings = loadSettings();
 
-let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[] };
+let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], discountType:'percent', discountValue:0 };
 
 // Ephemeral UI collapse state per slab — not persisted (re-derived on render)
 const uiCollapse = new Map(); // slabId -> { measurements: bool, services: bool }
@@ -547,6 +555,9 @@ function loadState(){
           };
         });
         state.siteExtras = (parsed.siteExtras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; });
+        // Round 74 — discount on grand total
+        state.discountType = (parsed.discountType === 'value') ? 'value' : 'percent';
+        state.discountValue = Number(parsed.discountValue) || 0;
       }
     }
   } catch(_){}
@@ -561,7 +572,8 @@ function saveState(){
     const slim = {
       submittedBy:state.submittedBy, notes:state.notes,
       slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor,collapsed:!!s.collapsed,iscannerXMarks:s.iscannerXMarks||null}; }),
-      siteExtras:state.siteExtras
+      siteExtras:state.siteExtras,
+      discountType:state.discountType||'percent', discountValue:Number(state.discountValue)||0
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
   } catch(_){}
@@ -579,7 +591,16 @@ function slabExtrasRm(s){ return s.extras.reduce(function(sum,e){ return sum+ext
 function slabTotal(s){ return slabMembraneRm(s)+slabExtrasRm(s); }
 function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
 function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabSqft(s); },0); }
-function grandTotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm(); }
+// Round 74 — discount on grand total. grandSubtotal is pre-discount; grandTotal post-discount.
+function grandSubtotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm(); }
+function discountAmount(){
+  const sub = grandSubtotal();
+  const v = Number(state.discountValue) || 0;
+  if (v <= 0 || sub <= 0) return 0;
+  const raw = state.discountType === 'value' ? v : (sub * v / 100);
+  return Math.min(Math.max(0, raw), sub);
+}
+function grandTotal(){ return Math.max(0, grandSubtotal() - discountAmount()); }
 function totalPhotos(){ return state.slabs.reduce(function(sum,s){ return sum+s.photos.length; },0); }
 
 // ========= PHOTO =========
@@ -1110,8 +1131,31 @@ function renderGrand(){
       '</div>';
   }
 
+  // Round 74 — discount control + Subtotal line (only render if there's anything to discount)
+  const subtotal = grandSubtotal();
+  const disc = discountAmount();
+  if (subtotal > 0) {
+    html += '<div class="grand-block" style="margin-top:6px">';
+    html += '<div class="grand-line subtotal"><span class="l-label">Subtotal</span><span class="l-val">'+rm(subtotal)+'</span></div>';
+    html += '<div class="grand-discount">'+
+      '<label>Discount</label>'+
+      '<select id="gtDiscountType">'+
+        '<option value="percent"'+(state.discountType==='percent'?' selected':'')+'>%</option>'+
+        '<option value="value"'+(state.discountType==='value'?' selected':'')+'>RM</option>'+
+      '</select>'+
+      '<input type="number" inputmode="decimal" step="0.5" min="0" id="gtDiscountValue" value="'+(state.discountValue||'')+'" placeholder="0">'+
+      '<span class="out">'+(disc > 0 ? '− '+rm(disc) : '−')+'</span>'+
+    '</div>';
+    html += '</div>';
+  }
   blocks.innerHTML = html;
   document.getElementById('gtTotal').textContent = rm(grandTotal());
+
+  // Wire discount inputs
+  const dt = document.getElementById('gtDiscountType');
+  const dv = document.getElementById('gtDiscountValue');
+  if (dt) dt.onchange = function(){ state.discountType = dt.value; saveState(); renderGrand(); renderStepSummaries(); updateSubmitState(); };
+  if (dv) dv.oninput  = function(){ state.discountValue = Number(dv.value)||0; saveState(); renderGrand(); renderStepSummaries(); updateSubmitState(); };
 }
 
 function wireSlabHandlers(list){
@@ -1490,7 +1534,7 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
 
 document.getElementById('btnClear').addEventListener('click', function(){
   if (!confirm('Clear all slabs, services, and photos?')) return;
-  state = { submittedBy:'', notes:'', slabs:[newSlab('Slab 1')], siteExtras:[] };
+  state = { submittedBy:'', notes:'', slabs:[newSlab('Slab 1')], siteExtras:[], discountType:'percent', discountValue:0 };
   uiCollapse.clear();
   document.getElementById('fSubmittedBy').value='';
   document.getElementById('fNotes').value='';
@@ -1686,6 +1730,15 @@ function buildPrintView(overrideRef) {
     html += acBlk;
   }
 
+  // Round 74 — show Subtotal + Discount lines only when there's a discount applied
+  const _pvDisc = discountAmount();
+  if (_pvDisc > 0) {
+    html += '<div class="pv-grand-line subtotal"><span>Subtotal</span><span>'+rm(grandSubtotal())+'</span></div>';
+    const _discLabel = state.discountType === 'percent'
+      ? 'Discount ('+ (Number(state.discountValue)||0) +'%)'
+      : 'Discount';
+    html += '<div class="pv-grand-line"><span>'+escapeHtml(_discLabel)+'</span><span>− '+rm(_pvDisc)+'</span></div>';
+  }
   html += '<div class="pv-grand-total"><span>TOTAL</span><span>'+rm(grandTotal())+'</span></div>';
   html += '</div>';
 
@@ -1706,7 +1759,8 @@ function buildPrintView(overrideRef) {
         '<li>This estimate is valid for <b>14 days</b> from date of issue.</li>'+
         '<li>A final formal quotation will be issued upon project confirmation.</li>'+
         '<li>Estimate is subject to actual site conditions on installation day; minor adjustments may apply.</li>'+
-        '<li>Waterproofing membrane carries a <b>5-year workmanship warranty</b> from project completion.</li>'+
+        '<li>Waterproofing installation carries a <b>5-year workmanship warranty</b> from project completion.</li>'+
+        '<li>Membrane material is covered by a <b>10-year manufacturer warranty</b>.</li>'+
         '<li>All payments must be made via official Innovation AID Sdn Bhd channels only.</li>'+
         '<li>Customer to ensure site access on the agreed installation date.</li>'+
       '</ul>'+
