@@ -424,6 +424,10 @@ const LS_KEY = 'lg_site_visit_mockup_v3';
 const SETTINGS_KEY = 'lg_site_visit_settings_v1';
 
 // Defaults — used to seed settings on first run + reset.
+// Round 75 — Minimum Order Quantity (sqft). Jobs under this floor are
+// billed as if they were exactly 300 sqft (membrane line only).
+const MOQ_SQFT = 300;
+
 const DEFAULT_SETTINGS = {
   membraneRate: 8.50,
   slabPresets: [
@@ -593,8 +597,16 @@ function slabExtrasRm(s){ return s.extras.reduce(function(sum,e){ return sum+ext
 function slabTotal(s){ return slabMembraneRm(s)+slabExtrasRm(s); }
 function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
 function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabSqft(s); },0); }
+// Round 75 — MOQ adjustment: if total membrane area < MOQ_SQFT, bill the shortfall × rate.
+function moqAdjustment(){
+  const total = grandMembraneSqft();
+  if (total > 0 && total < MOQ_SQFT) {
+    return (MOQ_SQFT - total) * membraneRate();
+  }
+  return 0;
+}
 // Round 74 — discount on grand total. grandSubtotal is pre-discount; grandTotal post-discount.
-function grandSubtotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm(); }
+function grandSubtotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm()+moqAdjustment(); }
 function discountAmount(){
   const sub = grandSubtotal();
   const v = Number(state.discountValue) || 0;
@@ -1131,6 +1143,18 @@ function renderGrand(){
         '<div class="grand-block-h">Additional Costs (site-wide)</div>'+
         acLines+
       '</div>';
+  }
+
+  // Round 75 — MOQ adjustment block (only when total membrane sqft < 300)
+  const moq = moqAdjustment();
+  if (moq > 0) {
+    const gmSqft = grandMembraneSqft();
+    const shortfall = MOQ_SQFT - gmSqft;
+    html += '<div class="grand-block" style="margin-top:6px;background:rgba(245,158,11,.15);border:.5px solid rgba(245,158,11,.4);border-radius:6px;padding:6px 9px">'+
+      '<div class="grand-block-h" style="color:#FCD34D">⚠️ Minimum Order Adjustment</div>'+
+      '<div class="grand-line"><span class="l-label" style="opacity:.85;font-size:11px">Total area '+sqft(gmSqft)+' &lt; '+MOQ_SQFT+' sqft MOQ</span><span class="l-val"></span></div>'+
+      '<div class="grand-line"><span class="l-label">Adjustment ('+sqft(shortfall)+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(moq)+'</span></div>'+
+    '</div>';
   }
 
   // Round 74 — discount control + Subtotal line (only render if there's anything to discount)
@@ -1761,6 +1785,17 @@ function buildPrintView(overrideRef) {
     html += acBlk;
   }
 
+  // Round 75 — show MOQ adjustment line if applicable (before Subtotal)
+  const _moq = moqAdjustment();
+  if (_moq > 0) {
+    const _gm = grandMembraneSqft();
+    html += '<div class="pv-grand-block">'+
+      '<div class="pv-grand-block-h">Minimum Order Adjustment</div>'+
+      '<div class="pv-grand-line"><span>Total area '+sqft(_gm)+' &lt; '+MOQ_SQFT+' sqft MOQ</span><span></span></div>'+
+      '<div class="pv-grand-line"><span>Adjustment ('+sqft(MOQ_SQFT - _gm)+' × '+rm(membraneRate())+')</span><span>'+rm(_moq)+'</span></div>'+
+      '</div>';
+  }
+
   // Round 74 — show Subtotal + Discount lines only when there's a discount applied
   const _pvDisc = discountAmount();
   if (_pvDisc > 0) {
@@ -1792,6 +1827,7 @@ function buildPrintView(overrideRef) {
         '<li>Estimate is subject to actual site conditions on installation day; minor adjustments may apply.</li>'+
         '<li>Waterproofing installation carries a <b>5-year workmanship warranty</b> from project completion.</li>'+
         '<li>Membrane material is covered by a <b>10-year manufacturer warranty</b>.</li>'+
+        '<li>A minimum order of <b>300 sqft</b> applies; jobs under this threshold are billed at the 300 sqft floor.</li>'+
         '<li>All payments must be made via official Innovation AID Sdn Bhd channels only.</li>'+
         '<li>Customer to ensure site access on the agreed installation date.</li>'+
       '</ul>'+
