@@ -349,7 +349,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <div class="submit-bar-inner">
     <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
     <button class="btn-clear" id="btnPdf" type="button" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E">📄 Estimate PDF</button>
-    <button class="btn-submit" id="btnSubmit" type="button" disabled>Submit Visit</button>
+    <button class="btn-submit" id="btnSubmit" type="button" disabled>Send Estimation</button>
   </div>
 </div>
 
@@ -926,7 +926,7 @@ function renderSlabExpanded(s){
       '<div style="margin-top:9px;padding:9px;background:#FAFAFA;border:.5px dashed #D1D5DB;border-radius:6px">'+
         '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'+
           '<span>📏 Manual L × W (iScanner failed)</span>'+
-          '<span style="font-weight:600;color:var(--acc)">Sum: '+sqft(slabManualFloorTotal(s))+'</span>'+
+          '<span data-mf-sum="'+s.id+'" style="font-weight:600;color:var(--acc)">Sum: '+sqft(slabManualFloorTotal(s))+'</span>'+
         '</div>'+
         (s.manualFloor||[]).map(function(r){
           return '<div class="row" data-mfloor="'+r.id+'" style="margin-bottom:5px">'+
@@ -941,7 +941,7 @@ function renderSlabExpanded(s){
         }).join('')+
         '<div style="display:flex;gap:6px;margin-top:5px">'+
           '<button class="add-row" type="button" data-add-mfloor="'+s.id+'" style="flex:1;margin-top:0">+ Add section</button>'+
-          ((s.manualFloor||[]).length ? '<button class="add-row" type="button" data-apply-mfloor="'+s.id+'" style="flex:1;margin-top:0;border-color:var(--acc);background:#F0FDF4;color:var(--acc);font-weight:700">↑ Apply '+sqft(slabManualFloorTotal(s))+' to floor area</button>' : '')+
+          ((s.manualFloor||[]).length ? '<button class="add-row" type="button" data-apply-mfloor="'+s.id+'" data-mf-applybtn="'+s.id+'" style="flex:1;margin-top:0;border-color:var(--acc);background:#F0FDF4;color:var(--acc);font-weight:700">↑ Apply '+sqft(slabManualFloorTotal(s))+' to floor area</button>' : '')+
         '</div>'+
       '</div>'+
       '<div style="margin-top:11px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt)">Upturns ('+s.upturns.length+')</div>';
@@ -1299,6 +1299,8 @@ function wireSlabHandlers(list){
     };
   });
   list.querySelectorAll('input[data-mf-field]').forEach(function(el){
+    // Round 74.2 — targeted text updates only (no renderAll on keystroke,
+    // which was killing input focus mid-typing).
     const update = function(){
       const s = state.slabs.find(function(x){ return x.id===el.dataset.slab; });
       if (!s) return;
@@ -1308,7 +1310,12 @@ function wireSlabHandlers(list){
       r[f] = (f==='length'||f==='width') ? (Number(el.value)||0) : el.value;
       const out = list.querySelector('[data-mf-out="'+r.id+'"]');
       if (out) out.textContent = '= ' + sqft(manualRowSqft(r));
-      renderAll();
+      const tot = slabManualFloorTotal(s);
+      const sumEl = list.querySelector('[data-mf-sum="'+s.id+'"]');
+      if (sumEl) sumEl.textContent = 'Sum: ' + sqft(tot);
+      const btnEl = list.querySelector('[data-mf-applybtn="'+s.id+'"]');
+      if (btnEl) btnEl.textContent = '↑ Apply ' + sqft(tot) + ' to floor area';
+      saveState();
     };
     el.addEventListener('input', update);
     el.addEventListener('change', update);
@@ -1397,7 +1404,7 @@ function updateSubmitState(){
   const photosCount = totalPhotos();
   const ok = state.submittedBy && slabsValid && photosCount>=1;
   btn.disabled = !ok;
-  btn.textContent = ok ? ('Submit — '+state.slabs.length+' slab'+(state.slabs.length>1?'s':'')+', '+rm(grandTotal())+' est.') : 'Submit Visit';
+  btn.textContent = ok ? ('Send Estimation — '+state.slabs.length+' slab'+(state.slabs.length>1?'s':'')+', '+rm(grandTotal())) : 'Send Estimation';
 }
 
 document.getElementById('fSubmittedBy').addEventListener('change', function(e){ state.submittedBy=e.target.value; saveState(); renderStepSummaries(); updateSubmitState(); });
@@ -1423,6 +1430,12 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
   if (!currentLead || !currentLead['Phone']) { toast('Customer not loaded yet','error'); return; }
   if (!state.submittedBy) { toast('Pick the inspector first','warn'); return; }
   if (!state.slabs.length) { toast('Add at least one slab','warn'); return; }
+  // Round 74.2 — confirm before sending so a misclick can be cancelled.
+  const _custName = String(currentLead['Name'] || 'customer').trim();
+  const _totalStr = rm(grandTotal());
+  if (!confirm('Send the estimation PDF to ' + _custName + '?\n\nTotal: ' + _totalStr + '\n\nThis will issue a new SE number, generate the PDF, and post it to the customer’s WA group.')) {
+    return;
+  }
   const btn = document.getElementById('btnSubmit');
   const ov = document.getElementById('uploadOverlay');
   const ut = document.getElementById('uploadText');
