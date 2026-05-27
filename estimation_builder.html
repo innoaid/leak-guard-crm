@@ -1145,24 +1145,18 @@ function renderGrand(){
       '</div>';
   }
 
-  // Round 75 — MOQ adjustment block (only when total membrane sqft < 300)
-  const moq = moqAdjustment();
-  if (moq > 0) {
-    const gmSqft = grandMembraneSqft();
-    const shortfall = MOQ_SQFT - gmSqft;
-    html += '<div class="grand-block" style="margin-top:6px;background:rgba(245,158,11,.15);border:.5px solid rgba(245,158,11,.4);border-radius:6px;padding:6px 9px">'+
-      '<div class="grand-block-h" style="color:#FCD34D">⚠️ Minimum Order Adjustment</div>'+
-      '<div class="grand-line"><span class="l-label" style="opacity:.85;font-size:11px">Total area '+sqft(gmSqft)+' &lt; '+MOQ_SQFT+' sqft MOQ</span><span class="l-val"></span></div>'+
-      '<div class="grand-line"><span class="l-label">Adjustment ('+sqft(shortfall)+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(moq)+'</span></div>'+
-    '</div>';
-  }
-
   // Round 74 — discount control + Subtotal line (only render if there's anything to discount)
   const subtotal = grandSubtotal();
   const disc = discountAmount();
+  const moqApplied = moqAdjustment() > 0;
+  // Round 75.1 — when MOQ kicks in, bake it silently into the Subtotal with
+  // a soft "(Min Order Applied)" hint. No separate adjustment block.
+  const subtotalLabel = moqApplied
+    ? 'Subtotal <small style="opacity:.75;font-weight:500;font-size:10px">(Min Order Applied)</small>'
+    : 'Subtotal';
   if (subtotal > 0) {
     html += '<div class="grand-block" style="margin-top:6px">';
-    html += '<div class="grand-line subtotal"><span class="l-label">Subtotal</span><span class="l-val">'+rm(subtotal)+'</span></div>';
+    html += '<div class="grand-line subtotal"><span class="l-label">'+subtotalLabel+'</span><span class="l-val">'+rm(subtotal)+'</span></div>';
     html += '<div class="grand-discount">'+
       '<label>Discount</label>'+
       '<select id="gtDiscountType">'+
@@ -1785,21 +1779,16 @@ function buildPrintView(overrideRef) {
     html += acBlk;
   }
 
-  // Round 75 — show MOQ adjustment line if applicable (before Subtotal)
-  const _moq = moqAdjustment();
-  if (_moq > 0) {
-    const _gm = grandMembraneSqft();
-    html += '<div class="pv-grand-block">'+
-      '<div class="pv-grand-block-h">Minimum Order Adjustment</div>'+
-      '<div class="pv-grand-line"><span>Total area '+sqft(_gm)+' &lt; '+MOQ_SQFT+' sqft MOQ</span><span></span></div>'+
-      '<div class="pv-grand-line"><span>Adjustment ('+sqft(MOQ_SQFT - _gm)+' × '+rm(membraneRate())+')</span><span>'+rm(_moq)+'</span></div>'+
-      '</div>';
-  }
+  // Round 75.1 — MOQ silently baked into Subtotal label; no separate block.
+  const _moqApplied = moqAdjustment() > 0;
+  const _pvSubLabel = 'Subtotal' + (_moqApplied
+    ? ' <small style="opacity:.75;font-size:9px">(Min Order Applied)</small>'
+    : '');
 
   // Round 74 — show Subtotal + Discount lines only when there's a discount applied
   const _pvDisc = discountAmount();
   if (_pvDisc > 0) {
-    html += '<div class="pv-grand-line subtotal"><span>Subtotal</span><span>'+rm(grandSubtotal())+'</span></div>';
+    html += '<div class="pv-grand-line subtotal"><span>'+_pvSubLabel+'</span><span>'+rm(grandSubtotal())+'</span></div>';
     const _discLabel = state.discountType === 'percent'
       ? 'Discount ('+ (Number(state.discountValue)||0) +'%)'
       : 'Discount';
