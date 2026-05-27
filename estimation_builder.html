@@ -140,6 +140,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .grand-discount label{opacity:.85;font-weight:600;min-width:60px}
 .grand-discount select,.grand-discount input{background:rgba(255,255,255,.15);color:#fff;border:.5px solid rgba(255,255,255,.3);border-radius:5px;padding:5px 8px;font-family:inherit;font-size:12px;font-weight:600}
 .grand-discount select{cursor:pointer}
+/* Round 74.1 — option text gets dark color on white OS popup so it's visible */
+.grand-discount select option{background:#fff;color:#1D2862}
 .grand-discount input{flex:1;min-width:0;max-width:80px;text-align:right}
 .grand-discount input::placeholder{color:rgba(255,255,255,.4)}
 .grand-discount .out{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700;opacity:.95}
@@ -1151,11 +1153,27 @@ function renderGrand(){
   blocks.innerHTML = html;
   document.getElementById('gtTotal').textContent = rm(grandTotal());
 
-  // Wire discount inputs
+  // Round 74.1 — targeted text update (avoids rebuilding the card on every
+  // keystroke, which was killing focus on the discount value input).
+  function updateDiscountTotals(){
+    const disc = discountAmount();
+    const out = document.querySelector('.grand-discount .out');
+    if (out) out.textContent = disc > 0 ? '− ' + rm(disc) : '−';
+    const gtt = document.getElementById('gtTotal');
+    if (gtt) gtt.textContent = rm(grandTotal());
+  }
   const dt = document.getElementById('gtDiscountType');
   const dv = document.getElementById('gtDiscountValue');
-  if (dt) dt.onchange = function(){ state.discountType = dt.value; saveState(); renderGrand(); renderStepSummaries(); updateSubmitState(); };
-  if (dv) dv.oninput  = function(){ state.discountValue = Number(dv.value)||0; saveState(); renderGrand(); renderStepSummaries(); updateSubmitState(); };
+  if (dt) dt.onchange = function(){
+    state.discountType = dt.value;
+    updateDiscountTotals();
+    saveState(); renderStepSummaries(); updateSubmitState();
+  };
+  if (dv) dv.oninput = function(){
+    state.discountValue = Number(dv.value) || 0;
+    updateDiscountTotals();
+    saveState(); renderStepSummaries(); updateSubmitState();
+  };
 }
 
 function wireSlabHandlers(list){
