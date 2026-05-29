@@ -63,6 +63,7 @@ function doPost(e) {
       case 'updateLastAdminMsg': return handleUpdateLastAdminMsg(body);  // round 68 — admin-msg capture from Parse & Route
       case 'nextSeNumber':       return handleNextSeNumber(body);  // round 71 — atomic SE-MMYY-NNN counter for Estimation Builder
       case 'uploadEstimationPhoto': return handleUploadEstimationPhoto(body);  // round 72 — Drive upload from Estimation Builder
+      case 'login':              return handleLogin(body);  // round 76 — kanban login gate (Users tab)
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -1372,6 +1373,82 @@ function backfillInviteLinks() {
   Logger.log('---');
   Logger.log('backfillInviteLinks DONE: ' + okCount + ' ok, ' + failCount + ' failed');
   if (failures.length) Logger.log('Failures: ' + JSON.stringify(failures, null, 2));
+}
+
+// ================================================================
+// Round 76 — Kanban login gate + roles
+// ================================================================
+// A "Users" tab is the single source of truth for both the kanban
+// login check and (Phase 2/3) the WA bot's phone<->name mapping.
+// Columns: Username | PIN | Name | Role | Phone | AssignName
+//   Role       = 'admin' (sees all) | 'supervisor' (filtered view)
+//   AssignName = exact string used in the lead 'Assigned To' column so
+//                the kanban filter matches; blank for admin.
+// This is a practical gate (validates credentials, role-filters the
+// view) — NOT crypto-grade; the raw gviz URL is still readable.
+// ================================================================
+
+const USERS_SHEET_NAME = 'Users';
+
+// Run ONCE from the Apps Script editor. Idempotent: re-running only adds
+// missing pieces. Seeds an admin row + 2 example supervisor placeholders.
+function bootstrapUsersSheet() {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  let sheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(USERS_SHEET_NAME);
+    sheet.getRange(1, 1, 1, 6).setValues([['Username', 'PIN', 'Name', 'Role', 'Phone', 'AssignName']]);
+    sheet.setFrozenRows(1);
+    // PIN + Phone as plain text so leading zeros / long numbers survive.
+    sheet.getRange('B:B').setNumberFormat('@');
+    sheet.getRange('E:E').setNumberFormat('@');
+    Logger.log('bootstrapUsersSheet: created Users tab');
+  }
+  // Seed rows only if the sheet has no data rows yet.
+  if (sheet.getLastRow() < 2) {
+    sheet.getRange(2, 1, 3, 6).setValues([
+      ['admin',   '9999', 'Admin',    'admin',      '60183639321', ''],
+      ['osment',  '1234', 'Osment',   'supervisor', '',            'Osment'],
+      ['william', '5678', 'William',  'supervisor', '',            'William'],
+    ]);
+    Logger.log('bootstrapUsersSheet: seeded admin + 2 example supervisor rows (edit PINs/phones/AssignName)');
+  } else {
+    Logger.log('bootstrapUsersSheet: rows already present, nothing to seed');
+  }
+}
+
+// body: {action:'login', username, pin, secret}
+// Returns {status:'ok', name, role, assignName, phone} on match,
+//         {status:'error', message:'invalid'} otherwise.
+// Never returns any other user's row.
+function handleLogin(body) {
+  const username = String(body.username || '').trim().toLowerCase();
+  const pin = String(body.pin || '').trim();
+  if (!username || !pin) {
+    return jsonResponse({status: 'error', message: 'username and pin required'});
+  }
+  const sheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(USERS_SHEET_NAME);
+  if (!sheet) {
+    return jsonResponse({status: 'error', message: 'Users tab missing — run bootstrapUsersSheet() once from the editor'});
+  }
+  const data = sheet.getDataRange().getValues();
+  // header: 0=Username 1=PIN 2=Name 3=Role 4=Phone 5=AssignName
+  for (let i = 1; i < data.length; i++) {
+    const u = String(data[i][0] || '').trim().toLowerCase();
+    if (u !== username) continue;
+    const rowPin = String(data[i][1] || '').trim();
+    if (rowPin !== pin) {
+      return jsonResponse({status: 'error', message: 'invalid'});
+    }
+    return jsonResponse({
+      status: 'ok',
+      name: String(data[i][2] || '').trim(),
+      role: String(data[i][3] || '').trim().toLowerCase(),
+      phone: String(data[i][4] || '').trim(),
+      assignName: String(data[i][5] || '').trim(),
+    });
+  }
+  return jsonResponse({status: 'error', message: 'invalid'});
 }
 
 // ================================================================
