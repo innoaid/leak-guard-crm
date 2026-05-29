@@ -64,6 +64,7 @@ function doPost(e) {
       case 'nextSeNumber':       return handleNextSeNumber(body);  // round 71 — atomic SE-MMYY-NNN counter for Estimation Builder
       case 'uploadEstimationPhoto': return handleUploadEstimationPhoto(body);  // round 72 — Drive upload from Estimation Builder
       case 'login':              return handleLogin(body);  // round 76 — kanban login gate (Users tab)
+      case 'staffJobs':          return handleStaffJobs(body);  // round 76 phase 2/3 — staff assigned + repair cards
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -1449,6 +1450,209 @@ function handleLogin(body) {
     });
   }
   return jsonResponse({status: 'error', message: 'invalid'});
+}
+
+// ================================================================
+// Round 76 Phase 2 — Internal-staff job queries + daily WA reminder
+// ================================================================
+// handleStaffJobs is the web endpoint Phase 3's WA text-command flow
+// will also call. The daily reminder runs entirely here via a
+// time-driven trigger (no n8n) — reusing the Whapi send pattern from
+// handleSendReschedule and the Users tab from Phase 1.
+
+// Statuses we DON'T remind about / surface (archived + final).
+const STAFF_DONE_STATUSES = [
+  'Completed', 'Job Complete', 'Receipt Sent',
+  'Lost', 'Cold Lead', 'Rejected', 'Out of Area', 'Human Handoff'
+];
+
+// Pure filter over already-read leads data.
+//   data: sheet.getDataRange().getValues() (row 0 = headers)
+//   h:    getHeaders(sheet) → {headers, colByName}
+// Returns {assigned:[card...], repair:[card...]} where each card is
+//   {name, phone, status, notes, groupLink, groupName}.
+// A card can appear in BOTH lists (assigned to me AND repair-tagged).
+function _filterStaffJobs(data, h, assignName) {
+  const cName   = h.colByName['Name'];
+  const cPhone  = h.colByName['Phone'];
+  const cStatus = h.colByName['Status'];
+  const cAssign = h.colByName['Assigned To'];
+  const cTags   = h.colByName['Tags'];
+  const cNotes  = h.colByName['Notes'];
+  const cLink   = h.colByName['Group Invite Link (AJ)'];
+  const cGName  = h.colByName['Group Name (AE)'];
+  const want = String(assignName || '').trim();
+
+  const assigned = [];
+  const repair = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const status = cStatus ? String(row[cStatus - 1] || '').trim() : '';
+    if (STAFF_DONE_STATUSES.indexOf(status) !== -1) continue;  // skip archived/final
+    const card = {
+      name:      cName  ? String(row[cName  - 1] || '').trim() : '',
+      phone:     cPhone ? String(row[cPhone - 1] || '').trim() : '',
+      status:    status,
+      notes:     cNotes ? String(row[cNotes - 1] || '').trim() : '',
+      groupLink: cLink  ? String(row[cLink  - 1] || '').trim() : '',
+      groupName: cGName ? String(row[cGName - 1] || '').trim() : ''
+    };
+    const tags = cTags ? String(row[cTags - 1] || '').toLowerCase() : '';
+    if (tags.indexOf('repair') !== -1) repair.push(card);
+    if (want && cAssign && String(row[cAssign - 1] || '').trim() === want) assigned.push(card);
+  }
+  return {assigned: assigned, repair: repair};
+}
+
+// body: {action:'staffJobs', phone OR name, secret}
+// Resolves the Users row (by phone last-8 or exact name), then returns
+// that person's assigned + repair cards. Used by Phase 3 WA commands.
+function handleStaffJobs(body) {
+  const phone = String(body.phone || '').replace(/\D/g, '');
+  const name  = String(body.name || '').trim().toLowerCase();
+  if (!phone && !name) {
+    return jsonResponse({status: 'error', message: 'phone or name required'});
+  }
+  const usersSheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(USERS_SHEET_NAME);
+  if (!usersSheet) return jsonResponse({status: 'error', message: 'Users tab missing'});
+
+  const u = usersSheet.getDataRange().getValues();
+  // header: 0=Username 1=PIN 2=Name 3=Role 4=Phone 5=AssignName
+  const last8 = phone.length >= 8 ? phone.slice(-8) : phone;
+  let urow = null;
+  for (let i = 1; i < u.length; i++) {
+    const uPhone = String(u[i][4] || '').replace(/\D/g, '');
+    const uName  = String(u[i][2] || '').trim().toLowerCase();
+    if (phone && uPhone && (uPhone === phone || (uPhone.length >= 8 && uPhone.endsWith(last8)))) { urow = u[i]; break; }
+    if (name && uName && uName === name) { urow = u[i]; break; }
+  }
+  if (!urow) return jsonResponse({status: 'error', message: 'not_recognised'});
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const h = getHeaders(sheet);
+  const jobs = _filterStaffJobs(data, h, String(urow[5] || '').trim());
+  return jsonResponse({
+    status: 'ok',
+    name: String(urow[2] || '').trim(),
+    role: String(urow[3] || '').trim().toLowerCase(),
+    assigned: jobs.assigned,
+    repair: jobs.repair
+  });
+}
+
+// MYT YYYY-MM-DD (gotcha #3 idiom — getUTC* on a +8h-shifted timestamp).
+function _mytDateStr() {
+  const m = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  return m.getUTCFullYear() + '-' +
+    String(m.getUTCMonth() + 1).padStart(2, '0') + '-' +
+    String(m.getUTCDate()).padStart(2, '0');
+}
+
+// Trigger target — installed to fire every 30 min; self-gates to the
+// 8 AM MYT hour and sends at most once per MYT day.
+function sendSupervisorDailyReminders() {
+  const mytHour = new Date(Date.now() + 8 * 60 * 60 * 1000).getUTCHours();
+  if (mytHour !== 8) return;  // only the 8 AM MYT hour
+  const props = PropertiesService.getScriptProperties();
+  const today = _mytDateStr();
+  if (props.getProperty('lastReminderDate') === today) return;  // already sent today
+  const result = _doSupervisorReminders();
+  props.setProperty('lastReminderDate', today);
+  Logger.log('sendSupervisorDailyReminders: ' + JSON.stringify(result));
+}
+
+// Manual test from the editor — bypasses the hour + daily guards so it
+// always sends right now.
+function testSupervisorReminders() {
+  Logger.log('testSupervisorReminders: ' + JSON.stringify(_doSupervisorReminders()));
+}
+
+// Core: DM each supervisor (Users tab, role=supervisor, has phone) their
+// assigned + repair cards. Skips supervisors with nothing to show.
+function _doSupervisorReminders() {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!usersSheet) return {error: 'Users tab missing'};
+  const u = usersSheet.getDataRange().getValues();
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const h = getHeaders(sheet);
+
+  let sent = 0, skipped = 0;
+  for (let i = 1; i < u.length; i++) {
+    if (String(u[i][3] || '').trim().toLowerCase() !== 'supervisor') continue;
+    const phone = String(u[i][4] || '').replace(/\D/g, '');
+    if (!phone) { skipped++; continue; }
+    const jobs = _filterStaffJobs(data, h, String(u[i][5] || '').trim());
+    if (!jobs.assigned.length && !jobs.repair.length) { skipped++; continue; }
+    _sendWhapiText(phone, _buildReminderMessage(String(u[i][2] || '').trim(), jobs));
+    sent++;
+    Utilities.sleep(600);  // gentle pacing between sends
+  }
+  return {sent: sent, skipped: skipped};
+}
+
+function _buildReminderMessage(name, jobs) {
+  const lines = [];
+  lines.push('🔔 Good morning ' + (name || 'there') + ' — your jobs today');
+  lines.push('');
+  lines.push('ASSIGNED (' + jobs.assigned.length + ')');
+  if (jobs.assigned.length) {
+    jobs.assigned.forEach(function(c) { _appendCardLines(lines, c); });
+  } else {
+    lines.push('• (none)');
+  }
+  if (jobs.repair.length) {
+    lines.push('');
+    lines.push('REPAIR QUEUE (' + jobs.repair.length + ')');
+    jobs.repair.forEach(function(c) { _appendCardLines(lines, c); });
+  }
+  return lines.join('\n');
+}
+
+function _appendCardLines(lines, c) {
+  lines.push('• ' + (c.name || '(no name)') + ' — ' + c.status);
+  if (c.notes)     lines.push('  📝 ' + _snippet(c.notes, 140));
+  if (c.groupLink) lines.push('  🔗 ' + c.groupLink);
+}
+
+function _snippet(s, max) {
+  s = String(s || '').replace(/\s+/g, ' ').trim();
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function _sendWhapiText(to, body) {
+  try {
+    UrlFetchApp.fetch(N8N_WAGROUP_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {'Authorization': 'Bearer ' + WHAPI_TOKEN},
+      payload: JSON.stringify({to: to, body: body}),
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    Logger.log('_sendWhapiText error to ' + to + ': ' + e.toString());
+  }
+}
+
+// Run ONCE from the editor — installs the time trigger that drives
+// sendSupervisorDailyReminders (which self-gates to 8 AM MYT). Idempotent:
+// removes any existing trigger for that function first.
+function bootstrapDailyReminderTrigger() {
+  let removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'sendSupervisorDailyReminders') {
+      ScriptApp.deleteTrigger(t);
+      removed++;
+    }
+  });
+  ScriptApp.newTrigger('sendSupervisorDailyReminders')
+    .timeBased()
+    .everyMinutes(30)
+    .create();
+  Logger.log('bootstrapDailyReminderTrigger: removed ' + removed + ' old trigger(s), installed 30-min trigger (self-gates to 8 AM MYT)');
 }
 
 // ================================================================
