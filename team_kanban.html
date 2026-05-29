@@ -210,6 +210,17 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .modal-btn-info{background:#EEF2FF;color:#3730A3}
 .modal-btn-info:hover{background:#C7D2FE}
 
+/* Round 76 — login gate */
+.login-gate{position:fixed;inset:0;background:#111827;z-index:2000;display:flex;align-items:center;justify-content:center;padding:18px}
+.login-card{background:#fff;border-radius:14px;width:100%;max-width:340px;box-shadow:0 20px 50px rgba(0,0,0,.35);padding:26px 24px}
+.login-card h1{font-size:18px;font-weight:700;color:var(--ink);margin:0 0 4px;text-align:center}
+.login-card .login-sub{font-size:12px;color:var(--mt);text-align:center;margin-bottom:18px}
+.login-card label{display:block;font-size:10px;color:var(--mt);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.login-card .login-field{margin-bottom:13px}
+.login-err{display:none;background:#FEE2E2;color:#991B1B;font-size:12px;border-radius:6px;padding:8px 10px;margin-bottom:12px}
+.login-err.show{display:block}
+.hdr-btn.logout{background:#FEE2E2;color:#991B1B;border:1px solid #FECACA}
+
 /* Drag visuals */
 .cd.drag-ghost{opacity:.4}
 .kb-body.drag-over{background:#EEF2FF;outline:2px dashed #6366F1;outline-offset:-2px;border-radius:6px}
@@ -281,12 +292,32 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 </head>
 <body>
 
+<!-- Round 76 — login gate (shown until a valid session exists) -->
+<div class="login-gate" id="loginGate">
+  <div class="login-card">
+    <h1>🔐 Team Kanban</h1>
+    <div class="login-sub">Sign in to continue</div>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-field">
+      <label for="loginUser">Username</label>
+      <input type="text" class="modal-input" id="loginUser" autocomplete="username" autocapitalize="none" autocorrect="off">
+    </div>
+    <div class="login-field">
+      <label for="loginPin">PIN</label>
+      <input type="password" class="modal-input" id="loginPin" autocomplete="current-password" inputmode="numeric">
+    </div>
+    <button class="modal-btn modal-btn-primary" id="btnLogin" style="width:100%">Sign In</button>
+  </div>
+</div>
+
 <div class="hdr">
   <div class="hdr-l">
     <div class="hdr-t">📋 Team Kanban</div>
   </div>
   <div class="hdr-r">
+    <span class="last-sync" id="whoami" style="margin-right:4px"></span>
     <button class="hdr-btn" id="btnArchive">📦 Archive <span class="badge" id="archCount">0</span></button>
+    <button class="hdr-btn logout" id="btnLogout" title="Sign out" style="display:none">Sign out</button>
   </div>
 </div>
 
@@ -665,6 +696,7 @@ const DAYS_THRESHOLDS = {
 // ================================================================
 let allLeads = [];           // parsed lead objects
 let headers = [];            // sheet header names in order
+let SESSION = null;          // round 76 — {name, role, assignName, phone} once logged in
 let viewMode = 'kanban';     // 'kanban' | 'archive'
 let refreshTimer = null;
 const REFRESH_MS = 60000;
@@ -748,6 +780,16 @@ function render() {
   }
 
   function passesFilters(lead) {
+    // Round 76 — supervisor role scope: only Site Visit Confirmed +
+    // Pending QT + repair-tagged + cards assigned to them. Admin: no-op.
+    if (SESSION && SESSION.role === 'supervisor') {
+      const st = String(lead['Status'] || '').trim();
+      const tg = String(lead['Tags'] || '').toLowerCase();
+      const mine = (lead['Assigned To'] || '') === SESSION.assignName;
+      if (!(st === 'Site Visit Confirmed' || st === 'Pending QT' || tg.includes('repair') || mine)) {
+        return false;
+      }
+    }
     if (search) {
       const blob = (
         (lead['Name'] || '') + ' ' +
@@ -3478,8 +3520,92 @@ if (isMobile()) {
   });
 })();
 
-loadLeads();
-startAutoRefresh();
+// ================================================================
+// Round 76 — AUTH (login gate + session)
+// ================================================================
+const LG_SESSION_KEY = 'lg_session';
+
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(LG_SESSION_KEY) || 'null'); }
+  catch (_) { return null; }
+}
+
+function applySession(sess) {
+  SESSION = sess;
+  const who = document.getElementById('whoami');
+  const logoutBtn = document.getElementById('btnLogout');
+  if (who) who.textContent = sess.name + ' · ' + (sess.role === 'admin' ? 'Admin' : 'Supervisor');
+  if (logoutBtn) logoutBtn.style.display = '';
+  // Supervisors can't widen scope via the staff dropdown — hide it.
+  const sf = document.getElementById('staffFilter');
+  if (sf) sf.style.display = (sess.role === 'supervisor') ? 'none' : '';
+}
+
+function showLoginGate() {
+  document.getElementById('loginGate').style.display = 'flex';
+  const u = document.getElementById('loginUser');
+  if (u) u.focus();
+}
+
+function hideLoginGate() {
+  document.getElementById('loginGate').style.display = 'none';
+}
+
+async function doLogin() {
+  const errEl = document.getElementById('loginErr');
+  const btn = document.getElementById('btnLogin');
+  const username = (document.getElementById('loginUser').value || '').trim();
+  const pin = (document.getElementById('loginPin').value || '').trim();
+  errEl.classList.remove('show');
+  if (!username || !pin) { errEl.textContent = 'Enter username and PIN.'; errEl.classList.add('show'); return; }
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const r = await apiCall('login', { username: username, pin: pin });
+  btn.disabled = false; btn.textContent = 'Sign In';
+  if (!r || r.status !== 'ok') {
+    errEl.textContent = (r && r.message === 'invalid') ? 'Invalid username or PIN.' : ((r && r.message) || 'Login failed.');
+    errEl.classList.add('show');
+    return;
+  }
+  const sess = { name: r.name, role: r.role, assignName: r.assignName || '', phone: r.phone || '' };
+  try { localStorage.setItem(LG_SESSION_KEY, JSON.stringify(sess)); } catch (_) {}
+  document.getElementById('loginPin').value = '';
+  applySession(sess);
+  hideLoginGate();
+  bootApp();
+}
+
+function logout() {
+  try { localStorage.removeItem(LG_SESSION_KEY); } catch (_) {}
+  location.reload();
+}
+
+let _bootStarted = false;
+function bootApp() {
+  if (_bootStarted) return;
+  _bootStarted = true;
+  loadLeads();
+  startAutoRefresh();
+}
+
+document.getElementById('btnLogin').addEventListener('click', doLogin);
+['loginUser', 'loginPin'].forEach(function(id) {
+  document.getElementById(id).addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+});
+document.getElementById('btnLogout').addEventListener('click', logout);
+
+// Gate the boot: load leads only after a valid session exists.
+(function initAuthBoot() {
+  const sess = loadSession();
+  if (sess && sess.role) {
+    applySession(sess);
+    hideLoginGate();
+    bootApp();
+  } else {
+    showLoginGate();
+  }
+})();
 </script>
 </body>
 </html>
