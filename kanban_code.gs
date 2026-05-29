@@ -65,6 +65,7 @@ function doPost(e) {
       case 'uploadEstimationPhoto': return handleUploadEstimationPhoto(body);  // round 72 — Drive upload from Estimation Builder
       case 'login':              return handleLogin(body);  // round 76 — kanban login gate (Users tab)
       case 'staffJobs':          return handleStaffJobs(body);  // round 76 phase 2/3 — staff assigned + repair cards
+      case 'staffCommand':       return handleStaffCommand(body);  // round 76 phase 3 — WA -myjobs/-pending text command
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -1539,6 +1540,57 @@ function handleStaffJobs(body) {
     assigned: jobs.assigned,
     repair: jobs.repair
   });
+}
+
+// body: {action:'staffCommand', phone, command, secret}
+// WA text-command handler (Phase 3). Resolves the sender via the Users
+// tab, queries their jobs, and sends the WhatsApp reply itself (no n8n
+// reply node needed). command ∈ '-myjobs' | '-pending' (else → help).
+function handleStaffCommand(body) {
+  const phone = String(body.phone || '').replace(/\D/g, '');
+  const command = String(body.command || '').trim().toLowerCase();
+  if (!phone) return jsonResponse({status: 'error', message: 'phone required'});
+
+  const usersSheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(USERS_SHEET_NAME);
+  if (!usersSheet) return jsonResponse({status: 'error', message: 'Users tab missing'});
+  const u = usersSheet.getDataRange().getValues();
+  const last8 = phone.length >= 8 ? phone.slice(-8) : phone;
+  let urow = null;
+  for (let i = 1; i < u.length; i++) {
+    const uPhone = String(u[i][4] || '').replace(/\D/g, '');
+    if (uPhone && (uPhone === phone || (uPhone.length >= 8 && uPhone.endsWith(last8)))) { urow = u[i]; break; }
+  }
+  if (!urow) {
+    _sendWhapiText(phone, "Sorry, this number isn't recognised as Leak Guard staff.");
+    return jsonResponse({status: 'ok', recognised: false});
+  }
+
+  const name = String(urow[2] || '').trim();
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const h = getHeaders(sheet);
+  const jobs = _filterStaffJobs(data, h, String(urow[5] || '').trim());
+
+  let msg;
+  if (command === '-myjobs') {
+    msg = _buildCommandMessage('📋 Your assigned jobs', jobs.assigned, 'You have no assigned jobs right now. 👍');
+  } else if (command === '-pending') {
+    msg = _buildCommandMessage('🔧 Pending repair queue', jobs.repair, 'No pending repair jobs right now. 👍');
+  } else {
+    msg = 'Hi ' + (name || 'there') + '! Commands:\n' +
+      '• *-myjobs* — your assigned jobs\n' +
+      '• *-pending* — pending repair queue';
+  }
+  _sendWhapiText(phone, msg);
+  return jsonResponse({status: 'ok', recognised: true, command: command});
+}
+
+// Build a command reply: "title (n)" + card lines, or an empty-state line.
+function _buildCommandMessage(title, cards, emptyMsg) {
+  if (!cards.length) return title + ' (0)\n\n' + emptyMsg;
+  const lines = [title + ' (' + cards.length + ')', ''];
+  cards.forEach(function(c) { _appendCardLines(lines, c); });
+  return lines.join('\n');
 }
 
 // MYT YYYY-MM-DD (gotcha #3 idiom — getUTC* on a +8h-shifted timestamp).
