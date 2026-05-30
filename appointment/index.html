@@ -228,6 +228,18 @@ var selSlot = null;
 var confirmedDate = null;
 var confirmedSlot = null;
 var confirmedEventId = null;
+
+// Round 78 B.10 — strip the slot being rescheduled FROM out of the
+// availability map. Without this, the OTHER rep's free calendar at
+// that time still puts the original slot back in the available list,
+// and the customer could pick the same time they're trying to move
+// away from (the workflow rejects it server-side with 'same_slot', but
+// the slot shouldn't appear at all). No-op when not rescheduling.
+function stripRescheduleOldSlot() {
+  if (ACTION === 'reschedule' && OLD_DATE && OLD_SLOT && availability[OLD_DATE]) {
+    availability[OLD_DATE] = availability[OLD_DATE].filter(function(s){ return s !== OLD_SLOT; });
+  }
+}
 var existingApptData = null;
 
 // Init header (re-applied after lg-availability response if URL omitted name/group)
@@ -278,6 +290,7 @@ function loadAvailability() {
         return;
       }
       availability = data.availability || {};
+      stripRescheduleOldSlot();
       // Team-aware slot rendering — server returns 'JB' or 'KL'
       TEAM = data.team || 'KL';
       SLOT_LABELS = (TEAM === 'JB') ? SLOT_LABELS_JB : SLOT_LABELS_KL;
@@ -470,7 +483,7 @@ function confirmBooking() {
       // Reload availability
       fetch(AVAILABILITY_URL + '?phone=' + encodeURIComponent(PHONE) + '&group=' + encodeURIComponent(GROUP))
         .then(function(r){ return r.json(); })
-        .then(function(d){ availability = d.availability || {}; });
+        .then(function(d){ availability = d.availability || {}; stripRescheduleOldSlot(); });
     } else if (data.error === 'same_slot') {
       document.getElementById('confirmError').textContent = data.message || 'Please pick a different date or time.';
       document.getElementById('confirmError').style.display = 'block';
