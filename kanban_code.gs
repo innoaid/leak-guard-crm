@@ -709,6 +709,27 @@ function backfillPendingVerifAlvin() {
   Logger.log('backfillPendingVerifAlvin: ' + fixed + ' row(s) reassigned.');
 }
 
+// Round 78 B.12 — one-off migration: rename every 'Assigned To = William'
+// row to 'Team A' so the kanban filter + WA-msg lookup + reminders all
+// match the new canonical name written by lg-booking. Idempotent:
+// re-running skips rows already on 'Team A'.
+function backfillRenameAssignedTo() {
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const col = h.colByName['Assigned To'];
+  if (!col) { Logger.log('backfillRenameAssignedTo: Assigned To column missing.'); return; }
+  const data = sheet.getDataRange().getValues();
+  let fixed = 0;
+  for (let i = 1; i < data.length; i++) {
+    const cur = String(data[i][col - 1] || '').trim();
+    if (cur !== 'William') continue;
+    setCellByHeader(sheet, i + 1, 'Assigned To', 'Team A');
+    Logger.log('Row ' + (i + 1) + ': "William" -> "Team A"');
+    fixed++;
+  }
+  Logger.log('backfillRenameAssignedTo: ' + fixed + ' row(s) renamed from William to Team A.');
+}
+
 function handleArchive(body) {
   // body: {phone, archiveStatus, archiveNote, secret}
   //   archiveStatus = Lost / Cold Lead / Rejected / Out of Area / Human Handoff
