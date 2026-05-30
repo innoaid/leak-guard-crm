@@ -1688,32 +1688,43 @@ function _doSupervisorReminders() {
   return {sent: sent, skipped: skipped};
 }
 
+// Round 79.1 — formatted layout: WhatsApp *bold* section titles,
+// numbered items, double-blank-line section gaps, customer name bolded.
 function _buildReminderMessage(name, jobs) {
   const lines = [];
-  lines.push('🔔 Good morning ' + (name || 'there') + ' — your jobs today');
-  lines.push('');
-  lines.push('ASSIGNED (' + jobs.assigned.length + ')');
+  lines.push('🔔 *Good morning ' + (name || 'there') + '*');
+  lines.push('_Your jobs today_');
+
   if (jobs.assigned.length) {
-    jobs.assigned.forEach(function(c) { _appendCardLines(lines, c); });
-  } else {
-    lines.push('• (none)');
-  }
-  // Round 79 — QT follow-up: Quotation Sent + ≥3 days since QT issued.
-  // SOP says call the customer when no decision yet; this is the call list.
-  if (jobs.qtFollowups && jobs.qtFollowups.length) {
-    lines.push('');
-    lines.push('📞 QT FOLLOW-UP — 3+ days (' + jobs.qtFollowups.length + ')');
-    jobs.qtFollowups.forEach(function(c) {
-      lines.push('• ' + (c.name || '(no name)') + ' — sent ' + c.daysSinceQt + ' days ago');
-      if (c.phone)     lines.push('  📞 ' + c.phone);
-      if (c.groupLink) lines.push('  🔗 ' + c.groupLink);
-      if (c.notes)     lines.push('  📝 ' + _snippet(c.notes, 140));
+    lines.push('', '', '📋 *ASSIGNED — ' + jobs.assigned.length + '*', '');
+    jobs.assigned.forEach(function(c, i) {
+      lines.push((i + 1) + '. *' + (c.name || '(no name)') + '* — ' + c.status);
+      if (c.notes)     lines.push('    📝 ' + _snippet(c.notes, 140));
+      if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
+      if (i < jobs.assigned.length - 1) lines.push('');
     });
   }
+
+  // Round 79 — QT follow-up: Quotation Sent + ≥3 days since QT issued.
+  if (jobs.qtFollowups && jobs.qtFollowups.length) {
+    lines.push('', '', '📞 *QT FOLLOW-UP — 3+ days — ' + jobs.qtFollowups.length + '*', '');
+    jobs.qtFollowups.forEach(function(c, i) {
+      lines.push((i + 1) + '. *' + (c.name || '(no name)') + '* — sent ' + c.daysSinceQt + ' days ago');
+      if (c.phone)     lines.push('    📞 ' + c.phone);
+      if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
+      if (c.notes)     lines.push('    📝 ' + _snippet(c.notes, 140));
+      if (i < jobs.qtFollowups.length - 1) lines.push('');
+    });
+  }
+
   if (jobs.repair.length) {
-    lines.push('');
-    lines.push('REPAIR QUEUE (' + jobs.repair.length + ')');
-    jobs.repair.forEach(function(c) { _appendCardLines(lines, c); });
+    lines.push('', '', '🔧 *REPAIR QUEUE — ' + jobs.repair.length + '*', '');
+    jobs.repair.forEach(function(c, i) {
+      lines.push((i + 1) + '. *' + (c.name || '(no name)') + '* — ' + c.status);
+      if (c.notes)     lines.push('    📝 ' + _snippet(c.notes, 140));
+      if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
+      if (i < jobs.repair.length - 1) lines.push('');
+    });
   }
   return lines.join('\n');
 }
@@ -1853,21 +1864,24 @@ function _filterNextDayAppointments(data, h, assignName, tomorrowMyt) {
   return items;
 }
 
+// Round 79.1 — formatted layout: WhatsApp *bold* header, numbered items,
+// blank line between items, 4-space indented sub-details.
 function _buildNextDayMessage(repName, tomorrowMyt, items) {
   const dt = _formatHumanDate(tomorrowMyt);
   const lines = [];
-  lines.push('📅 Your visits tomorrow (' + dt + ') — ' + items.length);
-  lines.push('');
-  items.forEach(function(it) {
-    lines.push('🕘 ' + (it.time || it.slot || 'time ?') + ' — ' + (it.name || '(no name)'));
-    if (it.address)       lines.push('   📍 ' + it.address);
-    else if (it.location) lines.push('   📍 ' + it.location);
-    if (it.phone)         lines.push('   📞 ' + it.phone);
-    if (it.notes)         lines.push('   📝 ' + _snippet(it.notes, 140));
-    if (it.groupLink)     lines.push('   🔗 ' + it.groupLink);
-    lines.push('');
+  lines.push('📅 *Your visits tomorrow*');
+  lines.push('_' + dt + '_  —  ' + items.length + (items.length === 1 ? ' appointment' : ' appointments'));
+  lines.push('', '');
+  items.forEach(function(it, i) {
+    lines.push((i + 1) + '. *' + (it.time || it.slot || 'time ?') + ' — ' + (it.name || '(no name)') + '*');
+    if (it.address)       lines.push('    📍 ' + it.address);
+    else if (it.location) lines.push('    📍 ' + it.location);
+    if (it.phone)         lines.push('    📞 ' + it.phone);
+    if (it.notes)         lines.push('    📝 ' + _snippet(it.notes, 140));
+    if (it.groupLink)     lines.push('    🔗 ' + it.groupLink);
+    if (i < items.length - 1) lines.push('');
   });
-  return lines.join('\n').replace(/\n+$/, '');
+  return lines.join('\n');
 }
 
 // Core: DM each supervisor their next-day Site-Visit-Confirmed jobs.
