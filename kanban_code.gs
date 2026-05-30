@@ -1503,10 +1503,12 @@ function _filterStaffJobs(data, h, assignName) {
   const cNotes  = h.colByName['Notes'];
   const cLink   = h.colByName['Group Invite Link (AJ)'];
   const cGName  = h.colByName['Group Name (AE)'];
+  const cQtDate = h.colByName['Date QT Issued'];  // Round 79
   const want = String(assignName || '').trim();
 
   const assigned = [];
   const repair = [];
+  const qtFollowups = [];  // Round 79: Quotation Sent + ≥3 days call list
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const status = cStatus ? String(row[cStatus - 1] || '').trim() : '';
@@ -1520,10 +1522,16 @@ function _filterStaffJobs(data, h, assignName) {
       groupName: cGName ? String(row[cGName - 1] || '').trim() : ''
     };
     const tags = cTags ? String(row[cTags - 1] || '').toLowerCase() : '';
+    const isMine = !!(want && cAssign && String(row[cAssign - 1] || '').trim() === want);
     if (tags.indexOf('repair') !== -1) repair.push(card);
-    if (want && cAssign && String(row[cAssign - 1] || '').trim() === want) assigned.push(card);
+    if (isMine) assigned.push(card);
+    // Round 79 — QT follow-up: my QS card aged ≥3 days since QT issued.
+    if (isMine && status === 'Quotation Sent' && cQtDate) {
+      const days = _daysSinceMyt(row[cQtDate - 1]);
+      if (days >= 3) qtFollowups.push(Object.assign({}, card, {daysSinceQt: days}));
+    }
   }
-  return {assigned: assigned, repair: repair};
+  return {assigned: assigned, repair: repair, qtFollowups: qtFollowups};
 }
 
 // body: {action:'staffJobs', phone OR name, secret}
@@ -1622,6 +1630,19 @@ function _mytDateStr() {
     String(m.getUTCDate()).padStart(2, '0');
 }
 
+// Round 79 — integer days from a YYYY-MM-DD MYT date (or Date cell) to
+// today (MYT). Returns -1 if the input isn't a parseable YMD. Reuses
+// _normalizeDateStr so a Date cell or a 'YYYY-MM-DD' string both work.
+function _daysSinceMyt(v) {
+  const s = _normalizeDateStr(v);
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return -1;
+  const past = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const t = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const today = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  return Math.floor((today - past) / 86400000);
+}
+
 // Trigger target — installed to fire every 30 min; self-gates to the
 // 8 AM MYT hour and sends at most once per MYT day.
 function sendSupervisorDailyReminders() {
@@ -1659,7 +1680,7 @@ function _doSupervisorReminders() {
     const phone = String(u[i][4] || '').replace(/\D/g, '');
     if (!phone) { skipped++; continue; }
     const jobs = _filterStaffJobs(data, h, String(u[i][5] || '').trim());
-    if (!jobs.assigned.length && !jobs.repair.length) { skipped++; continue; }
+    if (!jobs.assigned.length && !jobs.repair.length && (!jobs.qtFollowups || !jobs.qtFollowups.length)) { skipped++; continue; }
     _sendWhapiText(phone, _buildReminderMessage(String(u[i][2] || '').trim(), jobs));
     sent++;
     Utilities.sleep(600);  // gentle pacing between sends
@@ -1676,6 +1697,18 @@ function _buildReminderMessage(name, jobs) {
     jobs.assigned.forEach(function(c) { _appendCardLines(lines, c); });
   } else {
     lines.push('• (none)');
+  }
+  // Round 79 — QT follow-up: Quotation Sent + ≥3 days since QT issued.
+  // SOP says call the customer when no decision yet; this is the call list.
+  if (jobs.qtFollowups && jobs.qtFollowups.length) {
+    lines.push('');
+    lines.push('📞 QT FOLLOW-UP — 3+ days (' + jobs.qtFollowups.length + ')');
+    jobs.qtFollowups.forEach(function(c) {
+      lines.push('• ' + (c.name || '(no name)') + ' — sent ' + c.daysSinceQt + ' days ago');
+      if (c.phone)     lines.push('  📞 ' + c.phone);
+      if (c.groupLink) lines.push('  🔗 ' + c.groupLink);
+      if (c.notes)     lines.push('  📝 ' + _snippet(c.notes, 140));
+    });
   }
   if (jobs.repair.length) {
     lines.push('');
