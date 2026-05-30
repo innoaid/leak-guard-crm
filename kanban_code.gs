@@ -1708,6 +1708,182 @@ function bootstrapDailyReminderTrigger() {
 }
 
 // ================================================================
+// Round 78 — Next-day appointment reminder (7 PM MYT)
+// ================================================================
+// Personal WA DM to each rep listing tomorrow's Site-Visit-Confirmed
+// jobs assigned to them, sorted by appointment time. Mirrors the
+// Phase 2 daily-reminder pattern (hour gate + once-per-day guard +
+// 30-min trigger). Reuses _sendWhapiText / _snippet / _mytDateStr.
+
+// Sheets cells for Date Appt Confirmed may come back as either a
+// 'YYYY-MM-DD' string (n8n writes string) or a Date object (manual
+// edits) — normalise either to 'YYYY-MM-DD' using its local Y/M/D.
+function _normalizeDateStr(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return v.getFullYear() + '-' +
+      String(v.getMonth() + 1).padStart(2, '0') + '-' +
+      String(v.getDate()).padStart(2, '0');
+  }
+  return String(v || '').trim().slice(0, 10);
+}
+
+// Slot Chosen looks like 'Wednesday, 3 June 2026, 9:00 AM - 10:00 AM'.
+// Last comma-piece = the time range we want to show in the reminder.
+function _extractSlotTime(slot) {
+  const parts = String(slot || '').split(',');
+  return parts[parts.length - 1].trim();
+}
+
+// Minutes since midnight for the FIRST time in the string ('9:00 AM').
+// Used to sort tomorrow's appointments chronologically.
+function _slotTimeKey(t) {
+  const m = String(t || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!m) return 9999;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ampm = m[3].toUpperCase();
+  if (ampm === 'PM' && h !== 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+function _formatHumanDate(yyyyMmDd) {
+  const m = String(yyyyMmDd || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return yyyyMmDd;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+// Pure filter: tomorrow's Site-Visit-Confirmed leads assigned to this
+// rep, sorted by appointment time.
+function _filterNextDayAppointments(data, h, assignName, tomorrowMyt) {
+  const want = String(assignName || '').trim();
+  if (!want) return [];
+  const cName    = h.colByName['Name'];
+  const cPhone   = h.colByName['Phone'];
+  const cStatus  = h.colByName['Status'];
+  const cAssign  = h.colByName['Assigned To'];
+  const cDateApt = h.colByName['Date Appt Confirmed'];
+  const cSlot    = h.colByName['Slot Chosen'];
+  const cAddr    = h.colByName['Full Address'];
+  const cLoc     = h.colByName['Location'];
+  const cNotes   = h.colByName['Notes'];
+  const cLink    = h.colByName['Group Invite Link (AJ)'];
+  const cGName   = h.colByName['Group Name (AE)'];
+
+  const items = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const status = cStatus ? String(row[cStatus - 1] || '').trim() : '';
+    if (status !== 'Site Visit Confirmed') continue;
+    const dateApt = cDateApt ? _normalizeDateStr(row[cDateApt - 1]) : '';
+    if (dateApt !== tomorrowMyt) continue;
+    const assigned = cAssign ? String(row[cAssign - 1] || '').trim() : '';
+    if (assigned !== want) continue;
+    const slot = cSlot ? String(row[cSlot - 1] || '').trim() : '';
+    items.push({
+      time:      _extractSlotTime(slot),
+      slot:      slot,
+      name:      cName  ? String(row[cName  - 1] || '').trim() : '',
+      phone:     cPhone ? String(row[cPhone - 1] || '').trim() : '',
+      address:   cAddr  ? String(row[cAddr  - 1] || '').trim() : '',
+      location:  cLoc   ? String(row[cLoc   - 1] || '').trim() : '',
+      notes:     cNotes ? String(row[cNotes - 1] || '').trim() : '',
+      groupLink: cLink  ? String(row[cLink  - 1] || '').trim() : '',
+      groupName: cGName ? String(row[cGName - 1] || '').trim() : ''
+    });
+  }
+  items.sort(function(a, b) { return _slotTimeKey(a.time) - _slotTimeKey(b.time); });
+  return items;
+}
+
+function _buildNextDayMessage(repName, tomorrowMyt, items) {
+  const dt = _formatHumanDate(tomorrowMyt);
+  const lines = [];
+  lines.push('📅 Your visits tomorrow (' + dt + ') — ' + items.length);
+  lines.push('');
+  items.forEach(function(it) {
+    lines.push('🕘 ' + (it.time || it.slot || 'time ?') + ' — ' + (it.name || '(no name)'));
+    if (it.address)       lines.push('   📍 ' + it.address);
+    else if (it.location) lines.push('   📍 ' + it.location);
+    if (it.phone)         lines.push('   📞 ' + it.phone);
+    if (it.notes)         lines.push('   📝 ' + _snippet(it.notes, 140));
+    if (it.groupLink)     lines.push('   🔗 ' + it.groupLink);
+    lines.push('');
+  });
+  return lines.join('\n').replace(/\n+$/, '');
+}
+
+// Core: DM each supervisor their next-day Site-Visit-Confirmed jobs.
+// Skips reps with nothing tomorrow (no spammy empty DMs).
+function _doNextDayReminders() {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!usersSheet) return {error: 'Users tab missing'};
+  const u = usersSheet.getDataRange().getValues();
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const h = getHeaders(sheet);
+
+  // Tomorrow in MYT (gotcha #3 idiom: +8h shift, then getUTC*).
+  const t = new Date(Date.now() + 8 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000);
+  const tomorrowMyt = t.getUTCFullYear() + '-' +
+    String(t.getUTCMonth() + 1).padStart(2, '0') + '-' +
+    String(t.getUTCDate()).padStart(2, '0');
+
+  let sent = 0, skipped = 0;
+  for (let i = 1; i < u.length; i++) {
+    if (String(u[i][3] || '').trim().toLowerCase() !== 'supervisor') continue;
+    const phone = String(u[i][4] || '').replace(/\D/g, '');
+    if (!phone) { skipped++; continue; }
+    const items = _filterNextDayAppointments(data, h, String(u[i][5] || '').trim(), tomorrowMyt);
+    if (!items.length) { skipped++; continue; }
+    _sendWhapiText(phone, _buildNextDayMessage(String(u[i][2] || '').trim(), tomorrowMyt, items));
+    sent++;
+    Utilities.sleep(600);
+  }
+  return {sent: sent, skipped: skipped, tomorrowMyt: tomorrowMyt};
+}
+
+// Trigger target — installed to fire every 30 min; self-gates to the
+// 7 PM MYT hour and sends at most once per MYT day.
+function sendNextDayAppointmentReminders() {
+  const mytHour = new Date(Date.now() + 8 * 60 * 60 * 1000).getUTCHours();
+  if (mytHour !== 19) return;  // 7 PM MYT only
+  const props = PropertiesService.getScriptProperties();
+  const today = _mytDateStr();
+  if (props.getProperty('lastNextDayReminderDate') === today) return;
+  const result = _doNextDayReminders();
+  props.setProperty('lastNextDayReminderDate', today);
+  Logger.log('sendNextDayAppointmentReminders: ' + JSON.stringify(result));
+}
+
+// Manual test — bypasses the hour + daily guards so it always sends now.
+function testNextDayAppointmentReminders() {
+  Logger.log('testNextDayAppointmentReminders: ' + JSON.stringify(_doNextDayReminders()));
+}
+
+// Run ONCE from the editor — installs the 30-min time trigger that
+// drives sendNextDayAppointmentReminders (which self-gates to 7 PM MYT).
+function bootstrapNextDayReminderTrigger() {
+  let removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'sendNextDayAppointmentReminders') {
+      ScriptApp.deleteTrigger(t);
+      removed++;
+    }
+  });
+  ScriptApp.newTrigger('sendNextDayAppointmentReminders')
+    .timeBased()
+    .everyMinutes(30)
+    .create();
+  Logger.log('bootstrapNextDayReminderTrigger: removed ' + removed + ' old trigger(s), installed 30-min trigger (self-gates to 7 PM MYT)');
+}
+
+// ================================================================
 // Quick test (run from Apps Script editor manually)
 // ================================================================
 
