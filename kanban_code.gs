@@ -128,6 +128,24 @@ function setCellByHeader(sheet, rowNum, headerName, value) {
   sheet.getRange(rowNum, col).setValue(value);
 }
 
+// Round 79.2 — when a lead enters a follow-up-relevant phase (PSV or QS)
+// from a DIFFERENT prior phase, reset the LG - Follow Up cadence so the
+// next phase gets a fresh 5h / 1d / 3d / 7d nudge sequence. Without this
+// the count "carries over" from the prior phase and the new-phase
+// cadence is much slower than intended. Called by every handler that
+// mutates the Status column. Returns true if a reset actually fired.
+const _FU_RESET_PHASES = ['Pending Site Visit', 'Quotation Sent'];
+function _resetFuCadenceIfPhaseChanged(sheet, rowNum, prevStatus, newStatus) {
+  if (_FU_RESET_PHASES.indexOf(newStatus) === -1) return false;
+  if (String(prevStatus || '').trim() === String(newStatus || '').trim()) return false;
+  const h = getHeaders(sheet);
+  const fuCountCol = h.colByName['Follow Up Count (AK)'];
+  const fuAtCol    = h.colByName['Last Follow Up At (AL)'];
+  if (fuCountCol) sheet.getRange(rowNum, fuCountCol).setValue(0);
+  if (fuAtCol)    sheet.getRange(rowNum, fuAtCol).setValue('');
+  return true;
+}
+
 // Round 70 — compute the new group name when a QT-MMYY-NNN PDF is detected.
 // - Strips a leading SV-/SVJB- booking prefix
 // - If a QT-MMYY-NNN[/NNN...] prefix already exists with the same MMYY,
@@ -170,11 +188,17 @@ function handleUpdateStatus(body) {
 
   if (!statusCol) return jsonResponse({status: 'error', message: 'Status column not found'});
 
+  // Round 79.2 — capture prior status BEFORE the write so the FU
+  // cadence reset can compare prev vs new.
+  const prevStatus = String(sheet.getRange(rowNum, statusCol).getValue() || '').trim();
+
   sheet.getRange(rowNum, statusCol).setValue(body.status);
   if (changedAt) sheet.getRange(rowNum, changedAt).setValue(new Date().toISOString());
   if (changedBy) sheet.getRange(rowNum, changedBy).setValue(body.changedBy || 'Kanban');
 
-  return jsonResponse({status: 'ok', rowNum: rowNum});
+  const fuReset = _resetFuCadenceIfPhaseChanged(sheet, rowNum, prevStatus, body.status);
+
+  return jsonResponse({status: 'ok', rowNum: rowNum, fuReset: fuReset});
 }
 
 function handleUpdateTag(body) {
@@ -1070,17 +1094,23 @@ function handleBulkMoveStatus(body) {
 
   const sheet = getSheet();
   const ts = new Date().toISOString();
+  const _statusCol = getHeaders(sheet).colByName['Status'];
   let updated = 0;
+  let fuResets = 0;
   const missing = [];
   phones.forEach(function(phone) {
     const row = findRowByPhone(sheet, phone);
     if (!row) { missing.push(phone); return; }
+    // Round 79.2 — capture prev status for the FU cadence reset.
+    let prevStatus = '';
+    try { if (_statusCol) prevStatus = String(sheet.getRange(row, _statusCol).getValue() || '').trim(); } catch (_e) {}
     try { setCellByHeader(sheet, row, 'Status',            newStatus); } catch (_e) {}
     try { setCellByHeader(sheet, row, 'Status Changed At', ts);        } catch (_e) {}
     try { setCellByHeader(sheet, row, 'Changed By',        'Kanban_Bulk'); } catch (_e) {}
+    if (_resetFuCadenceIfPhaseChanged(sheet, row, prevStatus, newStatus)) fuResets++;
     updated++;
   });
-  return jsonResponse({status: 'ok', updated: updated, missing: missing, newStatus: newStatus});
+  return jsonResponse({status: 'ok', updated: updated, missing: missing, newStatus: newStatus, fuResets: fuResets});
 }
 
 // ================================================================
@@ -1247,6 +1277,13 @@ function handleCancelAppointment(body) {
   const row = findRowByPhone(sheet, phone);
   if (!row) return jsonResponse({status: 'error', message: 'lead not found', phone: phone});
 
+  // Round 79.2 — capture prev status for the FU cadence reset.
+  let prevStatus = '';
+  try {
+    const sc = getHeaders(sheet).colByName['Status'];
+    if (sc) prevStatus = String(sheet.getRange(row, sc).getValue() || '').trim();
+  } catch (_) {}
+
   const ts = new Date().toISOString();
   try { setCellByHeader(sheet, row, 'Status',                    'Pending Site Visit'); } catch (_) {}
   try { setCellByHeader(sheet, row, 'Cal Event ID (AH)',         ''); } catch (_) {}
@@ -1258,7 +1295,9 @@ function handleCancelAppointment(body) {
   try { setCellByHeader(sheet, row, 'Status Changed At',         ts); } catch (_) {}
   try { setCellByHeader(sheet, row, 'Changed By',                body.changedBy || 'Kanban_CancelAppt'); } catch (_) {}
 
-  return jsonResponse({status: 'ok', row: row, newStatus: 'Pending Site Visit'});
+  const fuReset = _resetFuCadenceIfPhaseChanged(sheet, row, prevStatus, 'Pending Site Visit');
+
+  return jsonResponse({status: 'ok', row: row, newStatus: 'Pending Site Visit', fuReset: fuReset});
 }
 
 // ================================================================
