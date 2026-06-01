@@ -1,0 +1,7 @@
+# Secrets — NEVER commit these (n8n API key, tokens, credentials, etc.)
+.env
+.env.*
+!.env.example
+secrets/
+*.secret
+*.key
