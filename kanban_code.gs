@@ -66,6 +66,8 @@ function doPost(e) {
       case 'login':              return handleLogin(body);  // round 76 — kanban login gate (Users tab)
       case 'staffJobs':          return handleStaffJobs(body);  // round 76 phase 2/3 — staff assigned + repair cards
       case 'staffCommand':       return handleStaffCommand(body);  // round 76 phase 3 — WA -myjobs/-pending text command
+      case 'createUser':         return handleCreateUser(body);  // round 80 — admin Manage Staff panel
+      case 'listUsers':          return handleListUsers(body);   // round 80 — roster + assignee picker source
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -1514,6 +1516,67 @@ function handleLogin(body) {
 }
 
 // ================================================================
+// Round 80 — Admin Manage-Staff panel: create + list users
+// ================================================================
+// Admin-only is enforced client-side by the session gate; the server-side
+// gate is the shared secret (checked centrally in doPost — same as every
+// other mutation). PINs are stored as-is, matching handleLogin's plaintext
+// comparison.
+
+// body: {action:'createUser', username, pin, name, role, phone, assignName, secret}
+// Appends a row to the Users tab. Username must be unique (case-insensitive).
+function handleCreateUser(body) {
+  const username   = String(body.username || '').trim();
+  const pin        = String(body.pin || '').trim();
+  const name       = String(body.name || '').trim();
+  const role       = String(body.role || '').trim().toLowerCase();
+  const phone      = String(body.phone || '').replace(/\D/g, '');
+  const assignName = String(body.assignName || '').trim();
+  if (!username || !pin || !name || !role) {
+    return jsonResponse({status: 'error', message: 'username, pin, name, role required'});
+  }
+  if (role !== 'admin' && role !== 'supervisor') {
+    return jsonResponse({status: 'error', message: "role must be 'admin' or 'supervisor'"});
+  }
+  const sheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(USERS_SHEET_NAME);
+  if (!sheet) {
+    return jsonResponse({status: 'error', message: 'Users tab missing — run bootstrapUsersSheet() once from the editor'});
+  }
+  const data = sheet.getDataRange().getValues();
+  const uLc = username.toLowerCase();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0] || '').trim().toLowerCase() === uLc) {
+      return jsonResponse({status: 'error', code: 'username_taken', message: 'username already exists'});
+    }
+  }
+  // Users header order: Username | PIN | Name | Role | Phone | AssignName
+  sheet.appendRow([username, pin, name, role, phone, assignName]);
+  return jsonResponse({status: 'ok', username: username, name: name, role: role});
+}
+
+// body: {action:'listUsers', secret}
+// Returns the roster WITHOUT pins. Powers the admin panel AND the kanban
+// assignee picker, so a newly-created rep is immediately assignable.
+function handleListUsers(body) {
+  const sheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(USERS_SHEET_NAME);
+  if (!sheet) return jsonResponse({status: 'error', message: 'Users tab missing'});
+  const data = sheet.getDataRange().getValues();
+  const users = [];
+  for (let i = 1; i < data.length; i++) {
+    const username = String(data[i][0] || '').trim();
+    if (!username) continue;
+    users.push({
+      username:   username,
+      name:       String(data[i][2] || '').trim(),
+      role:       String(data[i][3] || '').trim().toLowerCase(),
+      phone:      String(data[i][4] || '').trim(),
+      assignName: String(data[i][5] || '').trim()
+    });
+  }
+  return jsonResponse({status: 'ok', users: users});
+}
+
+// ================================================================
 // Round 76 Phase 2 — Internal-staff job queries + daily WA reminder
 // ================================================================
 // handleStaffJobs is the web endpoint Phase 3's WA text-command flow
@@ -1644,10 +1707,15 @@ function handleStaffCommand(body) {
     msg = _buildCommandMessage('📋 Your assigned jobs', jobs.assigned, 'You have no assigned jobs right now. 👍');
   } else if (command === '-pending') {
     msg = _buildCommandMessage('🔧 Pending repair queue', jobs.repair, 'No pending repair jobs right now. 👍');
+  } else if (command === '-appt' || command === '-appointments' || command === '-myappt') {
+    // Round 80 — on-demand list of this rep's upcoming Site-Visit-Confirmed appointments.
+    const appts = _filterFutureAppointments(data, h, String(urow[5] || '').trim());
+    msg = _buildApptCommandMessage(name, appts);
   } else {
     msg = 'Hi ' + (name || 'there') + '! Commands:\n' +
       '• *-myjobs* — your assigned jobs\n' +
-      '• *-pending* — pending repair queue';
+      '• *-pending* — pending repair queue\n' +
+      '• *-appt* — your upcoming site-visit appointments';
   }
   _sendWhapiText(phone, msg);
   return jsonResponse({status: 'ok', recognised: true, command: command});
@@ -1919,6 +1987,81 @@ function _buildNextDayMessage(repName, tomorrowMyt, items) {
     if (it.notes)         lines.push('    📝 ' + _snippet(it.notes, 140));
     if (it.groupLink)     lines.push('    🔗 ' + it.groupLink);
     if (i < items.length - 1) lines.push('');
+  });
+  return lines.join('\n');
+}
+
+// ================================================================
+// Round 80 — On-demand upcoming-appointments command (-appt)
+// ================================================================
+// Like _filterNextDayAppointments but returns ALL future Site-Visit-Confirmed
+// appointments for this rep (today onward, MYT), each carrying its date, sorted
+// by (date, time). Reuses _normalizeDateStr / _extractSlotTime / _slotTimeKey.
+function _filterFutureAppointments(data, h, assignName) {
+  const want = String(assignName || '').trim();
+  if (!want) return [];
+  const cName    = h.colByName['Name'];
+  const cPhone   = h.colByName['Phone'];
+  const cStatus  = h.colByName['Status'];
+  const cAssign  = h.colByName['Assigned To'];
+  const cDateApt = h.colByName['Date Appt Confirmed'];
+  const cSlot    = h.colByName['Slot Chosen'];
+  const cAddr    = h.colByName['Full Address'];
+  const cLoc     = h.colByName['Location'];
+  const cNotes   = h.colByName['Notes'];
+  const cLink    = h.colByName['Group Invite Link (AJ)'];
+  const cGName   = h.colByName['Group Name (AE)'];
+  const today = _mytDateStr();
+
+  const items = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const status = cStatus ? String(row[cStatus - 1] || '').trim() : '';
+    if (status !== 'Site Visit Confirmed') continue;
+    const assigned = cAssign ? String(row[cAssign - 1] || '').trim() : '';
+    if (assigned !== want) continue;
+    const dateApt = cDateApt ? _normalizeDateStr(row[cDateApt - 1]) : '';
+    if (!dateApt || dateApt < today) continue;   // future (incl. today) only
+    const slot = cSlot ? String(row[cSlot - 1] || '').trim() : '';
+    items.push({
+      date:      dateApt,
+      time:      _extractSlotTime(slot),
+      slot:      slot,
+      name:      cName  ? String(row[cName  - 1] || '').trim() : '',
+      phone:     cPhone ? String(row[cPhone - 1] || '').trim() : '',
+      address:   cAddr  ? String(row[cAddr  - 1] || '').trim() : '',
+      location:  cLoc   ? String(row[cLoc   - 1] || '').trim() : '',
+      notes:     cNotes ? String(row[cNotes - 1] || '').trim() : '',
+      groupLink: cLink  ? String(row[cLink  - 1] || '').trim() : '',
+      groupName: cGName ? String(row[cGName - 1] || '').trim() : ''
+    });
+  }
+  // Sort by date (YYYY-MM-DD sorts lexically) then by start time.
+  items.sort(function(a, b) {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return _slotTimeKey(a.time) - _slotTimeKey(b.time);
+  });
+  return items;
+}
+
+// WA reply for -appt: upcoming appointments grouped under a date header.
+function _buildApptCommandMessage(repName, items) {
+  if (!items.length) {
+    return '📅 *Your upcoming appointments* (0)\n\nNo upcoming site-visit appointments. 👍';
+  }
+  const lines = ['📅 *Your upcoming appointments* (' + items.length + ')'];
+  let curDate = '';
+  items.forEach(function(it) {
+    if (it.date !== curDate) {
+      curDate = it.date;
+      lines.push('', '*' + _formatHumanDate(it.date) + '*');
+    }
+    lines.push('• ' + (it.time || 'time ?') + ' — ' + (it.name || '(no name)'));
+    if (it.address)       lines.push('    📍 ' + it.address);
+    else if (it.location) lines.push('    📍 ' + it.location);
+    if (it.phone)         lines.push('    📞 ' + it.phone);
+    if (it.notes)         lines.push('    📝 ' + _snippet(it.notes, 140));
+    if (it.groupLink)     lines.push('    🔗 ' + it.groupLink);
   });
   return lines.join('\n');
 }

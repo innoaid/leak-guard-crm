@@ -198,6 +198,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .modal-val a:hover{text-decoration:underline}
 .modal-input,.modal-select{width:100%;padding:7px 10px;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;color:var(--ink);background:#FAFAFA}
 .modal-input:focus,.modal-select:focus{outline:none;border-color:var(--acc);background:#fff}
+.staff-lbl{display:block;font-size:10px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.staff-sec-h{font-size:11px;font-weight:700;text-transform:uppercase;color:#6B7280;letter-spacing:.4px;margin-bottom:8px}
+.staff-row{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:.5px solid var(--bdr)}
+.staff-row .sr-role{font-size:10px;font-weight:700;text-transform:uppercase;color:#9CA3AF}
 .modal-textarea{width:100%;padding:8px 11px;border:.5px solid #D1D5DB;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;min-height:60px;background:#FAFAFA}
 .modal-textarea:focus{outline:none;border-color:var(--acc);background:#fff}
 .modal-actions{padding:12px 18px;border-top:.5px solid var(--bdr);display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:#fff}
@@ -316,6 +320,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   </div>
   <div class="hdr-r">
     <span class="last-sync" id="whoami" style="margin-right:4px"></span>
+    <button class="hdr-btn" id="btnManageStaff" title="Add / view staff logins" style="display:none">👥 Manage Staff</button>
     <button class="hdr-btn" id="btnArchive">📦 Archive <span class="badge" id="archCount">0</span></button>
     <button class="hdr-btn logout" id="btnLogout" title="Sign out" style="display:none">Sign out</button>
   </div>
@@ -429,6 +434,38 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       <button class="modal-btn modal-btn-info" id="btnApptCancelAppointment" style="display:none;background:#FEE2E2;color:#991B1B">🚫 Cancel Appointment</button>
       <button class="modal-btn modal-btn-secondary" id="btnApptCancel">Close</button>
       <button class="modal-btn modal-btn-primary" id="btnApptConfirm" disabled>Confirm Booking</button>
+    </div>
+  </div>
+</div>
+
+<!-- Round 80 — admin Manage Staff modal -->
+<div class="modal-overlay" id="staffModal">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">👥 Manage Staff</div>
+        <div class="modal-sub">Create kanban logins for your team</div>
+      </div>
+      <button class="modal-close" id="btnStaffClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="staff-sec-h">Current staff</div>
+      <div id="staffRoster" style="margin-bottom:18px;font-size:13px;color:var(--ink)">—</div>
+      <div class="staff-sec-h" style="border-top:.5px solid var(--bdr);padding-top:14px">Add new user</div>
+      <div id="staffErr" class="login-err" style="margin-bottom:12px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="staff-lbl">Name</label><input class="modal-input" id="suName" placeholder="Display name"></div>
+        <div><label class="staff-lbl">Username</label><input class="modal-input" id="suUser" autocapitalize="none" autocorrect="off" placeholder="login id"></div>
+        <div><label class="staff-lbl">PIN</label><input class="modal-input" id="suPin" inputmode="numeric" placeholder="login PIN"></div>
+        <div><label class="staff-lbl">Role</label><select class="modal-select" id="suRole"><option value="supervisor">Supervisor — sees only their cards</option><option value="admin">Admin — sees everything</option></select></div>
+        <div><label class="staff-lbl">Phone (WhatsApp)</label><input class="modal-input" id="suPhone" inputmode="numeric" placeholder="60xxxxxxxxx"></div>
+        <div><label class="staff-lbl">Assign name</label><input class="modal-input" id="suAssign" list="assignNameList" placeholder="matches 'Assigned To'"><datalist id="assignNameList"></datalist></div>
+      </div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:8px">Assign name must match the value used in a lead's <b>Assigned To</b> so their board and WhatsApp commands show the right jobs.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-secondary" id="btnStaffCancel">Close</button>
+      <button class="modal-btn modal-btn-primary" id="btnStaffAdd">Add User</button>
     </div>
   </div>
 </div>
@@ -697,6 +734,8 @@ const DAYS_THRESHOLDS = {
 let allLeads = [];           // parsed lead objects
 let headers = [];            // sheet header names in order
 let SESSION = null;          // round 76 — {name, role, assignName, phone} once logged in
+let USER_ROSTER = [];        // round 80 — Users tab (no pins), via listUsers
+let USER_ASSIGN_NAMES = [];  // round 80 — distinct assignNames for the assignee picker
 let viewMode = 'kanban';     // 'kanban' | 'archive'
 let refreshTimer = null;
 const REFRESH_MS = 60000;
@@ -780,15 +819,10 @@ function render() {
   }
 
   function passesFilters(lead) {
-    // Round 76 — supervisor role scope: only Site Visit Confirmed +
-    // Pending QT + repair-tagged + cards assigned to them. Admin: no-op.
+    // Round 80 — supervisor role scope: STRICT — only cards assigned to them.
+    // (Was Round 76's wider scope of SVC + PQT + repair + assigned.) Admin: no-op.
     if (SESSION && SESSION.role === 'supervisor') {
-      const st = String(lead['Status'] || '').trim();
-      const tg = String(lead['Tags'] || '').toLowerCase();
-      const mine = (lead['Assigned To'] || '') === SESSION.assignName;
-      if (!(st === 'Site Visit Confirmed' || st === 'Pending QT' || tg.includes('repair') || mine)) {
-        return false;
-      }
+      if ((lead['Assigned To'] || '') !== SESSION.assignName) return false;
     }
     if (search) {
       const blob = (
@@ -2493,8 +2527,16 @@ function openLeadDetail(lead) {
   const status = lead['Status'] || '';
   const statusLabel = STATUS_LABELS[status] || status;
 
-  // Build staff dropdown — include current value if not blank
-  const staffOptions = ['Unassigned','Ken','Admin','Alvin','Osment','William','Team KL','Team JB'];
+  // Build staff dropdown — Round 80: union of the hardcoded defaults and the
+  // live Users-tab assignNames (USER_ASSIGN_NAMES, loaded via listUsers) so
+  // newly-created staff are immediately assignable. Falls back to defaults if
+  // the roster hasn't loaded.
+  const _staffDefaults = ['Ken','Admin','Alvin','Osment','William','Team KL','Team JB'];
+  const staffOptions = ['Unassigned'];
+  _staffDefaults.concat(USER_ASSIGN_NAMES || []).forEach(function(s) {
+    s = String(s || '').trim();
+    if (s && staffOptions.indexOf(s) === -1) staffOptions.push(s);
+  });
   const currentAssignee = lead['Assigned To'] || '';
   if (currentAssignee && staffOptions.indexOf(currentAssignee) === -1) staffOptions.unshift(currentAssignee);
 
@@ -3539,6 +3581,24 @@ function applySession(sess) {
   // Supervisors can't widen scope via the staff dropdown — hide it.
   const sf = document.getElementById('staffFilter');
   if (sf) sf.style.display = (sess.role === 'supervisor') ? 'none' : '';
+  // Round 80 — Manage Staff is admin-only.
+  const msBtn = document.getElementById('btnManageStaff');
+  if (msBtn) msBtn.style.display = (sess.role === 'admin') ? '' : 'none';
+  // Round 80 — load the roster so the assignee picker has live names.
+  loadRoster();
+}
+
+// Round 80 — pull the Users roster (no pins) for the assignee picker + admin panel.
+async function loadRoster() {
+  const r = await apiCall('listUsers', {});
+  if (!r || r.status !== 'ok' || !Array.isArray(r.users)) return;
+  USER_ROSTER = r.users;
+  const seen = {};
+  USER_ASSIGN_NAMES = [];
+  r.users.forEach(function(u) {
+    const a = String(u.assignName || '').trim();
+    if (a && !seen[a]) { seen[a] = 1; USER_ASSIGN_NAMES.push(a); }
+  });
 }
 
 function showLoginGate() {
@@ -3594,6 +3654,71 @@ document.getElementById('btnLogin').addEventListener('click', doLogin);
   });
 });
 document.getElementById('btnLogout').addEventListener('click', logout);
+
+// ================================================================
+// Round 80 — Manage Staff modal (admin only)
+// ================================================================
+function renderStaffRoster() {
+  const box = document.getElementById('staffRoster');
+  const dl = document.getElementById('assignNameList');
+  if (dl) dl.innerHTML = USER_ASSIGN_NAMES.map(function(a) { return '<option value="' + escapeHtml(a) + '">'; }).join('');
+  if (!box) return;
+  if (!USER_ROSTER.length) { box.textContent = 'No users yet.'; return; }
+  box.innerHTML = USER_ROSTER.map(function(u) {
+    const sub = [u.username, u.assignName, u.phone].filter(Boolean).map(escapeHtml).join(' · ');
+    return '<div class="staff-row"><div><b>' + escapeHtml(u.name || u.username) + '</b>' +
+      (sub ? '<div style="font-size:11px;color:#9CA3AF">' + sub + '</div>' : '') +
+      '</div><div class="sr-role">' + escapeHtml(u.role || '') + '</div></div>';
+  }).join('');
+}
+
+async function openStaffModal() {
+  document.getElementById('staffErr').classList.remove('show');
+  ['suName','suUser','suPin','suPhone','suAssign'].forEach(function(id){ document.getElementById(id).value=''; });
+  document.getElementById('suRole').value = 'supervisor';
+  await loadRoster();          // refresh roster + assignName datalist
+  renderStaffRoster();
+  document.getElementById('staffModal').classList.add('open');
+}
+function closeStaffModal() { document.getElementById('staffModal').classList.remove('open'); }
+
+async function submitNewUser() {
+  const err = document.getElementById('staffErr');
+  const btn = document.getElementById('btnStaffAdd');
+  const payload = {
+    name:       (document.getElementById('suName').value || '').trim(),
+    username:   (document.getElementById('suUser').value || '').trim(),
+    pin:        (document.getElementById('suPin').value || '').trim(),
+    role:       document.getElementById('suRole').value,
+    phone:      (document.getElementById('suPhone').value || '').trim(),
+    assignName: (document.getElementById('suAssign').value || '').trim()
+  };
+  err.classList.remove('show');
+  if (!payload.name || !payload.username || !payload.pin) {
+    err.textContent = 'Name, username and PIN are required.'; err.classList.add('show'); return;
+  }
+  if (payload.role === 'supervisor' && !payload.assignName) {
+    err.textContent = 'Supervisors need an Assign name (so they can be given cards).'; err.classList.add('show'); return;
+  }
+  btn.disabled = true; btn.textContent = 'Adding…';
+  const r = await apiCall('createUser', payload);
+  btn.disabled = false; btn.textContent = 'Add User';
+  if (!r || r.status !== 'ok') {
+    err.textContent = (r && r.code === 'username_taken') ? 'That username already exists.' : ((r && r.message) || 'Could not create user.');
+    err.classList.add('show');
+    return;
+  }
+  toast('Staff added: ' + payload.name, 'success');
+  await loadRoster();
+  renderStaffRoster();
+  ['suName','suUser','suPin','suPhone','suAssign'].forEach(function(id){ document.getElementById(id).value=''; });
+}
+
+document.getElementById('btnManageStaff').addEventListener('click', openStaffModal);
+document.getElementById('btnStaffClose').addEventListener('click', closeStaffModal);
+document.getElementById('btnStaffCancel').addEventListener('click', closeStaffModal);
+document.getElementById('btnStaffAdd').addEventListener('click', submitNewUser);
+document.getElementById('staffModal').addEventListener('click', function(e){ if (e.target === this) closeStaffModal(); });
 
 // Gate the boot: load leads only after a valid session exists.
 (function initAuthBoot() {
