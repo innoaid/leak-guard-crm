@@ -457,7 +457,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
         <div><label class="staff-lbl">Name</label><input class="modal-input" id="suName" placeholder="Display name"></div>
         <div><label class="staff-lbl">Username</label><input class="modal-input" id="suUser" autocapitalize="none" autocorrect="off" placeholder="login id"></div>
         <div><label class="staff-lbl">PIN</label><input class="modal-input" id="suPin" inputmode="numeric" placeholder="login PIN"></div>
-        <div><label class="staff-lbl">Role</label><select class="modal-select" id="suRole"><option value="supervisor">Supervisor — sees only their cards</option><option value="admin">Admin — sees everything</option></select></div>
+        <div><label class="staff-lbl">Role</label><select class="modal-select" id="suRole"><option value="supervisor">Supervisor — sees only their cards</option><option value="quality_supervisor">Quality Supervisor — repair queue + their cards</option><option value="admin">Admin — sees everything</option></select></div>
         <div><label class="staff-lbl">Phone (WhatsApp)</label><input class="modal-input" id="suPhone" inputmode="numeric" placeholder="60xxxxxxxxx"></div>
         <div><label class="staff-lbl">Assign name</label><input class="modal-input" id="suAssign" list="assignNameList" placeholder="matches 'Assigned To'"><datalist id="assignNameList"></datalist></div>
       </div>
@@ -823,6 +823,12 @@ function render() {
     // (Was Round 76's wider scope of SVC + PQT + repair + assigned.) Admin: no-op.
     if (SESSION && SESSION.role === 'supervisor') {
       if ((lead['Assigned To'] || '') !== SESSION.assignName) return false;
+    }
+    // Round 81 — quality supervisor: all repair-tagged cards + their own assigned.
+    if (SESSION && SESSION.role === 'quality_supervisor') {
+      const tg = String(lead['Tags'] || '').toLowerCase();
+      const mine = (lead['Assigned To'] || '') === SESSION.assignName;
+      if (!(tg.includes('repair') || mine)) return false;
     }
     if (search) {
       const blob = (
@@ -3572,15 +3578,22 @@ function loadSession() {
   catch (_) { return null; }
 }
 
+// Round 81 — friendly role label (admin / supervisor / quality_supervisor).
+function roleLabel(role) {
+  if (role === 'admin') return 'Admin';
+  if (role === 'quality_supervisor') return 'Quality Supervisor';
+  return 'Supervisor';
+}
+
 function applySession(sess) {
   SESSION = sess;
   const who = document.getElementById('whoami');
   const logoutBtn = document.getElementById('btnLogout');
-  if (who) who.textContent = sess.name + ' · ' + (sess.role === 'admin' ? 'Admin' : 'Supervisor');
+  if (who) who.textContent = sess.name + ' · ' + roleLabel(sess.role);
   if (logoutBtn) logoutBtn.style.display = '';
   // Supervisors can't widen scope via the staff dropdown — hide it.
   const sf = document.getElementById('staffFilter');
-  if (sf) sf.style.display = (sess.role === 'supervisor') ? 'none' : '';
+  if (sf) sf.style.display = (sess.role === 'admin') ? '' : 'none';
   // Round 80 — Manage Staff is admin-only.
   const msBtn = document.getElementById('btnManageStaff');
   if (msBtn) msBtn.style.display = (sess.role === 'admin') ? '' : 'none';
@@ -3684,7 +3697,7 @@ function renderStaffRoster() {
     const sub = [u.username, u.assignName, u.phone].filter(Boolean).map(escapeHtml).join(' · ');
     return '<div class="staff-row"><div><b>' + escapeHtml(u.name || u.username) + '</b>' +
       (sub ? '<div style="font-size:11px;color:#9CA3AF">' + sub + '</div>' : '') +
-      '</div><div class="sr-role">' + escapeHtml(u.role || '') + '</div></div>';
+      '</div><div class="sr-role">' + escapeHtml(roleLabel(u.role)) + '</div></div>';
   }).join('');
 }
 
@@ -3713,7 +3726,7 @@ async function submitNewUser() {
   if (!payload.name || !payload.username || !payload.pin) {
     err.textContent = 'Name, username and PIN are required.'; err.classList.add('show'); return;
   }
-  if (payload.role === 'supervisor' && !payload.assignName) {
+  if ((payload.role === 'supervisor' || payload.role === 'quality_supervisor') && !payload.assignName) {
     err.textContent = 'Supervisors need an Assign name (so they can be given cards).'; err.classList.add('show'); return;
   }
   btn.disabled = true; btn.textContent = 'Adding…';

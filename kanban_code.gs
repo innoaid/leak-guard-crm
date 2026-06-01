@@ -1535,8 +1535,8 @@ function handleCreateUser(body) {
   if (!username || !pin || !name || !role) {
     return jsonResponse({status: 'error', message: 'username, pin, name, role required'});
   }
-  if (role !== 'admin' && role !== 'supervisor') {
-    return jsonResponse({status: 'error', message: "role must be 'admin' or 'supervisor'"});
+  if (['admin', 'supervisor', 'quality_supervisor'].indexOf(role) === -1) {
+    return jsonResponse({status: 'error', message: "role must be 'admin', 'supervisor' or 'quality_supervisor'"});
   }
   const sheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(USERS_SHEET_NAME);
   if (!sheet) {
@@ -1783,7 +1783,8 @@ function _doSupervisorReminders() {
 
   let sent = 0, skipped = 0;
   for (let i = 1; i < u.length; i++) {
-    if (String(u[i][3] || '').trim().toLowerCase() !== 'supervisor') continue;
+    const _role = String(u[i][3] || '').trim().toLowerCase();
+    if (_role !== 'supervisor' && _role !== 'quality_supervisor') continue;
     const phone = String(u[i][4] || '').replace(/\D/g, '');
     if (!phone) { skipped++; continue; }
     const jobs = _filterStaffJobs(data, h, String(u[i][5] || '').trim());
@@ -2086,7 +2087,8 @@ function _doNextDayReminders() {
 
   let sent = 0, skipped = 0;
   for (let i = 1; i < u.length; i++) {
-    if (String(u[i][3] || '').trim().toLowerCase() !== 'supervisor') continue;
+    const _role = String(u[i][3] || '').trim().toLowerCase();
+    if (_role !== 'supervisor' && _role !== 'quality_supervisor') continue;
     const phone = String(u[i][4] || '').replace(/\D/g, '');
     if (!phone) { skipped++; continue; }
     const items = _filterNextDayAppointments(data, h, String(u[i][5] || '').trim(), tomorrowMyt);
