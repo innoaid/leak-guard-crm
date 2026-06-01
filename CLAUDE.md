@@ -49,6 +49,8 @@ My normal manual method:
 5. Save (Ctrl+S).
 6. If this is a **web app**: Deploy → Manage deployments → edit the deployment →
    set version to **New version** → Deploy.
+7. If I changed bot/automation code: also re-paste the n8n API key in the browser
+   (n8n side), or the bot edits won't take effect. NEVER commit the n8n key to the repo.
 
 > Optional faster way (automates steps 1–6): `clasp push`
 > (Requires clasp installed + `clasp login` once per machine.)
