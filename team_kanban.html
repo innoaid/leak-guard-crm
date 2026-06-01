@@ -3658,10 +3658,26 @@ document.getElementById('btnLogout').addEventListener('click', logout);
 // ================================================================
 // Round 80 — Manage Staff modal (admin only)
 // ================================================================
+// Round 80.1 — Assign name suggestions: the values that matter are leads'
+// 'Assigned To' (what the picker must match), plus existing staff assign-names.
+function _assignNameSuggestions() {
+  const seen = {}, out = [];
+  (allLeads || []).forEach(function(l) {
+    const a = String(l['Assigned To'] || '').trim();
+    if (a && a !== 'Unassigned' && !seen[a]) { seen[a] = 1; out.push(a); }
+  });
+  (USER_ASSIGN_NAMES || []).forEach(function(a) {
+    a = String(a || '').trim();
+    if (a && !seen[a]) { seen[a] = 1; out.push(a); }
+  });
+  out.sort();
+  return out;
+}
+
 function renderStaffRoster() {
   const box = document.getElementById('staffRoster');
   const dl = document.getElementById('assignNameList');
-  if (dl) dl.innerHTML = USER_ASSIGN_NAMES.map(function(a) { return '<option value="' + escapeHtml(a) + '">'; }).join('');
+  if (dl) dl.innerHTML = _assignNameSuggestions().map(function(a) { return '<option value="' + escapeHtml(a) + '">'; }).join('');
   if (!box) return;
   if (!USER_ROSTER.length) { box.textContent = 'No users yet.'; return; }
   box.innerHTML = USER_ROSTER.map(function(u) {
