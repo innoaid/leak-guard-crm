@@ -173,6 +173,32 @@ function _buildQtGroupName(currentName, qtCode) {
   return ('QT-' + mmyy + '-' + nnn + (work ? ' ' + work : '')).trim();
 }
 
+// Round 82 — compute the new group name when an SI-MMYY-NNN invoice PDF is detected.
+// Mirrors _buildQtGroupName but uses the SI- prefix and preserves any existing QT- prefix.
+function _buildSiGroupName(currentName, siCode) {
+  if (!/^\d{4}-\d{3}$/.test(String(siCode || ''))) return null;
+  var mmyy = siCode.slice(0, 4);
+  var nnn  = siCode.slice(5);
+  var work = String(currentName || '').trim();
+  // Check if an SI- prefix already exists
+  var m = work.match(/^(.*?\s)?SI-(\d{4})-([\d\/]+)\b(.*)$/i);
+  if (m) {
+    var before  = (m[1] || '').trim();
+    var exMmyy  = m[2];
+    var exCodes = m[3].split('/').filter(function(s) { return s; });
+    var tail    = (m[4] || '').trim();
+    if (exMmyy === mmyy) {
+      if (exCodes.indexOf(nnn) !== -1) return null; // already present
+      exCodes.push(nnn);
+      return ((before ? before + ' ' : '') + 'SI-' + mmyy + '-' + exCodes.join('/') + (tail ? ' ' + tail : '')).trim();
+    }
+    // Different MMYY — slash-append
+    return ((before ? before + ' ' : '') + 'SI-' + exMmyy + '-' + exCodes.join('/') + '/' + mmyy + '-' + nnn + (tail ? ' ' + tail : '')).trim();
+  }
+  // No existing SI- prefix — append SI-MMYY-NNN at the end
+  return (work + ' SI-' + mmyy + '-' + nnn).trim();
+}
+
 // ================================================================
 // Action handlers
 // ================================================================
@@ -326,6 +352,26 @@ function handleUpdateStatusByGroup(body) {
             muteHttpExceptions: true,
           });
         } catch (_e) { /* best-effort; CRM is source of truth either way */ }
+      }
+    }
+
+    // Round 82: if Parse & Route attached an SI code (invoice PDF detected),
+    // append SI-MMYY-NNN to Group Name (AE) and push rename to WA group.
+    // Runs before the regression guard so the group name updates even if the
+    // status shift itself is blocked.
+    if (body.siCode && /^\d{4}-\d{3}$/.test(body.siCode)) {
+      var siName = _buildSiGroupName(groupName, body.siCode);
+      if (siName && siName !== groupName) {
+        var siRow = i + 1;
+        try { setCellByHeader(sheet, siRow, 'Group Name (AE)', siName); } catch (_e) {}
+        try {
+          UrlFetchApp.fetch(N8N_RENAME_GROUP_URL, {
+            method: 'post',
+            contentType: 'application/json',
+            payload: JSON.stringify({secret: SHARED_SECRET, groupId: target, newGroupName: siName}),
+            muteHttpExceptions: true,
+          });
+        } catch (_e) { /* best-effort */ }
       }
     }
 
