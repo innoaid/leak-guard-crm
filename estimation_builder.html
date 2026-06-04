@@ -651,14 +651,16 @@ function buildAutocountLineItems(){
         unit: e.unit || 'job', price: Number(e.price)||0, furtherDescription: '' });
     }
   });
+  // 'unit' (not '') for adjustment lines — verified accepted by AutoCount
+  // (QT-0626-009 test); an empty uom is unproven.
   const moq = moqAdjustment();
-  if (moq > 0) items.push({ desc: 'Minimum order adjustment (' + MOQ_SQFT + ' sqft floor)', qty: 1, unit: '', price: round2(moq), furtherDescription: '' });
+  if (moq > 0) items.push({ desc: 'Minimum order adjustment (' + MOQ_SQFT + ' sqft floor)', qty: 1, unit: 'unit', price: round2(moq), furtherDescription: '' });
   const disc = discountAmount();
-  if (disc > 0) items.push({ desc: 'Discount' + (state.discountType === 'percent' ? ' (' + (Number(state.discountValue)||0) + '%)' : ''), qty: 1, unit: '', price: -round2(disc), furtherDescription: '' });
+  if (disc > 0) items.push({ desc: 'Discount' + (state.discountType === 'percent' ? ' (' + (Number(state.discountValue)||0) + '%)' : ''), qty: 1, unit: 'unit', price: -round2(disc), furtherDescription: '' });
   // Keep the AutoCount total exactly equal to the estimation total.
   const sum = items.reduce(function(t,i){ return t + i.qty * i.price; }, 0);
   const drift = round2(grandTotal() - sum);
-  if (Math.abs(drift) >= 0.01) items.push({ desc: 'Rounding adjustment', qty: 1, unit: '', price: drift, furtherDescription: '' });
+  if (Math.abs(drift) >= 0.01) items.push({ desc: 'Rounding adjustment', qty: 1, unit: 'unit', price: drift, furtherDescription: '' });
   return items;
 }
 
