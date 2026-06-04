@@ -39,6 +39,7 @@ const ESTIMATIONS_HEADERS = [
   'Subtotal', 'Discount Type', 'Discount Value', 'Discount Amount',
   'MOQ Adjustment', 'Grand Total', 'Total Sqft', 'Membrane Rate',
   'AutoCount QT No', 'AutoCount Debtor Code', 'Synced At', 'Sync Status',
+  'PDF URL',
 ];
 
 // ================================================================
@@ -316,11 +317,72 @@ function _applyCrmSideEffects(phone, qtNo, grandRm, totalSqft) {
 }
 
 // ================================================================
+// Round 83.3 — store the estimation PDF in Drive
+// ================================================================
+// The builder renders the PDF client-side and the only copy used to
+// live in the customer's WA chat. This handler archives it: PDF goes
+// into a Drive folder, the link lands in the Estimations row ('PDF
+// URL') and the lead row ('Quotation PDF URL', shown on the kanban
+// lead modal). Best-effort: the send flow never depends on it.
+
+// Lazy find-or-create (no editor bootstrap needed — the DriveApp scope
+// is already granted by the Round 72 photo upload feature).
+function _estPdfFolder() {
+  const props = PropertiesService.getScriptProperties();
+  const existingId = props.getProperty('EST_PDFS_FOLDER_ID');
+  if (existingId) {
+    try { return DriveApp.getFolderById(existingId); } catch (_e) { /* recreate below */ }
+  }
+  const name = 'Leak Guard Estimation PDFs';
+  const it = DriveApp.getFoldersByName(name);
+  const folder = it.hasNext() ? it.next() : DriveApp.createFolder(name);
+  props.setProperty('EST_PDFS_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+// body: {action, secret, seNo, phone, pdfBase64, filename?}
+function handleUploadEstimationPdf(body) {
+  if (!body.seNo || !body.phone || !body.pdfBase64) {
+    return jsonResponse({status: 'error', message: 'seNo, phone and pdfBase64 required'});
+  }
+  try {
+    const folder = _estPdfFolder();
+    const filename = String(body.filename || (body.seNo + '.pdf')).replace(/[^A-Za-z0-9 ._-]+/g, '-').slice(0, 80);
+    const blob = Utilities.newBlob(Utilities.base64Decode(String(body.pdfBase64)), 'application/pdf', filename);
+    const file = folder.createFile(blob);
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_e) {}
+    const url = file.getUrl();
+
+    // Estimations row ('PDF URL') — best-effort
+    try {
+      const est = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(ESTIMATIONS_SHEET);
+      if (est) {
+        const h = getHeaders(est);
+        const rowNum = _findEstimationRowBySe(est, h, body.seNo);
+        if (rowNum && h.colByName['PDF URL']) est.getRange(rowNum, h.colByName['PDF URL']).setValue(url);
+      }
+    } catch (_e) { /* best-effort */ }
+
+    // Lead row ('Quotation PDF URL') — best-effort
+    try {
+      const sheet = getSheet();
+      const leadRow = findRowByPhone(sheet, body.phone);
+      if (leadRow) setCellByHeader(sheet, leadRow, 'Quotation PDF URL', url);
+    } catch (_e) { /* best-effort */ }
+
+    return jsonResponse({status: 'ok', url: url, id: file.getId()});
+  } catch (e) {
+    return jsonResponse({status: 'error', message: String(e && e.message || e)});
+  }
+}
+
+// ================================================================
 // One-time bootstraps (run from the Apps Script editor)
 // ================================================================
 
 // Creates the Estimations tab with the frozen header row.
-// Idempotent: skips if the tab already exists.
+// Idempotent: re-running appends any headers that were added in later
+// rounds (e.g. 'PDF URL', Round 83.3) without touching existing data.
 function bootstrapEstimationsSheet() {
   const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
   let sheet = ss.getSheetByName(ESTIMATIONS_SHEET);
@@ -329,9 +391,17 @@ function bootstrapEstimationsSheet() {
     sheet.getRange(1, 1, 1, ESTIMATIONS_HEADERS.length).setValues([ESTIMATIONS_HEADERS]);
     sheet.setFrozenRows(1);
     Logger.log('bootstrapEstimationsSheet: created Estimations tab');
-  } else {
-    Logger.log('bootstrapEstimationsSheet: Estimations tab already present, nothing to do');
+    return;
   }
+  const h = getHeaders(sheet);
+  const missing = ESTIMATIONS_HEADERS.filter(function(name) { return !h.colByName[name]; });
+  if (!missing.length) {
+    Logger.log('bootstrapEstimationsSheet: Estimations tab up to date, nothing to do');
+    return;
+  }
+  const lastCol = sheet.getLastColumn();
+  sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+  Logger.log('bootstrapEstimationsSheet: appended headers ' + missing.join(', '));
 }
 
 // Adds 'AutoCount QT No' + 'Total Sqft' to the lead sheet if missing.

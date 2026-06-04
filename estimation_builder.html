@@ -1653,6 +1653,28 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
       toast('Estimation record save failed — AutoCount sync from kanban won’t work for this SE', 'warn');
     }
 
+    // Round 83.3 — archive the PDF to Drive (link lands in the Estimations
+    // row + the lead's Quotation PDF URL column). Non-fatal: the customer
+    // already has the PDF in WhatsApp.
+    ut.textContent = 'Archiving PDF to Drive…';
+    try {
+      const upRes = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'uploadEstimationPdf', secret: SHARED_SECRET,
+          seNo: docNo,
+          phone: String(currentLead['Phone'] || '').trim(),
+          filename: docNo + '.pdf',
+          pdfBase64: pdfBase64
+        })
+      });
+      const upData = await upRes.json();
+      if (upData.status !== 'ok') console.warn('uploadEstimationPdf failed (non-fatal):', upData.message);
+    } catch (upErr) {
+      console.warn('uploadEstimationPdf failed (non-fatal)', upErr);
+    }
+
     // Round 83 — Trigger A: create the AutoCount quotation now (checkbox ON).
     if (_acOn) {
       ut.textContent = 'Creating AutoCount quotation…';

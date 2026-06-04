@@ -2561,6 +2561,9 @@ function openLeadDetail(lead) {
     rowDisplay('Source', fmtVal(lead['Source'])) +
     rowDisplay('Slot chosen', fmtVal(lead['Slot Chosen'])) +
     rowDisplay('Date confirmed', fmtVal(lead['Date Appt Confirmed'])) +
+    rowDisplay('Estimate PDF', lead['Quotation PDF URL'] ?
+      '<a href="' + escapeHtml(String(lead['Quotation PDF URL'])) + '" target="_blank">📄 open</a>' :
+      '<span style="color:#9CA3AF">—</span>') +
     rowDisplay('Tags', lead['Tags'] ? escapeHtml(String(lead['Tags'])) : '—') +
     rowDisplay('Last bot msg', fmtVal(lead['Last Bot Msg Time (AD)'])) +
     rowEdit('Assigned to', '<select class="modal-select" id="modalAssignee">' +
