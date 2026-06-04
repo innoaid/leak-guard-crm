@@ -125,6 +125,7 @@ function handleSyncAutocount(body) {
     // ── Idempotency guard: QT already created for this SE ──
     let qtNo = String(get('AutoCount QT No') || '').trim();
     let debtorCode = String(get('AutoCount Debtor Code') || '').trim();
+    let agentWarning = '';
     const alreadySynced = !!qtNo;
 
     if (!alreadySynced) {
@@ -146,7 +147,10 @@ function handleSyncAutocount(body) {
         if (addrCol) address = String(leadSheet.getRange(leadRow, addrCol).getValue() || '').trim();
       }
 
-      // Same payload shape quotation_builder.html sends (Phase 3 webhook)
+      // Same payload shape quotation_builder.html sends (Phase 3 webhook).
+      // Round 83.2 — the inspector (Submitted By) rides along as salesAgent;
+      // the n8n workflow normalizes it ("William (KL)" -> "William") and
+      // auto-creates the AutoCount agent when missing.
       const resp = UrlFetchApp.fetch(QT_CREATE_URL, {
         method: 'post',
         contentType: 'application/json',
@@ -155,6 +159,7 @@ function handleSyncAutocount(body) {
           name:          name,
           address:       address,
           serviceHeader: 'Torch-On Membrane Waterproofing Services',
+          salesAgent:    String(get('Submitted By') || '').trim(),
           lineItems:     lineItems,
         }),
         muteHttpExceptions: true,
@@ -173,6 +178,7 @@ function handleSyncAutocount(body) {
       }
       qtNo = String(acData.docNo).trim();
       debtorCode = String(acData.debtorCode || '').trim();
+      agentWarning = String(acData.agentWarning || '').trim();
 
       // Persist the guard BEFORE side-effects so a partial failure
       // downstream can never re-create the quotation on retry.
@@ -189,7 +195,7 @@ function handleSyncAutocount(body) {
 
     return jsonResponse({
       status: 'ok', seNo: seNo, qtNo: qtNo, debtorCode: debtorCode,
-      alreadySynced: alreadySynced, sideEffects: sideEffects,
+      alreadySynced: alreadySynced, agentWarning: agentWarning, sideEffects: sideEffects,
     });
   } catch (err) {
     return jsonResponse({status: 'error', message: 'syncAutocount: ' + err.toString()});

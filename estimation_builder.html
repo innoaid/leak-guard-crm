@@ -1665,6 +1665,7 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
         const acData = await acRes.json();
         if (acData.status === 'ok' && acData.qtNo) {
           toast('AutoCount QT created: ' + acData.qtNo, 'success');
+          if (acData.agentWarning) toast(acData.agentWarning, 'warn');
         } else {
           toast('AutoCount sync failed: ' + (acData.message || 'unknown') + ' — retry from the kanban card', 'warn');
         }

@@ -3555,6 +3555,7 @@ document.getElementById('btnSyncAutocount').onclick = async function() {
   btn.disabled = false;
   if (res.status === 'ok' && res.qtNo) {
     toast('AutoCount QT ' + res.qtNo + (res.alreadySynced ? ' (re-applied)' : ' created'), 'success');
+    if (res.agentWarning) toast(res.agentWarning, 'warn');
     currentModalLead['AutoCount QT No'] = res.qtNo;
     if (res.sideEffects && res.sideEffects.groupName) currentModalLead['Group Name (AE)'] = res.sideEffects.groupName;
     if (res.sideEffects && res.sideEffects.tag) {
