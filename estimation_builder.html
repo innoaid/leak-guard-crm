@@ -346,6 +346,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 </div>
 
 <div class="submit-bar">
+  <!-- Round 83 — Trigger A: create the AutoCount quotation right after the SE send. -->
+  <label for="chkAutocount" style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:#374151;padding:2px 0 6px;cursor:pointer">
+    <input type="checkbox" id="chkAutocount" checked> Also create AutoCount quotation (QT)
+  </label>
   <div class="submit-bar-inner">
     <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
     <button class="btn-clear" id="btnPdf" type="button" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E">📄 Estimate PDF</button>
@@ -616,6 +620,47 @@ function discountAmount(){
 }
 function grandTotal(){ return Math.max(0, grandSubtotal() - discountAmount()); }
 function totalPhotos(){ return state.slabs.reduce(function(sum,s){ return sum+s.photos.length; },0); }
+
+// Round 83 — flatten the estimation into the lg-quotation-create lineItems
+// shape ({desc, qty, unit, price, furtherDescription} — same as
+// quotation_builder.html Phase 3). Discount and MOQ become explicit lines so
+// the AutoCount quotation total always equals grandTotal(); a final
+// rounding-adjustment line covers the (rare) sub-sen drift from rounding
+// sqft to 2dp.
+function buildAutocountLineItems(){
+  const items = [];
+  const round2 = function(n){ return Math.round(n * 100) / 100; };
+  state.slabs.forEach(function(s){
+    const sq = slabSqft(s);
+    if (sq > 0) {
+      items.push({
+        desc: (s.name || 'Slab') + (s.mode === 'flashing' ? ' — flashing (torch-on membrane)' : ' — torch-on membrane'),
+        qty: round2(sq), unit: 'sqft', price: membraneRate(), furtherDescription: ''
+      });
+    }
+    s.extras.forEach(function(e){
+      if ((Number(e.qty)||0) > 0 && (Number(e.price)||0) > 0) {
+        items.push({ desc: (s.name || 'Slab') + ' — ' + (e.label || 'service'),
+          qty: Number(e.qty)||0, unit: e.unit || 'job', price: Number(e.price)||0, furtherDescription: '' });
+      }
+    });
+  });
+  state.siteExtras.forEach(function(e){
+    if ((Number(e.qty)||0) > 0 && (Number(e.price)||0) > 0) {
+      items.push({ desc: e.label || 'Additional cost', qty: Number(e.qty)||0,
+        unit: e.unit || 'job', price: Number(e.price)||0, furtherDescription: '' });
+    }
+  });
+  const moq = moqAdjustment();
+  if (moq > 0) items.push({ desc: 'Minimum order adjustment (' + MOQ_SQFT + ' sqft floor)', qty: 1, unit: '', price: round2(moq), furtherDescription: '' });
+  const disc = discountAmount();
+  if (disc > 0) items.push({ desc: 'Discount' + (state.discountType === 'percent' ? ' (' + (Number(state.discountValue)||0) + '%)' : ''), qty: 1, unit: '', price: -round2(disc), furtherDescription: '' });
+  // Keep the AutoCount total exactly equal to the estimation total.
+  const sum = items.reduce(function(t,i){ return t + i.qty * i.price; }, 0);
+  const drift = round2(grandTotal() - sum);
+  if (Math.abs(drift) >= 0.01) items.push({ desc: 'Rounding adjustment', qty: 1, unit: '', price: drift, furtherDescription: '' });
+  return items;
+}
 
 // ========= PHOTO =========
 async function compressImage(file,maxEdge){
@@ -1451,7 +1496,9 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
   // Round 74.2 — confirm before sending so a misclick can be cancelled.
   const _custName = String(currentLead['Name'] || 'customer').trim();
   const _totalStr = rm(grandTotal());
-  if (!confirm('Send the estimation PDF to ' + _custName + '?\n\nTotal: ' + _totalStr + '\n\nThis will issue a new SE number, generate the PDF, and post it to the customer’s WA group.')) {
+  // Round 83 — surface the AutoCount checkbox state in the confirm text.
+  const _acOn = document.getElementById('chkAutocount').checked;
+  if (!confirm('Send the estimation PDF to ' + _custName + '?\n\nTotal: ' + _totalStr + '\nAutoCount quotation: ' + (_acOn ? 'ON' : 'OFF') + '\n\nThis will issue a new SE number, generate the PDF, and post it to the customer’s WA group.')) {
     return;
   }
   const btn = document.getElementById('btnSubmit');
@@ -1572,6 +1619,58 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     if (!sendRes.ok) throw new Error('Send HTTP ' + sendRes.status);
     toast(docNo + ' sent to ' + (currentLead['Name'] || 'customer'), 'success');
     btn.textContent = '✅ Sent — ' + docNo;
+
+    // Round 83 — persist the estimation summary server-side on EVERY send
+    // (the kanban "Sync to AutoCount" button needs it later, and the
+    // membrane rate only exists in this device's localStorage). Non-fatal:
+    // the estimation is already with the customer at this point.
+    ut.textContent = 'Saving estimation record…';
+    try {
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'saveEstimation', secret: SHARED_SECRET,
+          seNo: docNo,
+          phone: String(currentLead['Phone'] || '').trim(),
+          name: currentLead['Name'] || '',
+          submittedBy: state.submittedBy,
+          lineItems: buildAutocountLineItems(),
+          subtotal: grandSubtotal(),
+          discountType: state.discountType,
+          discountValue: Number(state.discountValue) || 0,
+          discountAmount: discountAmount(),
+          moqAdjustment: moqAdjustment(),
+          grandTotal: grandTotal(),
+          totalSqft: grandMembraneSqft(),
+          membraneRate: membraneRate()
+        })
+      });
+    } catch (saveErr) {
+      console.warn('saveEstimation failed (non-fatal)', saveErr);
+      toast('Estimation record save failed — AutoCount sync from kanban won’t work for this SE', 'warn');
+    }
+
+    // Round 83 — Trigger A: create the AutoCount quotation now (checkbox ON).
+    if (_acOn) {
+      ut.textContent = 'Creating AutoCount quotation…';
+      try {
+        const acRes = await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'syncAutocount', secret: SHARED_SECRET, seNo: docNo })
+        });
+        const acData = await acRes.json();
+        if (acData.status === 'ok' && acData.qtNo) {
+          toast('AutoCount QT created: ' + acData.qtNo, 'success');
+        } else {
+          toast('AutoCount sync failed: ' + (acData.message || 'unknown') + ' — retry from the kanban card', 'warn');
+        }
+      } catch (acErr) {
+        console.warn('syncAutocount failed (non-fatal)', acErr);
+        toast('AutoCount sync error — retry from the kanban card', 'warn');
+      }
+    }
   } catch (e) {
     console.error(e);
     toast('Failed: ' + (e.message || e), 'error');

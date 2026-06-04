@@ -68,6 +68,8 @@ function doPost(e) {
       case 'staffCommand':       return handleStaffCommand(body);  // round 76 phase 3 — WA -myjobs/-pending text command
       case 'createUser':         return handleCreateUser(body);  // round 80 — admin Manage Staff panel
       case 'listUsers':          return handleListUsers(body);   // round 80 — roster + assignee picker source
+      case 'saveEstimation':     return handleSaveEstimation(body);  // round 83 — persist SE summary (autocount.gs)
+      case 'syncAutocount':      return handleSyncAutocount(body);   // round 83 — AutoCount QT + group rename + value tag (autocount.gs)
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});

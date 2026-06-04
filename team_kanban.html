@@ -484,6 +484,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <div class="modal-actions">
       <button class="modal-btn modal-btn-info" id="btnEditAppt" style="display:none">Edit appointment</button>
       <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Estimation</button>
+      <button class="modal-btn modal-btn-info" id="btnSyncAutocount" style="display:none">🔗 Sync to AutoCount</button>
       <button class="modal-btn modal-btn-info" id="btnEditDetails">✏️ Edit details</button>
       <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
       <button class="modal-btn modal-btn-info" id="btnArchiveLead" style="background:#FEE2E2;color:#991B1B">🗄 Archive</button>
@@ -2578,6 +2579,17 @@ function openLeadDetail(lead) {
   const showGenQt = (status === 'Pending QT' || status === 'Site Visit Confirmed');
   document.getElementById('btnGenQt').style.display = showGenQt ? '' : 'none';
 
+  // Round 83 — "Sync to AutoCount" (Trigger B): visible wherever an
+  // estimation may exist, or whenever a QT was already created (so the
+  // synced state stays visible in later phases).
+  const acQt = String(lead['AutoCount QT No'] || '').trim();
+  const showAcSync = !!acQt || showGenQt || status === 'Quotation Sent';
+  const btnAcSync = document.getElementById('btnSyncAutocount');
+  btnAcSync.style.display = showAcSync ? '' : 'none';
+  btnAcSync.textContent = acQt ? ('✅ AutoCount: ' + acQt) : '🔗 Sync to AutoCount';
+  btnAcSync.dataset.synced = acQt ? '1' : '0';
+  btnAcSync.disabled = false;
+
   document.getElementById('leadModal').classList.add('open');
 }
 
@@ -3525,6 +3537,39 @@ document.getElementById('btnGenQt').onclick = function() {
   if (!currentModalLead) return;
   const phone = currentModalLead['Phone'];
   window.open('estimation_builder.html?phone=' + encodeURIComponent(phone), '_blank');
+};
+// Round 83 — Trigger B: AutoCount sync from the kanban card. The server
+// picks the newest saved estimation for this phone; if a QT already
+// exists it returns it without creating a duplicate (alreadySynced).
+document.getElementById('btnSyncAutocount').onclick = async function() {
+  if (!currentModalLead) return;
+  const btn = this;
+  if (btn.dataset.synced === '1' &&
+      !confirm('This lead is already synced (' + btn.textContent.replace('✅ AutoCount: ', '') + ').\n\nRe-apply the group rename / value tag / CRM columns? (No new quotation will be created.)')) {
+    return;
+  }
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Syncing…';
+  const res = await apiCall('syncAutocount', { phone: currentModalLead['Phone'] });
+  btn.disabled = false;
+  if (res.status === 'ok' && res.qtNo) {
+    toast('AutoCount QT ' + res.qtNo + (res.alreadySynced ? ' (re-applied)' : ' created'), 'success');
+    currentModalLead['AutoCount QT No'] = res.qtNo;
+    if (res.sideEffects && res.sideEffects.groupName) currentModalLead['Group Name (AE)'] = res.sideEffects.groupName;
+    if (res.sideEffects && res.sideEffects.tag) {
+      const tagSet = String(currentModalLead['Tags'] || '').split(',').map(function(t){ return t.trim(); })
+        .filter(function(t){ return t && !/^RM\d.*sqft$/i.test(t); });
+      tagSet.push(res.sideEffects.tag);
+      currentModalLead['Tags'] = tagSet.join(',');
+    }
+    btn.textContent = '✅ AutoCount: ' + res.qtNo;
+    btn.dataset.synced = '1';
+    render();
+  } else {
+    toast('AutoCount sync failed: ' + (res.message || 'unknown'), 'error');
+    btn.textContent = origLabel;
+  }
 };
 document.getElementById('leadModal').addEventListener('click', function(e){
   if (e.target.id === 'leadModal') closeLeadDetail();
