@@ -280,11 +280,15 @@ function handleNextSeNumber(body) {
     // MYT-correct MMYY (CLAUDE.md gotcha #3 idiom — extract via getUTC* only)
     const mytNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
     const mmyy = String(mytNow.getUTCMonth() + 1).padStart(2, '0') + String(mytNow.getUTCFullYear()).slice(-2);
-    const sheetMmyy = String(data[rowIdx][1] || '').trim();
+    // Round 83.5 — pad on read: Sheets stores '0626' as the NUMBER 626, so the
+    // raw comparison never matched and the counter reset to 1 on EVERY call
+    // (every SE since Round 71 was -001). padStart restores the leading zero.
+    const sheetMmyy = String(data[rowIdx][1] || '').trim().padStart(4, '0');
     let count = Number(data[rowIdx][2] || 0);
     if (sheetMmyy !== mmyy) count = 0;
     count = count + 1;
-    sheet.getRange(rowIdx + 1, 2).setValue(mmyy);
+    // setNumberFormat('@') forces the cell to text so future writes keep '0726' etc.
+    sheet.getRange(rowIdx + 1, 2).setNumberFormat('@').setValue(mmyy);
     sheet.getRange(rowIdx + 1, 3).setValue(count);
     const docNo = 'SE-' + mmyy + '-' + String(count).padStart(3, '0');
     return jsonResponse({status: 'ok', docNo: docNo});

@@ -1683,7 +1683,9 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
         const acRes = await fetch(APPS_SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'syncAutocount', secret: SHARED_SECRET, seNo: docNo })
+          // Round 83.5 — phone included so the server can verify the SE row
+          // belongs to this lead (guards against SE-counter collisions).
+          body: JSON.stringify({ action: 'syncAutocount', secret: SHARED_SECRET, seNo: docNo, phone: String(currentLead['Phone'] || '').trim() })
         });
         const acData = await acRes.json();
         if (acData.status === 'ok' && acData.qtNo) {

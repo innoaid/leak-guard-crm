@@ -63,6 +63,13 @@ function handleSaveEstimation(body) {
   try {
     const h = getHeaders(sheet);
     let rowNum = _findEstimationRowBySe(sheet, h, body.seNo);
+    // Round 83.5 — collision guard: an existing row for this SE No must belong
+    // to the SAME lead. A different phone means the SE counter issued a
+    // duplicate (the June 2026 incident) — fail loudly instead of silently
+    // overwriting another lead's estimation.
+    if (rowNum && !_samePhone(sheet.getRange(rowNum, h.colByName['Phone']).getValue(), body.phone)) {
+      return jsonResponse({status: 'error', message: 'SE collision: ' + body.seNo + ' already belongs to another lead — SE counter may be broken, check the Counters sheet'});
+    }
     if (!rowNum) rowNum = Math.max(sheet.getLastRow(), 1) + 1;
 
     const rowObj = {
@@ -122,6 +129,13 @@ function handleSyncAutocount(body) {
     };
     const phone = String(get('Phone') || '').trim();
     const name  = String(get('Name') || '').trim();
+
+    // Round 83.5 — when the caller supplied both seNo and phone (Trigger A
+    // does), refuse to sync a row that belongs to a different lead. Stops a
+    // duplicate SE from reusing another lead's quotation.
+    if (body.seNo && body.phone && !_samePhone(phone, body.phone)) {
+      return jsonResponse({status: 'error', message: 'SE collision: ' + seNo + ' on file belongs to another lead — not syncing. Check the Counters sheet.'});
+    }
 
     // ── Idempotency guard: QT already created for this SE ──
     let qtNo = String(get('AutoCount QT No') || '').trim();
@@ -249,6 +263,17 @@ function _acQtCode(docNo) {
   return m ? (m[1] + '-' + m[2]) : null;
 }
 
+// Last-8-digit phone match (same idiom as findRowByPhone).
+function _samePhone(a, b) {
+  const pa = String(a || '').trim();
+  const pb = String(b || '').trim();
+  if (!pa || !pb) return true; // nothing to compare — don't block
+  if (pa === pb) return true;
+  const la = pa.length >= 8 ? pa.slice(-8) : pa;
+  const lb = pb.length >= 8 ? pb.slice(-8) : pb;
+  return la === lb;
+}
+
 function _markSyncFailed(sheet, h, rowNum, msg) {
   try {
     if (h.colByName['Sync Status']) sheet.getRange(rowNum, h.colByName['Sync Status']).setValue('failed: ' + String(msg).slice(0, 80));
@@ -374,6 +399,88 @@ function handleUploadEstimationPdf(body) {
   } catch (e) {
     return jsonResponse({status: 'error', message: String(e && e.message || e)});
   }
+}
+
+// ================================================================
+// Round 83.5 — ONE-TIME repair for the June 2026 SE-collision incident.
+// ================================================================
+// The SE counter issued SE-0626-001 to every estimation (Sheets stored
+// MMYY '0626' as the number 626, so the rollover check reset the count
+// on every call). All leads shared one Estimations row, and the
+// idempotency guard reused Annie's test QT-0626-012 for Mr Ooi, Mr Oi,
+// Wan and Sudip: groups renamed with the wrong code, no real AutoCount
+// quotations created.
+//
+// Run ONCE from the editor AFTER deploying the Round 83.5 code fix.
+// It: (1) clears the wrong 'AutoCount QT No' from every real lead
+// stamped QT-0626-012 (Annie 60179934386, the test lead that actually
+// owns it, is skipped); (2) strips the bogus 'QT-0626-012 ' prefix
+// from their Group Name (AE) and pushes the rename to the live WA
+// group; (3) un-syncs the shared Estimations row so the surviving
+// estimation data (Sudip's) can re-sync into a real quotation.
+// Idempotent — re-running is a no-op. Delete after a clean run.
+function repairSeCollisionJune2026() {
+  const WRONG_QT = 'QT-0626-012';
+  const OWNER_PHONE_LAST8 = '79934386'; // Annie — the test lead that legitimately created QT-0626-012
+
+  // (1) + (2) — lead rows
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const qtCol = h.colByName['AutoCount QT No'];
+  if (!qtCol) { Logger.log('repair: AutoCount QT No column missing — run bootstrapAutocountLeadColumns()'); return; }
+  const data = sheet.getDataRange().getValues();
+  let fixed = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][qtCol - 1] || '').trim() !== WRONG_QT) continue;
+    const phone = String(data[i][h.colByName['Phone'] - 1] || '').trim();
+    if (phone.slice(-8) === OWNER_PHONE_LAST8) { Logger.log('repair: skipping owner lead ' + phone); continue; }
+    const rowNum = i + 1;
+    const name = String(data[i][h.colByName['Name'] - 1] || '').trim();
+
+    // clear the wrong QT No
+    sheet.getRange(rowNum, qtCol).setValue('');
+
+    // strip the bogus prefix from the group name + push to the live WA group
+    const gnameCol = h.colByName['Group Name (AE)'];
+    const gidCol   = h.colByName['Group ID (AB)'];
+    const curName = gnameCol ? String(data[i][gnameCol - 1] || '').trim() : '';
+    const newName = curName.replace(new RegExp('^' + WRONG_QT + '\\s+'), '').trim();
+    if (gnameCol && newName && newName !== curName) {
+      sheet.getRange(rowNum, gnameCol).setValue(newName);
+      const groupId = gidCol ? String(data[i][gidCol - 1] || '').trim() : '';
+      if (groupId) {
+        try {
+          UrlFetchApp.fetch(N8N_RENAME_GROUP_URL, {
+            method: 'post',
+            contentType: 'application/json',
+            payload: JSON.stringify({secret: SHARED_SECRET, groupId: groupId, newGroupName: newName}),
+            muteHttpExceptions: true,
+          });
+        } catch (_e) { /* best-effort */ }
+      }
+      Logger.log('repair: ' + name + ' (' + phone + ') — QT cleared, group renamed to "' + newName + '"');
+    } else {
+      Logger.log('repair: ' + name + ' (' + phone + ') — QT cleared (group name already clean)');
+    }
+    fixed++;
+  }
+
+  // (3) — un-sync the shared Estimations row so its surviving data can re-sync
+  const est = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(ESTIMATIONS_SHEET);
+  if (est) {
+    const eh = getHeaders(est);
+    const r = _findEstimationRowBySe(est, eh, 'SE-0626-001');
+    if (r && String(est.getRange(r, eh.colByName['AutoCount QT No']).getValue() || '').trim() === WRONG_QT) {
+      ['AutoCount QT No', 'AutoCount Debtor Code', 'Synced At', 'Sync Status'].forEach(function(c) {
+        if (eh.colByName[c]) est.getRange(r, eh.colByName[c]).setValue('');
+      });
+      Logger.log('repair: Estimations row SE-0626-001 un-synced (data belongs to ' + est.getRange(r, eh.colByName['Name']).getValue() + ')');
+    } else {
+      Logger.log('repair: Estimations row already clean');
+    }
+  }
+
+  Logger.log('repairSeCollisionJune2026: done — ' + fixed + ' lead(s) repaired');
 }
 
 // ================================================================
