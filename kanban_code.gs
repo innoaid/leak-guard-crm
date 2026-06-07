@@ -72,6 +72,7 @@ function doPost(e) {
       case 'syncAutocount':      return handleSyncAutocount(body);   // round 83 — AutoCount QT + group rename + value tag (autocount.gs)
       case 'uploadEstimationPdf': return handleUploadEstimationPdf(body);  // round 83.3 — archive SE PDF to Drive (autocount.gs)
       case 'adminScan':          return handleAdminScan(body);  // round 85 — phase-scan violation board
+      case 'salesReport':        return handleSalesReport(body);  // round 86 — sales scoreboard + weekly meeting agenda
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -2396,6 +2397,206 @@ function setupAdminScanTrigger() {
   }
   ScriptApp.newTrigger('sendAdminScanDigest').timeBased().everyMinutes(30).create();
   Logger.log('setupAdminScanTrigger: installed (every 30 min, self-gated to 9 AM MYT)');
+}
+
+// ================================================================
+// Round 86 — Sales report: scoreboard + weekly meeting agenda
+// ================================================================
+// One handler feeds the kanban "Sales Report" modal:
+//  - people[]:      per-salesperson scoreboard for the date range
+//                   (visits = estimations submitted; conversion from the
+//                   estimated leads' CURRENT status)
+//  - appointments[]: appointments confirmed in range per Assigned To
+//                   (captures visits that produced no estimate)
+//  - meeting[]:     per-salesperson agenda — every ACTIVE card in
+//                   Pending QT / Quotation Sent with days-in-phase,
+//                   last admin/customer msgs, notes, links (for the
+//                   weekly director 1-on-1; independent of date range)
+
+const SALES_FUNNEL = ['New Lead','Pending Invitation','Pending Site Visit',
+  'Site Visit Confirmed','Pending QT','Quotation Sent','Pending Downpayment',
+  'Pending I.Date','I.Date Confirmed','Job In Progress','Pending Balance',
+  'Job Complete','Receipt Sent','Completed'];
+const SALES_LOST = ['Rejected', 'Lost', 'Cold Lead', 'Out of Area'];
+
+// "William (KL)" -> "William"; case-insensitive merge key.
+function _normPerson(name) {
+  return String(name || '').replace(/\s*\(.*\)\s*$/, '').trim();
+}
+function _personKey(name) { return _normPerson(name).toLowerCase(); }
+function _last8(phone) {
+  const p = String(phone || '').replace(/\D/g, '');
+  return p.length >= 8 ? p.slice(-8) : p;
+}
+
+function handleSalesReport(body) {
+  // Range: MYT-inclusive YYYY-MM-DD strings; default last 30 days.
+  const todayStr = _mytDateStr();
+  let from = String(body.from || '').trim();
+  let to = String(body.to || '').trim() || todayStr;
+  if (!from) {
+    const d = new Date(Date.now() + 8 * 3600 * 1000);
+    d.setUTCDate(d.getUTCDate() - 30);
+    from = d.toISOString().slice(0, 10);
+  }
+  const fromMs = Date.parse(from + 'T00:00:00+08:00');
+  const toMs = Date.parse(to + 'T23:59:59+08:00');
+
+  // ── Lead sheet index (phone last8 -> lead info) ──
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const data = sheet.getDataRange().getValues();
+  const col = function(name) { return h.colByName[name] ? h.colByName[name] - 1 : -1; };
+  const cPhone = col('Phone'), cName = col('Name'), cStatus = col('Status'),
+        cAssign = col('Assigned To'), cChangedAt = col('Status Changed At'),
+        cLoc = col('Location'), cProblem = col('Problem Type'),
+        cNotes = col('Notes'), cFu = col('Follow Up Count (AK)'),
+        cMsg = col('Last Admin Msg'), cMsgAt = col('Last Admin Msg At'),
+        cCust = col('Last Customer Msg (AM)'), cLink = col('Group Invite Link (AJ)'),
+        cPdf = col('Quotation PDF URL'), cApptDate = col('Date Appt Confirmed');
+  const leadByPhone = {};
+  for (let i = 1; i < data.length; i++) {
+    const k = _last8(data[i][cPhone]);
+    if (k) leadByPhone[k] = data[i];
+  }
+
+  // ── Estimations in range, latest SE per unique lead ──
+  const est = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName('Estimations');
+  const people = {};   // key -> aggregate
+  let dataSinceMs = 0;
+  if (est) {
+    const eh = getHeaders(est);
+    const ed = est.getDataRange().getValues();
+    const ec = function(name) { return eh.colByName[name] ? eh.colByName[name] - 1 : -1; };
+    const eSe = ec('SE No'), ePhone = ec('Phone'), eName = ec('Name'), eTs = ec('Timestamp'),
+          eBy = ec('Submitted By'), eTotal = ec('Grand Total'), eSqft = ec('Total Sqft');
+    // latest SE per (person, lead)
+    const latest = {};  // personKey|last8 -> {ts, row}
+    for (let i = 1; i < ed.length; i++) {
+      const ts = _scanToMs(ed[i][eTs]);
+      if (!ts) continue;
+      if (!dataSinceMs || ts < dataSinceMs) dataSinceMs = ts;
+      if (ts < fromMs || ts > toMs) continue;
+      const pk = _personKey(ed[i][eBy]) || 'unassigned';
+      if (!people[pk]) people[pk] = { person: _normPerson(ed[i][eBy]) || 'Unassigned', visits: 0, leadKeys: {}, quotedRm: 0, won: 0, wonRm: 0, lost: 0, open: 0, drill: [] };
+      people[pk].visits++;
+      const lk = pk + '|' + _last8(ed[i][ePhone]);
+      if (!latest[lk] || ts > latest[lk].ts) latest[lk] = { ts: ts, row: ed[i], pk: pk };
+    }
+    Object.keys(latest).forEach(function(lk) {
+      const L = latest[lk];
+      const p = people[L.pk];
+      const phoneKey = _last8(L.row[ePhone]);
+      p.leadKeys[phoneKey] = 1;
+      const rm = Number(L.row[eTotal]) || 0;
+      p.quotedRm += rm;
+      const lead = leadByPhone[phoneKey];
+      const status = lead ? String(lead[cStatus] || '').trim() : '(lead not found)';
+      const fi = SALES_FUNNEL.indexOf(status);
+      let bucket = 'open';
+      if (fi >= SALES_FUNNEL.indexOf('Pending Downpayment')) bucket = 'won';
+      else if (SALES_LOST.indexOf(status) !== -1) bucket = 'lost';
+      if (bucket === 'won') { p.won++; p.wonRm += rm; }
+      else if (bucket === 'lost') p.lost++;
+      else p.open++;
+      p.drill.push({
+        name: String(L.row[eName] || '').trim(),
+        phone: String(L.row[ePhone] || '').trim(),
+        seNo: String(L.row[eSe] || '').trim(),
+        rm: rm,
+        sqft: Number(L.row[eSqft]) || 0,
+        status: status,
+        bucket: bucket,
+        daysAgo: Math.floor((Date.now() - L.ts) / 86400000),
+      });
+    });
+  }
+  const peopleOut = Object.keys(people).map(function(pk) {
+    const p = people[pk];
+    p.leads = Object.keys(p.leadKeys).length;
+    delete p.leadKeys;
+    p.drill.sort(function(a, b) { return b.rm - a.rm; });
+    return p;
+  }).sort(function(a, b) { return b.wonRm - a.wonRm || b.quotedRm - a.quotedRm; });
+
+  // ── Appointments confirmed in range, per Assigned To ──
+  const appts = {};
+  if (cApptDate >= 0) {
+    for (let i = 1; i < data.length; i++) {
+      const ds = _normalizeDateStr(data[i][cApptDate]);
+      if (!ds || ds < from || ds > to) continue;
+      const pk = _personKey(data[i][cAssign]) || 'unassigned';
+      if (!appts[pk]) appts[pk] = { person: _normPerson(data[i][cAssign]) || 'Unassigned', count: 0 };
+      appts[pk].count++;
+    }
+  }
+
+  // ── Meeting agenda: ACTIVE Pending QT + Quotation Sent cards per person ──
+  // Attribution: latest SE's Submitted By (any date), else Assigned To.
+  const seByPhone = {};  // last8 -> {ts, by, seNo, rm, sqft}
+  if (est) {
+    const eh = getHeaders(est);
+    const ed = est.getDataRange().getValues();
+    const ec = function(name) { return eh.colByName[name] ? eh.colByName[name] - 1 : -1; };
+    const eSe = ec('SE No'), ePhone = ec('Phone'), eTs = ec('Timestamp'),
+          eBy = ec('Submitted By'), eTotal = ec('Grand Total'), eSqft = ec('Total Sqft');
+    for (let i = 1; i < ed.length; i++) {
+      const k = _last8(ed[i][ePhone]);
+      const ts = _scanToMs(ed[i][eTs]);
+      if (!k || !ts) continue;
+      if (!seByPhone[k] || ts > seByPhone[k].ts) {
+        seByPhone[k] = { ts: ts, by: String(ed[i][eBy] || '').trim(), seNo: String(ed[i][eSe] || '').trim(), rm: Number(ed[i][eTotal]) || 0, sqft: Number(ed[i][eSqft]) || 0 };
+      }
+    }
+  }
+  const meeting = {};
+  const now = Date.now();
+  for (let i = 1; i < data.length; i++) {
+    const status = String(data[i][cStatus] || '').trim();
+    if (status !== 'Pending QT' && status !== 'Quotation Sent') continue;
+    const phoneKey = _last8(data[i][cPhone]);
+    const se = seByPhone[phoneKey];
+    const personRaw = (se && se.by) || String(data[i][cAssign] || '').trim();
+    const pk = _personKey(personRaw) || 'unassigned';
+    if (!meeting[pk]) meeting[pk] = { person: _normPerson(personRaw) || 'Unassigned', cards: [] };
+    const phaseAt = _scanToMs(cChangedAt >= 0 ? data[i][cChangedAt] : 0);
+    const msgAt = _scanToMs(cMsgAt >= 0 ? data[i][cMsgAt] : 0);
+    meeting[pk].cards.push({
+      name: cName >= 0 ? String(data[i][cName] || '').trim() : '',
+      phone: String(data[i][cPhone] || '').trim(),
+      status: status,
+      daysInPhase: phaseAt ? Math.floor((now - phaseAt) / 86400000) : null,
+      location: cLoc >= 0 ? String(data[i][cLoc] || '').trim() : '',
+      problem: cProblem >= 0 ? String(data[i][cProblem] || '').trim() : '',
+      seNo: se ? se.seNo : '',
+      rm: se ? se.rm : 0,
+      sqft: se ? se.sqft : 0,
+      lastAdminMsg: cMsg >= 0 ? _snippet(String(data[i][cMsg] || ''), 120) : '',
+      lastAdminMsgAgoH: msgAt ? Math.round((now - msgAt) / 3600000) : null,
+      lastCustomerMsg: cCust >= 0 ? _snippet(String(data[i][cCust] || ''), 120) : '',
+      fuCount: cFu >= 0 ? (Number(data[i][cFu]) || 0) : 0,
+      notes: cNotes >= 0 ? _snippet(String(data[i][cNotes] || ''), 200) : '',
+      groupLink: cLink >= 0 ? String(data[i][cLink] || '').trim() : '',
+      pdfUrl: cPdf >= 0 ? String(data[i][cPdf] || '').trim() : '',
+    });
+  }
+  const meetingOut = Object.keys(meeting).map(function(pk) {
+    const m = meeting[pk];
+    // Pending QT first, then Quotation Sent; oldest-in-phase first within each.
+    m.cards.sort(function(a, b) {
+      if (a.status !== b.status) return a.status === 'Pending QT' ? -1 : 1;
+      return (b.daysInPhase || 0) - (a.daysInPhase || 0);
+    });
+    return m;
+  }).sort(function(a, b) { return b.cards.length - a.cards.length; });
+
+  return jsonResponse({
+    status: 'ok', from: from, to: to,
+    dataSince: dataSinceMs ? new Date(dataSinceMs).toISOString().slice(0, 10) : '',
+    people: peopleOut,
+    appointments: Object.keys(appts).map(function(k) { return appts[k]; }).sort(function(a, b) { return b.count - a.count; }),
+    meeting: meetingOut,
+  });
 }
 
 // One-time: append the 'Last Admin Msg At' column to the lead sheet.
