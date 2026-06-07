@@ -433,16 +433,30 @@ const SETTINGS_KEY = 'lg_site_visit_settings_v1';
 // billed as if they were exactly 300 sqft (membrane line only).
 const MOQ_SQFT = 300;
 
+// Round 84 — presets aligned to the official "Other Charges" price list
+// (reference/Other Charges - Sheet1.pdf). Sanding + membrane-removal are
+// sqft-banded on the printed list (300 up to 350 sqft, then +50/band); the
+// preset seeds the base price and the inspector adjusts per band. Bump
+// PRESETS_VERSION whenever these defaults change — devices with older saved
+// settings get the new lists on next load (their membrane rate is kept).
+const PRESETS_VERSION = 2;
 const DEFAULT_SETTINGS = {
   membraneRate: 8.50,
   slabPresets: [
-    { label: 'Water tank removal',       qty: 1, unit: 'job',  price: 350 },
-    { label: 'Water pump removal',       qty: 1, unit: 'job',  price: 250 },
-    { label: 'Existing coating removal', qty: 0, unit: 'sqft', price: 5   },
-    { label: 'AC compressor removal',    qty: 1, unit: 'job',  price: 200 },
+    { label: 'Sanding — bubbled/peeled coating',                          qty: 1, unit: 'job',  price: 300  },
+    { label: 'To remove & dispose existing Membrane (rorobin inclusive)', qty: 1, unit: 'job',  price: 300  },
+    { label: 'Plumber — remove & reinstall water tank (2 trips)',         qty: 1, unit: 'unit', price: 650  },
+    { label: 'Plumber — remove & reinstall water pump (2 trips)',         qty: 1, unit: 'unit', price: 200  },
+    { label: 'Remove & reinstall AC',                                     qty: 1, unit: 'unit', price: 300  },
+    { label: 'E-Gel injection — toilet (3 yrs warranty)',                 qty: 1, unit: 'unit', price: 1800 },
+    { label: 'Flexi cementitious coating',                                qty: 0, unit: 'sqft', price: 4.5  },
+    { label: 'Two-layer elastomeric coating',                             qty: 1, unit: 'job',  price: 500  },
   ],
   sitePresets: [
-    { label: 'Scaffolding supply & deliver', qty: 1, unit: 'job', price: 800 },
+    { label: 'Scaffolding supply & deliver (5 sets)',             qty: 1, unit: 'job',  price: 850 },
+    { label: 'Additional bitumen layer on joints (ponding test)', qty: 1, unit: 'job',  price: 498 },
+    { label: '24 hours ponding test',                             qty: 1, unit: 'job',  price: 500 },
+    { label: 'Transportation & accommodation (outstation)',       qty: 1, unit: 'trip', price: 250 },
   ],
 };
 
@@ -455,6 +469,16 @@ function loadSettings(){
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed==='object') {
+        // Round 84 — preset version migration: saved settings from an older
+        // version get the new default preset lists (price list update);
+        // the device's membrane rate is preserved.
+        if (Number(parsed.presetsVersion) !== PRESETS_VERSION) {
+          return {
+            membraneRate: Number(parsed.membraneRate) || DEFAULT_SETTINGS.membraneRate,
+            slabPresets: deepClonePresets(DEFAULT_SETTINGS.slabPresets),
+            sitePresets: deepClonePresets(DEFAULT_SETTINGS.sitePresets),
+          };
+        }
         return {
           membraneRate: Number(parsed.membraneRate) || DEFAULT_SETTINGS.membraneRate,
           slabPresets: Array.isArray(parsed.slabPresets) && parsed.slabPresets.length
@@ -474,7 +498,9 @@ function loadSettings(){
   };
 }
 function saveSettings(s){
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch(_){}
+  // Round 84 — stamp the presets version so the migration in loadSettings
+  // only fires when the defaults actually change.
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(Object.assign({ presetsVersion: PRESETS_VERSION }, s))); } catch(_){}
 }
 let settings = loadSettings();
 
@@ -610,6 +636,13 @@ function moqAdjustment(){
   }
   return 0;
 }
+// Round 84 — true when the job is billed at the 300 sqft minimum. The final
+// presentation then hides per-slab membrane pricing entirely and shows a
+// single "Minimum order — 300 sqft × rate" line instead (measurements stay
+// visible in the slab detail for transparency).
+function moqMode(){ const t = grandMembraneSqft(); return t > 0 && t < MOQ_SQFT; }
+function allSlabExtras(){ return state.slabs.reduce(function(arr,s){ return arr.concat(s.extras||[]); },[]); }
+
 // Round 74 — discount on grand total. grandSubtotal is pre-discount; grandTotal post-discount.
 function grandSubtotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm()+moqAdjustment(); }
 function discountAmount(){
@@ -631,21 +664,35 @@ function totalPhotos(){ return state.slabs.reduce(function(sum,s){ return sum+s.
 function buildAutocountLineItems(){
   const items = [];
   const round2 = function(n){ return Math.round(n * 100) / 100; };
-  state.slabs.forEach(function(s){
-    const sq = slabSqft(s);
-    if (sq > 0) {
-      items.push({
-        desc: (s.name || 'Slab') + (s.mode === 'flashing' ? ' — flashing (torch-on membrane)' : ' — torch-on membrane'),
-        qty: round2(sq), unit: 'sqft', price: membraneRate(), furtherDescription: ''
-      });
-    }
-    s.extras.forEach(function(e){
+  if (moqMode()) {
+    // Round 84 — minimum-order job: one consolidated membrane line at the
+    // 300 sqft floor (mirrors the customer-facing presentation; replaces the
+    // old per-slab lines + "Minimum order adjustment" line).
+    items.push({ desc: 'Torch-on membrane — minimum order (' + MOQ_SQFT + ' sqft)',
+      qty: MOQ_SQFT, unit: 'sqft', price: membraneRate(), furtherDescription: '' });
+    allSlabExtras().forEach(function(e){
       if ((Number(e.qty)||0) > 0 && (Number(e.price)||0) > 0) {
-        items.push({ desc: (s.name || 'Slab') + ' — ' + (e.label || 'service'),
+        items.push({ desc: e.label || 'service',
           qty: Number(e.qty)||0, unit: e.unit || 'job', price: Number(e.price)||0, furtherDescription: '' });
       }
     });
-  });
+  } else {
+    state.slabs.forEach(function(s){
+      const sq = slabSqft(s);
+      if (sq > 0) {
+        items.push({
+          desc: (s.name || 'Slab') + (s.mode === 'flashing' ? ' — flashing (torch-on membrane)' : ' — torch-on membrane'),
+          qty: round2(sq), unit: 'sqft', price: membraneRate(), furtherDescription: ''
+        });
+      }
+      s.extras.forEach(function(e){
+        if ((Number(e.qty)||0) > 0 && (Number(e.price)||0) > 0) {
+          items.push({ desc: (s.name || 'Slab') + ' — ' + (e.label || 'service'),
+            qty: Number(e.qty)||0, unit: e.unit || 'job', price: Number(e.price)||0, furtherDescription: '' });
+        }
+      });
+    });
+  }
   state.siteExtras.forEach(function(e){
     if ((Number(e.qty)||0) > 0 && (Number(e.price)||0) > 0) {
       items.push({ desc: e.label || 'Additional cost', qty: Number(e.qty)||0,
@@ -653,9 +700,9 @@ function buildAutocountLineItems(){
     }
   });
   // 'unit' (not '') for adjustment lines — verified accepted by AutoCount
-  // (QT-0626-009 test); an empty uom is unproven.
-  const moq = moqAdjustment();
-  if (moq > 0) items.push({ desc: 'Minimum order adjustment (' + MOQ_SQFT + ' sqft floor)', qty: 1, unit: 'unit', price: round2(moq), furtherDescription: '' });
+  // (QT-0626-009 test); an empty uom is unproven. (Round 84: the old
+  // "Minimum order adjustment" line is gone — moqMode folds the floor into
+  // the consolidated membrane line above.)
   const disc = discountAmount();
   if (disc > 0) items.push({ desc: 'Discount' + (state.discountType === 'percent' ? ' (' + (Number(state.discountValue)||0) + '%)' : ''), qty: 1, unit: 'unit', price: -round2(disc), furtherDescription: '' });
   // Keep the AutoCount total exactly equal to the estimation total.
@@ -1157,26 +1204,45 @@ function renderGrand(){
   const blocks = document.getElementById('grandBlocks');
   let html = '';
 
-  // Per-slab blocks
-  state.slabs.forEach(function(s){
+  // Round 84 — two presentations:
+  //   ≥ 300 sqft: per-slab breakdown (existing behavior)
+  //   < 300 sqft: NO slab blocks — a single "Minimum order" line at the
+  //   300 sqft floor, with slab services flattened underneath.
+  if (moqMode()) {
     const lines = [];
-    if (slabSqft(s) > 0) {
-      lines.push('<div class="grand-line"><span class="l-label">Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(slabMembraneRm(s))+'</span></div>');
-    } else {
-      lines.push('<div class="grand-line"><span class="l-label">Membrane (no measurements yet)</span><span class="l-val">RM 0.00</span></div>');
-    }
-    s.extras.forEach(function(e){
+    lines.push('<div class="grand-line"><span class="l-label">Minimum order — '+MOQ_SQFT+' sqft × '+rm(membraneRate())+'</span><span class="l-val">'+rm(MOQ_SQFT*membraneRate())+'</span></div>');
+    lines.push('<div class="grand-line indent"><span class="l-label" style="opacity:.7">Measured area '+sqft(grandMembraneSqft())+' — minimum '+MOQ_SQFT+' sqft applies</span><span class="l-val"></span></div>');
+    allSlabExtras().forEach(function(e){
       const label = e.label && e.label.trim() ? e.label : '(unnamed service)';
       lines.push('<div class="grand-line indent"><span class="l-label">'+escapeHtml(label)+'</span><span class="l-val">'+rm(extraTotal(e))+'</span></div>');
     });
-    lines.push('<div class="grand-line subtotal"><span class="l-label">Subtotal</span><span class="l-val">'+rm(slabTotal(s))+'</span></div>');
-
     html +=
       '<div class="grand-block">'+
-        '<div class="grand-block-h">'+escapeHtml(s.name)+'</div>'+
+        '<div class="grand-block-h">Waterproofing Works</div>'+
         lines.join('')+
       '</div>';
-  });
+  } else {
+    // Per-slab blocks
+    state.slabs.forEach(function(s){
+      const lines = [];
+      if (slabSqft(s) > 0) {
+        lines.push('<div class="grand-line"><span class="l-label">Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(slabMembraneRm(s))+'</span></div>');
+      } else {
+        lines.push('<div class="grand-line"><span class="l-label">Membrane (no measurements yet)</span><span class="l-val">RM 0.00</span></div>');
+      }
+      s.extras.forEach(function(e){
+        const label = e.label && e.label.trim() ? e.label : '(unnamed service)';
+        lines.push('<div class="grand-line indent"><span class="l-label">'+escapeHtml(label)+'</span><span class="l-val">'+rm(extraTotal(e))+'</span></div>');
+      });
+      lines.push('<div class="grand-line subtotal"><span class="l-label">Subtotal</span><span class="l-val">'+rm(slabTotal(s))+'</span></div>');
+
+      html +=
+        '<div class="grand-block">'+
+          '<div class="grand-block-h">'+escapeHtml(s.name)+'</div>'+
+          lines.join('')+
+        '</div>';
+    });
+  }
 
   // Additional Costs block (site-wide)
   if (state.siteExtras.length) {
@@ -1196,12 +1262,10 @@ function renderGrand(){
   // Round 74 — discount control + Subtotal line (only render if there's anything to discount)
   const subtotal = grandSubtotal();
   const disc = discountAmount();
-  const moqApplied = moqAdjustment() > 0;
-  // Round 75.1 — when MOQ kicks in, bake it silently into the Subtotal with
-  // a soft "(Min Order Applied)" hint. No separate adjustment block.
-  const subtotalLabel = moqApplied
-    ? 'Subtotal <small style="opacity:.75;font-weight:500;font-size:10px">(Min Order Applied)</small>'
-    : 'Subtotal';
+  // Round 84 — the minimum order is shown explicitly as its own line when
+  // below 300 sqft (moqMode), so the old "(Min Order Applied)" subtotal hint
+  // is no longer needed.
+  const subtotalLabel = 'Subtotal';
   if (subtotal > 0) {
     html += '<div class="grand-block" style="margin-top:6px">';
     html += '<div class="grand-line subtotal"><span class="l-label">'+subtotalLabel+'</span><span class="l-val">'+rm(subtotal)+'</span></div>';
@@ -1830,8 +1894,11 @@ function buildPrintView(overrideRef) {
     slabHtml += '<div class="pv-line sub"><span>Total membrane area</span><span>'+sqft(slabSqft(s))+'</span></div>';
     slabHtml += '</div>';
 
-    // Membrane line
-    slabHtml += '<div class="pv-section"><div class="pv-line"><span>Membrane installation @ '+rm(membraneRate())+'/sqft</span><span>'+rm(slabMembraneRm(s))+'</span></div></div>';
+    // Membrane line — Round 84: hidden in minimum-order mode (pricing is
+    // presented as a single 300 sqft minimum line in the Estimated Total).
+    if (!moqMode()) {
+      slabHtml += '<div class="pv-section"><div class="pv-line"><span>Membrane installation @ '+rm(membraneRate())+'/sqft</span><span>'+rm(slabMembraneRm(s))+'</span></div></div>';
+    }
 
     // Per-slab services
     if ((s.extras || []).length) {
@@ -1850,8 +1917,11 @@ function buildPrintView(overrideRef) {
       slabHtml += '</div>';
     }
 
-    // Slab subtotal
-    slabHtml += '<div class="pv-line sub" style="font-size:14px;color:#2D2A6E"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
+    // Slab subtotal — Round 84: hidden in minimum-order mode (no per-slab
+    // pricing below the 300 sqft floor).
+    if (!moqMode()) {
+      slabHtml += '<div class="pv-line sub" style="font-size:14px;color:#2D2A6E"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
+    }
     slabHtml += '</div>';
 
     html += slabHtml;
@@ -1879,20 +1949,35 @@ function buildPrintView(overrideRef) {
   html += '<div class="pv-grand">';
   html += '<div class="pv-grand-h">Estimated Total — Breakdown</div>';
 
-  state.slabs.forEach(function(s){
-    let slabBlk = '<div class="pv-grand-block">';
-    slabBlk += '<div class="pv-grand-block-h">'+escapeHtml(s.name)+'</div>';
-    if (slabSqft(s) > 0) {
-      slabBlk += '<div class="pv-grand-line"><span>Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span>'+rm(slabMembraneRm(s))+'</span></div>';
-    }
-    s.extras.forEach(function(e){
+  // Round 84 — two presentations: per-slab breakdown when ≥ 300 sqft;
+  // a single "Minimum order" line (no slab blocks) when below the floor.
+  if (moqMode()) {
+    let minBlk = '<div class="pv-grand-block">';
+    minBlk += '<div class="pv-grand-block-h">Waterproofing Works</div>';
+    minBlk += '<div class="pv-grand-line"><span>Minimum order — '+MOQ_SQFT+' sqft × '+rm(membraneRate())+'</span><span>'+rm(MOQ_SQFT*membraneRate())+'</span></div>';
+    minBlk += '<div class="pv-grand-line indent"><span style="opacity:.75">Measured area '+sqft(grandMembraneSqft())+' — minimum '+MOQ_SQFT+' sqft applies</span><span></span></div>';
+    allSlabExtras().forEach(function(e){
       const lbl = e.label && e.label.trim() ? e.label : '(unnamed service)';
-      slabBlk += '<div class="pv-grand-line indent"><span>'+escapeHtml(lbl)+'</span><span>'+rm(extraTotal(e))+'</span></div>';
+      minBlk += '<div class="pv-grand-line indent"><span>'+escapeHtml(lbl)+'</span><span>'+rm(extraTotal(e))+'</span></div>';
     });
-    slabBlk += '<div class="pv-grand-line subtotal"><span>Subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
-    slabBlk += '</div>';
-    html += slabBlk;
-  });
+    minBlk += '</div>';
+    html += minBlk;
+  } else {
+    state.slabs.forEach(function(s){
+      let slabBlk = '<div class="pv-grand-block">';
+      slabBlk += '<div class="pv-grand-block-h">'+escapeHtml(s.name)+'</div>';
+      if (slabSqft(s) > 0) {
+        slabBlk += '<div class="pv-grand-line"><span>Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span>'+rm(slabMembraneRm(s))+'</span></div>';
+      }
+      s.extras.forEach(function(e){
+        const lbl = e.label && e.label.trim() ? e.label : '(unnamed service)';
+        slabBlk += '<div class="pv-grand-line indent"><span>'+escapeHtml(lbl)+'</span><span>'+rm(extraTotal(e))+'</span></div>';
+      });
+      slabBlk += '<div class="pv-grand-line subtotal"><span>Subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
+      slabBlk += '</div>';
+      html += slabBlk;
+    });
+  }
 
   if ((state.siteExtras || []).length) {
     let acBlk = '<div class="pv-grand-block">';
@@ -1906,11 +1991,9 @@ function buildPrintView(overrideRef) {
     html += acBlk;
   }
 
-  // Round 75.1 — MOQ silently baked into Subtotal label; no separate block.
-  const _moqApplied = moqAdjustment() > 0;
-  const _pvSubLabel = 'Subtotal' + (_moqApplied
-    ? ' <small style="opacity:.75;font-size:9px">(Min Order Applied)</small>'
-    : '');
+  // Round 84 — minimum order is shown as an explicit line in moqMode, so
+  // the old "(Min Order Applied)" subtotal hint is gone.
+  const _pvSubLabel = 'Subtotal';
 
   // Round 74 — show Subtotal + Discount lines only when there's a discount applied
   const _pvDisc = discountAmount();
