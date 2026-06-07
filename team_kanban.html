@@ -549,6 +549,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     </div>
     <div class="modal-actions">
       <button class="modal-btn modal-btn-secondary" id="btnSalesReportCloseFooter">Close</button>
+      <select id="srPdfPerson" class="modal-select" style="width:auto;display:none" title="Which salesperson to include in the PDF">
+        <option value="">All salespersons</option>
+      </select>
       <button class="modal-btn modal-btn-info" id="btnSalesReportPdf">📄 PDF</button>
     </div>
   </div>
@@ -3632,6 +3635,18 @@ async function srGenerate() {
     return;
   }
   window.SR_LAST = { from: res.from, to: res.to };  // Round 87 — PDF export context
+  window.SR_DATA = res;  // Round 88 — full dataset for the table-PDF builder
+  // Round 88 — populate the per-person PDF selector
+  (function() {
+    const names = {};
+    (res.people || []).forEach(function(p) { names[p.person] = 1; });
+    (res.meeting || []).forEach(function(m) { names[m.person] = 1; });
+    (res.pipeline || []).forEach(function(m) { names[m.person] = 1; });
+    const sel = document.getElementById('srPdfPerson');
+    sel.innerHTML = '<option value="">All salespersons</option>' +
+      Object.keys(names).sort().map(function(n) { return '<option>' + escapeHtml(n) + '</option>'; }).join('');
+    sel.style.display = '';
+  })();
   let html = '<div style="font-size:11px;color:#6B7280;margin-bottom:8px">Range: ' + escapeHtml(res.from) + ' → ' + escapeHtml(res.to) +
     (res.dataSince ? ' · estimation data starts ' + escapeHtml(res.dataSince) : '') + '</div>';
 
@@ -3743,13 +3758,8 @@ document.getElementById('salesReportModal').addEventListener('click', function(e
 // slices pages at .pdf-sec boundaries, opens a preview tab
 // (download fallback when the popup is blocked).
 // ================================================================
-async function exportReportPdf(title, subtitle, sourceEl, filename) {
-  const txt = sourceEl ? sourceEl.textContent.trim() : '';
-  if (!txt || txt.indexOf('Pick a range') === 0 || txt.indexOf('⏳') === 0) {
-    toast('Generate the report first', 'warn');
-    return;
-  }
-  toast('Building PDF…');
+// Build the standard offscreen A4 wrap with the report header.
+function _pdfWrap(title, subtitle) {
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:absolute;left:0;top:' + window.scrollY + 'px;z-index:-1;width:794px;background:#fff;padding:28px 30px;font-family:Inter,-apple-system,sans-serif;color:#111827';
   const now = new Date(Date.now() + 8 * 3600 * 1000);
@@ -3757,10 +3767,26 @@ async function exportReportPdf(title, subtitle, sourceEl, filename) {
   wrap.innerHTML = '<div style="border-bottom:2px solid #2D2A6E;padding-bottom:10px;margin-bottom:14px">' +
     '<div style="font-size:20px;font-weight:800;color:#2D2A6E">' + escapeHtml(title) + '</div>' +
     '<div style="font-size:11px;color:#6B7280">Leak Guard CRM · generated ' + ts + ' MYT' + (subtitle ? ' · ' + escapeHtml(subtitle) : '') + '</div></div>';
+  return wrap;
+}
+
+async function exportReportPdf(title, subtitle, sourceEl, filename) {
+  const txt = sourceEl ? sourceEl.textContent.trim() : '';
+  if (!txt || txt.indexOf('Pick a range') === 0 || txt.indexOf('⏳') === 0) {
+    toast('Generate the report first', 'warn');
+    return;
+  }
+  toast('Building PDF…');
+  const wrap = _pdfWrap(title, subtitle);
   const clone = sourceEl.cloneNode(true);
   // Expand all collapsed drill-downs/accordions — the PDF carries everything.
   clone.querySelectorAll('[id^="srDrill"],[id^="srMeet"]').forEach(function(el) { el.style.display = ''; });
   wrap.appendChild(clone);
+  await _wrapToPdf(wrap, filename);
+}
+
+// Shared canvas → jsPDF pipeline. Appends wrap, renders, cleans up.
+async function _wrapToPdf(wrap, filename) {
   document.body.appendChild(wrap);
   try {
     const SCALE = 1.5;
@@ -3811,11 +3837,125 @@ document.getElementById('btnPhaseScanPdf').onclick = async function() {
   const d = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   exportReportPdf('Phase Scan', d, body, 'Phase-Scan-' + d + '.pdf');
 };
-document.getElementById('btnSalesReportPdf').onclick = function() {
-  if (!window.SR_LAST) { toast('Generate the report first', 'warn'); return; }
-  exportReportPdf('Sales Report', window.SR_LAST.from + ' → ' + window.SR_LAST.to,
-    document.getElementById('srBody'), 'Sales-Report-' + window.SR_LAST.from + '-to-' + window.SR_LAST.to + '.pdf');
-};
+// ================================================================
+// Round 88 — Sales PDF v2: dedicated table document (not a screen
+// clone). One section per salesperson: summary line, confirmed-sales
+// pipeline (cards past Quotation Sent), then a table per active phase
+// with Customer / Contact / Days / Sqft / Value columns + totals row.
+// ================================================================
+function _pdfTbl(headers, rows, rAligns) {
+  let h = '<table style="width:100%;border-collapse:collapse;font-size:10.5px;margin:4px 0 12px">';
+  h += '<tr>' + headers.map(function(x) {
+    return '<th style="background:#2D2A6E;color:#fff;padding:5px 7px;text-align:left;font-size:10px;font-weight:700">' + x + '</th>';
+  }).join('') + '</tr>';
+  rows.forEach(function(r, i) {
+    const isTotal = r.__total;
+    h += '<tr style="background:' + (isTotal ? '#EEF2FF;font-weight:800' : (i % 2 ? '#F9FAFB' : '#fff')) + '">' +
+      r.cells.map(function(c, j) {
+        return '<td style="border:.5px solid #E5E7EB;padding:4px 7px;' + (rAligns && rAligns.indexOf(j) !== -1 ? 'text-align:right;' : '') + (isTotal ? 'font-weight:800;' : '') + '">' + c + '</td>';
+      }).join('') + '</tr>';
+  });
+  return h + '</table>';
+}
+function _pdfAgo(h) {
+  if (h === null || h === undefined) return 'never';
+  return (h >= 24 ? Math.floor(h / 24) + 'd' : h + 'h') + ' ago';
+}
+function _pdfNum(n) { return n ? Number(n).toLocaleString('en-MY', { maximumFractionDigits: 0 }) : '—'; }
+
+function buildSalesPdfHtml(person) {
+  const D = window.SR_DATA;
+  const names = {};
+  (D.people || []).forEach(function(p) { names[p.person] = 1; });
+  (D.meeting || []).forEach(function(m) { names[m.person] = 1; });
+  (D.pipeline || []).forEach(function(m) { names[m.person] = 1; });
+  const persons = person ? [person] : Object.keys(names).sort();
+  const secH = function(t) { return '<div style="font-weight:800;font-size:12.5px;color:#2D2A6E;margin:10px 0 2px;text-transform:uppercase;letter-spacing:.4px">' + t + '</div>'; };
+  let html = '';
+
+  persons.forEach(function(name) {
+    const p = (D.people || []).find(function(x) { return x.person === name; });
+    const meet = (D.meeting || []).find(function(x) { return x.person === name; });
+    const pipe = (D.pipeline || []).find(function(x) { return x.person === name; });
+
+    html += '<div class="pdf-sec" style="margin-bottom:30px">';
+    html += '<div style="font-size:16px;font-weight:800;background:#2D2A6E;color:#fff;padding:7px 12px;border-radius:6px;margin-bottom:8px">👤 ' + escapeHtml(name) + '</div>';
+
+    // Summary line (range-scoped scoreboard numbers)
+    if (p) {
+      const conv = p.leads ? Math.round(100 * p.won / p.leads) : 0;
+      html += '<div style="font-size:11.5px;color:#374151;margin-bottom:6px">Range performance: ' +
+        '<b>' + p.visits + '</b> visits · <b>' + p.leads + '</b> leads quoted · <b>' + srRm(p.quotedRm) + '</b> quoted · ' +
+        '<b style="color:#065F46">' + p.won + ' won (' + srRm(p.wonRm) + ')</b> · ' + p.lost + ' lost · ' + p.open + ' open · <b>' + conv + '%</b> conversion</div>';
+    }
+
+    // ── Confirmed sales — cards past Quotation Sent ──
+    html += secH('✅ Confirmed Sales — moved past Quotation Sent');
+    if (pipe && pipe.cards.length) {
+      // per-phase summary
+      const byPhase = {};
+      pipe.cards.forEach(function(c) { (byPhase[c.status] = byPhase[c.status] || { n: 0, rm: 0 }); byPhase[c.status].n++; byPhase[c.status].rm += c.rm || 0; });
+      const sumRows = Object.keys(byPhase).map(function(s) { return { cells: [escapeHtml(s), byPhase[s].n, 'RM ' + _pdfNum(byPhase[s].rm)] }; });
+      sumRows.push({ __total: true, cells: ['TOTAL', pipe.cards.length, 'RM ' + _pdfNum(pipe.cards.reduce(function(s, c) { return s + (c.rm || 0); }, 0))] });
+      html += _pdfTbl(['Phase', 'Cards', 'Total Value'], sumRows, [1, 2]);
+      // detail
+      const detRows = pipe.cards.map(function(c, i) {
+        return { cells: [i + 1, escapeHtml(c.name || '(no name)'), escapeHtml(c.phone), escapeHtml(c.status), (c.daysInPhase === null ? '—' : c.daysInPhase), _pdfNum(c.sqft), 'RM ' + _pdfNum(c.rm)] };
+      });
+      html += _pdfTbl(['#', 'Customer', 'Contact', 'Phase', 'Days in phase', 'Sqft', 'Value'], detRows, [0, 4, 5, 6]);
+    } else {
+      html += '<div style="font-size:11px;color:#6B7280;margin-bottom:8px">None in this phase group.</div>';
+    }
+
+    // ── Active phase tables ──
+    const cards = (meet && meet.cards) || [];
+    const phaseDefs = [
+      { st: 'Site Visit Confirmed', title: '📆 Site Visit Expired — visit done, card not moved', extra: 'visit' },
+      { st: 'Pending QT',           title: '⏳ Pending Quotation', extra: null },
+      { st: 'Quotation Sent',       title: '💬 Quotation Sent — follow-up & closing', extra: 'followup' },
+    ];
+    phaseDefs.forEach(function(ph) {
+      const list = cards.filter(function(c) { return c.status === ph.st; });
+      html += secH(ph.title + ' (' + list.length + ')');
+      if (!list.length) { html += '<div style="font-size:11px;color:#6B7280;margin-bottom:8px">None.</div>'; return; }
+      const heads = ['#', 'Customer', 'Contact'];
+      if (ph.extra === 'visit') heads.push('Visit was');
+      heads.push('Days in phase', 'Sqft', 'Value');
+      if (ph.extra === 'followup') heads.push('Last follow-up');
+      let sqftSum = 0, rmSum = 0;
+      const rows = list.map(function(c, i) {
+        sqftSum += c.sqft || 0; rmSum += c.rm || 0;
+        const cells = [i + 1, escapeHtml(c.name || '(no name)'), escapeHtml(c.phone)];
+        if (ph.extra === 'visit') cells.push(c.apptDate ? escapeHtml(c.apptDate) : 'no date');
+        cells.push((c.daysInPhase === null ? '—' : c.daysInPhase), _pdfNum(c.sqft), 'RM ' + _pdfNum(c.rm));
+        if (ph.extra === 'followup') cells.push(_pdfAgo(c.lastAdminMsgAgoH));
+        return { cells: cells };
+      });
+      const totCells = ['', 'TOTAL — ' + list.length + ' card' + (list.length === 1 ? '' : 's'), ''];
+      if (ph.extra === 'visit') totCells.push('');
+      totCells.push('', _pdfNum(sqftSum), 'RM ' + _pdfNum(rmSum));
+      if (ph.extra === 'followup') totCells.push('');
+      rows.push({ __total: true, cells: totCells });
+      const rIdx = ph.extra === 'visit' ? [0, 4, 5, 6] : [0, 3, 4, 5];
+      html += _pdfTbl(heads, rows, rIdx);
+    });
+
+    html += '</div>';
+  });
+  return html;
+}
+
+async function exportSalesPdf() {
+  if (!window.SR_DATA || !window.SR_LAST) { toast('Generate the report first', 'warn'); return; }
+  const person = document.getElementById('srPdfPerson').value;
+  toast('Building PDF…');
+  const wrap = _pdfWrap('Sales Report — ' + (person || 'All Salespersons'), window.SR_LAST.from + ' → ' + window.SR_LAST.to);
+  wrap.insertAdjacentHTML('beforeend', buildSalesPdfHtml(person));
+  const fnPerson = (person || 'All').replace(/[^A-Za-z0-9-]+/g, '-');
+  await _wrapToPdf(wrap, 'Sales-Report-' + fnPerson + '-' + window.SR_LAST.from + '-to-' + window.SR_LAST.to + '.pdf');
+}
+
+document.getElementById('btnSalesReportPdf').onclick = exportSalesPdf;
 document.getElementById('btnBulkLinkClose').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkCloseFooter').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkRefetch').onclick = fetchBulkLinkPreview;

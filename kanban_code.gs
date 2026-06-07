@@ -2487,7 +2487,8 @@ function handleSalesReport(body) {
         cNotes = col('Notes'), cFu = col('Follow Up Count (AK)'),
         cMsg = col('Last Admin Msg'), cMsgAt = col('Last Admin Msg At'),
         cCust = col('Last Customer Msg (AM)'), cLink = col('Group Invite Link (AJ)'),
-        cPdf = col('Quotation PDF URL'), cApptDate = col('Date Appt Confirmed');
+        cPdf = col('Quotation PDF URL'), cApptDate = col('Date Appt Confirmed'),
+        cQuoteRm = col('Quotation (RM)'), cTotSqft = col('Total Sqft');
   const leadByPhone = {};
   for (let i = 1; i < data.length; i++) {
     const k = _last8(data[i][cPhone]);
@@ -2584,25 +2585,49 @@ function handleSalesReport(body) {
     }
   }
   const meeting = {};
+  const pipeline = {};  // Round 88 — cards that moved PAST Quotation Sent
   const now = Date.now();
+  const qsIdx = SALES_FUNNEL.indexOf('Quotation Sent');
   for (let i = 1; i < data.length; i++) {
     const status = String(data[i][cStatus] || '').trim();
+    const fIdx = SALES_FUNNEL.indexOf(status);
+    let bucket = '';
     let apptDate = '';
-    if (status === 'Site Visit Confirmed') {
+    if (fIdx > qsIdx) {
+      bucket = 'pipeline';  // confirmed sale — anywhere after Quotation Sent
+    } else if (status === 'Site Visit Confirmed') {
       // Round 87.2 — SVC joins the agenda only when the visit date has
       // already passed (or none recorded): visit done but card never moved.
       apptDate = cApptDate >= 0 ? _normalizeDateStr(data[i][cApptDate]) : '';
       if (apptDate && apptDate >= todayStr) continue;
-    } else if (status !== 'Pending QT' && status !== 'Quotation Sent') {
+      bucket = 'meeting';
+    } else if (status === 'Pending QT' || status === 'Quotation Sent') {
+      bucket = 'meeting';
+    } else {
       continue;
     }
     const phoneKey = _last8(data[i][cPhone]);
     const se = seByPhone[phoneKey];
     const personRaw = (se && se.by) || String(data[i][cAssign] || '').trim();
     const pk = _personKey(personRaw) || 'unassigned';
-    if (!meeting[pk]) meeting[pk] = { person: _normPerson(personRaw) || 'Unassigned', cards: [] };
     const phaseAt = _scanToMs(cChangedAt >= 0 ? data[i][cChangedAt] : 0);
     const msgAt = _scanToMs(cMsgAt >= 0 ? data[i][cMsgAt] : 0);
+    // Round 88 — value/sqft: latest SE first, lead columns as fallback.
+    const rmVal = se && se.rm ? se.rm : (cQuoteRm >= 0 ? (Number(data[i][cQuoteRm]) || 0) : 0);
+    const sqftVal = se && se.sqft ? se.sqft : (cTotSqft >= 0 ? (Number(data[i][cTotSqft]) || 0) : 0);
+    if (bucket === 'pipeline') {
+      if (!pipeline[pk]) pipeline[pk] = { person: _normPerson(personRaw) || 'Unassigned', cards: [] };
+      pipeline[pk].cards.push({
+        name: cName >= 0 ? String(data[i][cName] || '').trim() : '',
+        phone: String(data[i][cPhone] || '').trim(),
+        status: status,
+        daysInPhase: phaseAt ? Math.floor((now - phaseAt) / 86400000) : null,
+        rm: rmVal,
+        sqft: sqftVal,
+      });
+      continue;
+    }
+    if (!meeting[pk]) meeting[pk] = { person: _normPerson(personRaw) || 'Unassigned', cards: [] };
     meeting[pk].cards.push({
       name: cName >= 0 ? String(data[i][cName] || '').trim() : '',
       phone: String(data[i][cPhone] || '').trim(),
@@ -2612,8 +2637,8 @@ function handleSalesReport(body) {
       location: cLoc >= 0 ? String(data[i][cLoc] || '').trim() : '',
       problem: cProblem >= 0 ? String(data[i][cProblem] || '').trim() : '',
       seNo: se ? se.seNo : '',
-      rm: se ? se.rm : 0,
-      sqft: se ? se.sqft : 0,
+      rm: rmVal,
+      sqft: sqftVal,
       lastAdminMsg: cMsg >= 0 ? _snippet(String(data[i][cMsg] || ''), 120) : '',
       lastAdminMsgAgoH: msgAt ? Math.round((now - msgAt) / 3600000) : null,
       lastCustomerMsg: cCust >= 0 ? _snippet(String(data[i][cCust] || ''), 120) : '',
@@ -2635,12 +2660,24 @@ function handleSalesReport(body) {
     return m;
   }).sort(function(a, b) { return b.cards.length - a.cards.length; });
 
+  // Round 88 — pipeline sorted by funnel order then days-in-phase.
+  const pipelineOut = Object.keys(pipeline).map(function(pk) {
+    const m = pipeline[pk];
+    m.cards.sort(function(a, b) {
+      const fa = SALES_FUNNEL.indexOf(a.status), fb = SALES_FUNNEL.indexOf(b.status);
+      if (fa !== fb) return fa - fb;
+      return (b.daysInPhase || 0) - (a.daysInPhase || 0);
+    });
+    return m;
+  }).sort(function(a, b) { return b.cards.length - a.cards.length; });
+
   return jsonResponse({
     status: 'ok', from: from, to: to,
     dataSince: dataSinceMs ? new Date(dataSinceMs).toISOString().slice(0, 10) : '',
     people: peopleOut,
     appointments: Object.keys(appts).map(function(k) { return appts[k]; }).sort(function(a, b) { return b.count - a.count; }),
     meeting: meetingOut,
+    pipeline: pipelineOut,
   });
 }
 
