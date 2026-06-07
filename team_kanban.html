@@ -526,7 +526,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <div class="modal-h">
       <div>
         <div class="modal-title">📊 Sales Report</div>
-        <div class="modal-sub">Scoreboard per salesperson + weekly meeting agenda (Pending QT &amp; Quotation Sent cards)</div>
+        <div class="modal-sub">Scoreboard per salesperson + weekly meeting agenda (expired-visit SVC, Pending QT &amp; Quotation Sent cards)</div>
       </div>
       <button class="modal-close" id="btnSalesReportClose" aria-label="Close">×</button>
     </div>
@@ -3673,7 +3673,7 @@ async function srGenerate() {
   }
 
   // ── Weekly meeting agenda ──
-  html += '<div class="pdf-sec" style="font-weight:800;font-size:14px;margin:14px 0 2px">🗓 Weekly Meeting Agenda <span style="font-weight:500;font-size:11px;color:#6B7280">— all ACTIVE Pending QT &amp; Quotation Sent cards (not limited by date range)</span></div>';
+  html += '<div class="pdf-sec" style="font-weight:800;font-size:14px;margin:14px 0 2px">🗓 Weekly Meeting Agenda <span style="font-weight:500;font-size:11px;color:#6B7280">— SVC with expired visit date + all ACTIVE Pending QT &amp; Quotation Sent cards (not limited by date range)</span></div>';
   if (!res.meeting || !res.meeting.length) {
     html += '<div style="color:#065F46;font-size:12px">✅ No active cards in Pending QT / Quotation Sent.</div>';
   } else {
@@ -3685,8 +3685,10 @@ async function srGenerate() {
         html += '<div class="pdf-sec" style="border:.5px solid #E5E7EB;border-radius:8px;padding:9px 12px;margin-bottom:7px;background:#fff">';
         html += '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">' +
           '<div style="font-weight:800;font-size:13px">' + escapeHtml(c.name || '(no name)') + ' <span style="font-weight:500;color:#6B7280">· ' + escapeHtml(c.phone) + '</span></div>' +
-          '<div>' + '<span style="font-size:10.5px;font-weight:700;color:' + (c.status === 'Pending QT' ? '#92400E' : '#1D4ED8') + '">' + escapeHtml(c.status).toUpperCase() + '</span> ' + srDaysBadge(c.daysInPhase) + '</div></div>';
+          '<div>' + '<span style="font-size:10.5px;font-weight:700;color:' + (c.status === 'Site Visit Confirmed' ? '#B91C1C' : (c.status === 'Pending QT' ? '#92400E' : '#1D4ED8')) + '">' + escapeHtml(c.status).toUpperCase() + '</span> ' + srDaysBadge(c.daysInPhase) + '</div></div>';
         const meta = [];
+        // Round 87.2 — expired-visit SVC cards lead with the missed date.
+        if (c.status === 'Site Visit Confirmed') meta.push('📆 ' + (c.apptDate ? '<b>visit was ' + escapeHtml(c.apptDate) + '</b>' : '<b>no visit date recorded</b>'));
         if (c.location) meta.push('📍 ' + escapeHtml(c.location));
         if (c.problem) meta.push('🔧 ' + escapeHtml(c.problem));
         if (c.seNo) meta.push('🧾 ' + escapeHtml(c.seNo) + ' — ' + srRm(c.rm) + (c.sqft ? ' (' + c.sqft + ' sqft)' : ''));

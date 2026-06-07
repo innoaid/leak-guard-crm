@@ -2587,7 +2587,15 @@ function handleSalesReport(body) {
   const now = Date.now();
   for (let i = 1; i < data.length; i++) {
     const status = String(data[i][cStatus] || '').trim();
-    if (status !== 'Pending QT' && status !== 'Quotation Sent') continue;
+    let apptDate = '';
+    if (status === 'Site Visit Confirmed') {
+      // Round 87.2 — SVC joins the agenda only when the visit date has
+      // already passed (or none recorded): visit done but card never moved.
+      apptDate = cApptDate >= 0 ? _normalizeDateStr(data[i][cApptDate]) : '';
+      if (apptDate && apptDate >= todayStr) continue;
+    } else if (status !== 'Pending QT' && status !== 'Quotation Sent') {
+      continue;
+    }
     const phoneKey = _last8(data[i][cPhone]);
     const se = seByPhone[phoneKey];
     const personRaw = (se && se.by) || String(data[i][cAssign] || '').trim();
@@ -2599,6 +2607,7 @@ function handleSalesReport(body) {
       name: cName >= 0 ? String(data[i][cName] || '').trim() : '',
       phone: String(data[i][cPhone] || '').trim(),
       status: status,
+      apptDate: apptDate,
       daysInPhase: phaseAt ? Math.floor((now - phaseAt) / 86400000) : null,
       location: cLoc >= 0 ? String(data[i][cLoc] || '').trim() : '',
       problem: cProblem >= 0 ? String(data[i][cProblem] || '').trim() : '',
@@ -2616,9 +2625,11 @@ function handleSalesReport(body) {
   }
   const meetingOut = Object.keys(meeting).map(function(pk) {
     const m = meeting[pk];
-    // Pending QT first, then Quotation Sent; oldest-in-phase first within each.
+    // Round 87.2 — expired-visit SVC opens the meeting, then Pending QT,
+    // then Quotation Sent; oldest-in-phase first within each.
+    const _order = { 'Site Visit Confirmed': 0, 'Pending QT': 1, 'Quotation Sent': 2 };
     m.cards.sort(function(a, b) {
-      if (a.status !== b.status) return a.status === 'Pending QT' ? -1 : 1;
+      if (a.status !== b.status) return (_order[a.status] || 0) - (_order[b.status] || 0);
       return (b.daysInPhase || 0) - (a.daysInPhase || 0);
     });
     return m;
