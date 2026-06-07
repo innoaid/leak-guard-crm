@@ -2443,9 +2443,19 @@ const SALES_FUNNEL = ['New Lead','Pending Invitation','Pending Site Visit',
   'Job Complete','Receipt Sent','Completed'];
 const SALES_LOST = ['Rejected', 'Lost', 'Cold Lead', 'Out of Area'];
 
-// "William (KL)" -> "William"; case-insensitive merge key.
+// Round 87.1 — team labels and person names that are the SAME person merge
+// in all reports (scoreboard, appointments, meeting agenda attribution).
+const SALES_ALIASES = {
+  'team a':  'William',
+  'team kl': 'William',
+  'team b':  'Wong',
+  'team jb': 'Osment',
+};
+
+// "William (KL)" -> "William"; team aliases resolved; case-insensitive merge key.
 function _normPerson(name) {
-  return String(name || '').replace(/\s*\(.*\)\s*$/, '').trim();
+  const n = String(name || '').replace(/\s*\(.*\)\s*$/, '').trim();
+  return SALES_ALIASES[n.toLowerCase()] || n;
 }
 function _personKey(name) { return _normPerson(name).toLowerCase(); }
 function _last8(phone) {
