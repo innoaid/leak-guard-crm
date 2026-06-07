@@ -6,6 +6,9 @@
 <title>Leak Guard — Team Kanban</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<!-- Round 87 — report PDF export (same versions as estimation_builder.html) -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#f5f5f5;--card:#fff;--bdr:#e5e7eb;--ink:#111;--mt:#6b7280;--pri:#2D2A6E;--acc:#1D9E75;--warn:#F59E0B;--err:#DC2626;--sh:0 1px 3px rgba(0,0,0,.08)}
@@ -512,6 +515,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <div class="modal-actions">
       <button class="modal-btn modal-btn-secondary" id="btnPhaseScanCloseFooter">Close</button>
       <button class="modal-btn modal-btn-info" id="btnPhaseScanRefresh">↻ Re-scan</button>
+      <button class="modal-btn modal-btn-info" id="btnPhaseScanPdf">📄 PDF</button>
     </div>
   </div>
 </div>
@@ -545,6 +549,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     </div>
     <div class="modal-actions">
       <button class="modal-btn modal-btn-secondary" id="btnSalesReportCloseFooter">Close</button>
+      <button class="modal-btn modal-btn-info" id="btnSalesReportPdf">📄 PDF</button>
     </div>
   </div>
 </div>
@@ -3537,7 +3542,7 @@ async function runPhaseScan() {
     html = '<div style="font-size:12px;color:#6B7280;margin-bottom:10px">' + totalV + ' card' + (totalV > 1 ? 's' : '') + ' need action · scanned ' + escapeHtml(String(res.generatedAt).slice(11, 16)) + ' UTC</div>';
     res.rules.forEach(function(r) {
       const ok = r.total - r.violations.length;
-      html += '<div style="margin-bottom:14px">';
+      html += '<div class="pdf-sec" style="margin-bottom:14px">';
       html += '<div style="font-weight:800;font-size:13px;color:#111827;margin-bottom:2px">' + r.icon + ' ' + escapeHtml(r.label) +
               ' <span style="font-weight:600;color:' + (r.violations.length ? '#B91C1C' : '#065F46') + '">' + r.violations.length + ' flagged</span>' +
               '<span style="font-weight:500;color:#9CA3AF"> · ' + ok + '/' + r.total + ' compliant</span></div>';
@@ -3547,10 +3552,13 @@ async function runPhaseScan() {
       } else {
         r.violations.forEach(function(v) {
           const isMsgRule = (r.key === 'qsFollowup' || r.key === 'payment');
-          const ageLabel = isMsgRule
-            ? 'last admin msg ' + (v.lastAdminMsgAgoH === null ? '<b>never</b>' : '<b>' + ageStr(v.lastAdminMsgAgoH) + ' ago</b>')
-            : '<b>' + ageStr(v.ageHours) + '</b> in phase';
-          html += '<div class="ps-card" data-ps-phone="' + escapeHtml(String(v.phone)) + '" style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 10px;border:.5px solid #FCA5A5;background:#FEF2F2;border-radius:7px;margin-bottom:5px;cursor:pointer">';
+          // Round 87 — SVC rule shows the missed appointment date.
+          const ageLabel = (r.key === 'svcExpired')
+            ? (v.apptDate ? 'appt was <b>' + escapeHtml(v.apptDate) + '</b>' : '<b>no appt date recorded</b>')
+            : (isMsgRule
+              ? 'last admin msg ' + (v.lastAdminMsgAgoH === null ? '<b>never</b>' : '<b>' + ageStr(v.lastAdminMsgAgoH) + ' ago</b>')
+              : '<b>' + ageStr(v.ageHours) + '</b> in phase');
+          html += '<div class="ps-card pdf-sec" data-ps-phone="' + escapeHtml(String(v.phone)) + '" style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 10px;border:.5px solid #FCA5A5;background:#FEF2F2;border-radius:7px;margin-bottom:5px;cursor:pointer">';
           html += '<div style="min-width:0">';
           html += '<div style="font-weight:700;font-size:12.5px;color:#111827">' + escapeHtml(v.name || '(no name)') + (v.assignedTo ? ' <span style="font-weight:500;color:#6B7280">· ' + escapeHtml(v.assignedTo) + '</span>' : '') + '</div>';
           html += '<div style="font-size:11px;color:#7F1D1D">' + escapeHtml(v.phase) + ' · ' + ageLabel + '</div>';
@@ -3623,11 +3631,12 @@ async function srGenerate() {
     body.innerHTML = '<div style="padding:14px;background:#FEE2E2;color:#991B1B;border-radius:6px">Report failed: ' + escapeHtml((res && res.message) || 'unknown') + '</div>';
     return;
   }
+  window.SR_LAST = { from: res.from, to: res.to };  // Round 87 — PDF export context
   let html = '<div style="font-size:11px;color:#6B7280;margin-bottom:8px">Range: ' + escapeHtml(res.from) + ' → ' + escapeHtml(res.to) +
     (res.dataSince ? ' · estimation data starts ' + escapeHtml(res.dataSince) : '') + '</div>';
 
   // ── Scoreboard ──
-  html += '<div style="font-weight:800;font-size:14px;margin:6px 0">🏆 Scoreboard</div>';
+  html += '<div class="pdf-sec" style="font-weight:800;font-size:14px;margin:6px 0">🏆 Scoreboard</div>';
   if (!res.people.length) {
     html += '<div style="color:#6B7280;font-size:12px;margin-bottom:10px">No estimations in this range.</div>';
   } else {
@@ -3664,16 +3673,16 @@ async function srGenerate() {
   }
 
   // ── Weekly meeting agenda ──
-  html += '<div style="font-weight:800;font-size:14px;margin:14px 0 2px">🗓 Weekly Meeting Agenda <span style="font-weight:500;font-size:11px;color:#6B7280">— all ACTIVE Pending QT &amp; Quotation Sent cards (not limited by date range)</span></div>';
+  html += '<div class="pdf-sec" style="font-weight:800;font-size:14px;margin:14px 0 2px">🗓 Weekly Meeting Agenda <span style="font-weight:500;font-size:11px;color:#6B7280">— all ACTIVE Pending QT &amp; Quotation Sent cards (not limited by date range)</span></div>';
   if (!res.meeting || !res.meeting.length) {
     html += '<div style="color:#065F46;font-size:12px">✅ No active cards in Pending QT / Quotation Sent.</div>';
   } else {
     res.meeting.forEach(function(m, mi) {
       html += '<div style="margin-top:10px">';
-      html += '<div data-sr-meet="' + mi + '" style="font-weight:800;font-size:13px;padding:7px 10px;background:#EEF2FF;border-radius:7px;cursor:pointer">👤 ' + escapeHtml(m.person) + ' — ' + m.cards.length + ' card' + (m.cards.length === 1 ? '' : 's') + ' <span style="color:#9CA3AF;font-weight:400">▾</span></div>';
+      html += '<div class="pdf-sec" data-sr-meet="' + mi + '" style="font-weight:800;font-size:13px;padding:7px 10px;background:#EEF2FF;border-radius:7px;cursor:pointer">👤 ' + escapeHtml(m.person) + ' — ' + m.cards.length + ' card' + (m.cards.length === 1 ? '' : 's') + ' <span style="color:#9CA3AF;font-weight:400">▾</span></div>';
       html += '<div id="srMeet' + mi + '" style="display:none;padding-top:6px">';
       m.cards.forEach(function(c) {
-        html += '<div style="border:.5px solid #E5E7EB;border-radius:8px;padding:9px 12px;margin-bottom:7px;background:#fff">';
+        html += '<div class="pdf-sec" style="border:.5px solid #E5E7EB;border-radius:8px;padding:9px 12px;margin-bottom:7px;background:#fff">';
         html += '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">' +
           '<div style="font-weight:800;font-size:13px">' + escapeHtml(c.name || '(no name)') + ' <span style="font-weight:500;color:#6B7280">· ' + escapeHtml(c.phone) + '</span></div>' +
           '<div>' + '<span style="font-size:10.5px;font-weight:700;color:' + (c.status === 'Pending QT' ? '#92400E' : '#1D4ED8') + '">' + escapeHtml(c.status).toUpperCase() + '</span> ' + srDaysBadge(c.daysInPhase) + '</div></div>';
@@ -3724,6 +3733,87 @@ document.getElementById('btnSalesReportCloseFooter').onclick = closeSalesReportM
 document.getElementById('salesReportModal').addEventListener('click', function(e){
   if (e.target.id === 'salesReportModal') closeSalesReportModal();
 });
+
+// ================================================================
+// Round 87 — shared report → real .pdf export (html2canvas + jsPDF,
+// same pipeline as the estimation builder). Clones the report DOM,
+// expands every collapsed drill-down so the PDF has ALL details,
+// slices pages at .pdf-sec boundaries, opens a preview tab
+// (download fallback when the popup is blocked).
+// ================================================================
+async function exportReportPdf(title, subtitle, sourceEl, filename) {
+  const txt = sourceEl ? sourceEl.textContent.trim() : '';
+  if (!txt || txt.indexOf('Pick a range') === 0 || txt.indexOf('⏳') === 0) {
+    toast('Generate the report first', 'warn');
+    return;
+  }
+  toast('Building PDF…');
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:absolute;left:0;top:' + window.scrollY + 'px;z-index:-1;width:794px;background:#fff;padding:28px 30px;font-family:Inter,-apple-system,sans-serif;color:#111827';
+  const now = new Date(Date.now() + 8 * 3600 * 1000);
+  const ts = now.toISOString().slice(0, 16).replace('T', ' ');
+  wrap.innerHTML = '<div style="border-bottom:2px solid #2D2A6E;padding-bottom:10px;margin-bottom:14px">' +
+    '<div style="font-size:20px;font-weight:800;color:#2D2A6E">' + escapeHtml(title) + '</div>' +
+    '<div style="font-size:11px;color:#6B7280">Leak Guard CRM · generated ' + ts + ' MYT' + (subtitle ? ' · ' + escapeHtml(subtitle) : '') + '</div></div>';
+  const clone = sourceEl.cloneNode(true);
+  // Expand all collapsed drill-downs/accordions — the PDF carries everything.
+  clone.querySelectorAll('[id^="srDrill"],[id^="srMeet"]').forEach(function(el) { el.style.display = ''; });
+  wrap.appendChild(clone);
+  document.body.appendChild(wrap);
+  try {
+    const SCALE = 1.5;
+    const wrapTop = wrap.getBoundingClientRect().top;
+    const breakYs = Array.from(wrap.querySelectorAll('.pdf-sec')).map(function(el) {
+      return (el.getBoundingClientRect().top - wrapTop) * SCALE;
+    });
+    const canvas = await html2canvas(wrap, { scale: SCALE, useCORS: true, backgroundColor: '#ffffff' });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'pt', 'a4');
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const TOP_MARGIN = 36;
+    let yStart = 0, pageNum = 0;
+    while (yStart < canvas.height) {
+      const availH = pageNum === 0 ? pageH : (pageH - TOP_MARGIN);
+      const pxPage = availH * canvas.width / pageW;
+      const yMax = Math.min(yStart + pxPage, canvas.height);
+      let yEnd = yMax;
+      if (yMax < canvas.height) {
+        for (let i = breakYs.length - 1; i >= 0; i--) {
+          if (breakYs[i] > yStart + 200 && breakYs[i] <= yMax) { yEnd = breakYs[i]; break; }
+        }
+      }
+      const sliceH = Math.max(1, Math.round(yEnd - yStart));
+      const sub = document.createElement('canvas');
+      sub.width = canvas.width; sub.height = sliceH;
+      sub.getContext('2d').drawImage(canvas, 0, yStart, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+      if (pageNum > 0) pdf.addPage();
+      pdf.addImage(sub.toDataURL('image/jpeg', 0.92), 'JPEG', 0, pageNum === 0 ? 0 : TOP_MARGIN, pageW, sliceH * pageW / canvas.width);
+      yStart = yEnd; pageNum++;
+    }
+    const blob = pdf.output('blob');
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (!win) { pdf.save(filename); toast('Popup blocked — PDF downloaded instead', 'warn'); }
+  } catch (e) {
+    console.error(e);
+    toast('PDF failed: ' + (e.message || e), 'error');
+  } finally {
+    wrap.remove();
+  }
+}
+
+document.getElementById('btnPhaseScanPdf').onclick = async function() {
+  const body = document.getElementById('phaseScanBody');
+  if (!body.querySelector('.pdf-sec') && !body.textContent.includes('All phases clean')) await runPhaseScan();
+  const d = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  exportReportPdf('Phase Scan', d, body, 'Phase-Scan-' + d + '.pdf');
+};
+document.getElementById('btnSalesReportPdf').onclick = function() {
+  if (!window.SR_LAST) { toast('Generate the report first', 'warn'); return; }
+  exportReportPdf('Sales Report', window.SR_LAST.from + ' → ' + window.SR_LAST.to,
+    document.getElementById('srBody'), 'Sales-Report-' + window.SR_LAST.from + '-to-' + window.SR_LAST.to + '.pdf');
+};
 document.getElementById('btnBulkLinkClose').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkCloseFooter').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkRefetch').onclick = fetchBulkLinkPreview;

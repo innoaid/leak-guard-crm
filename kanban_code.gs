@@ -2250,6 +2250,7 @@ function testSetPending() {
 // it fall back to Status Changed At, so day-one has no false flood.
 
 const ADMIN_SCAN_RULES = [
+  { key: 'svcExpired', phases: ['Site Visit Confirmed'], maxHours: 0, basis: 'appt', icon: '📆', label: 'SVC — APPOINTMENT DATE PASSED',       action: 'Visit done? Move the card forward (estimation / Pending QT) or rebook' },
   { key: 'pendingQt',  phases: ['Pending QT'],         maxHours: 48, basis: 'phase', icon: '⏳', label: 'PENDING QT — stuck 2+ days',          action: 'Move out: send estimation, or back to PSV/SVC if revisit needed' },
   { key: 'qsFollowup', phases: ['Quotation Sent'],     maxHours: 72, basis: 'msg',   icon: '💬', label: 'QUOTATION SENT — follow-up due (3d+)', action: 'Send manual follow-up (discount / check-in) in the group' },
   { key: 'pendingIdate', phases: ['Pending I.Date'],   maxHours: 24, basis: 'phase', icon: '📅', label: 'PENDING I.DATE — 24h+ without date',   action: 'Chase QC for the installation date' },
@@ -2273,8 +2274,9 @@ function _adminScanViolations() {
   const cStatus = col('Status'), cChangedAt = col('Status Changed At'),
         cMsgAt = col('Last Admin Msg At'), cMsg = col('Last Admin Msg'),
         cName = col('Name'), cPhone = col('Phone'), cAssign = col('Assigned To'),
-        cLink = col('Group Invite Link (AJ)');
+        cLink = col('Group Invite Link (AJ)'), cAppt = col('Date Appt Confirmed');
   const now = Date.now();
+  const todayStr = _mytDateStr();
 
   const out = ADMIN_SCAN_RULES.map(function(r) { return { key: r.key, icon: r.icon, label: r.label, action: r.action, total: 0, violations: [] }; });
 
@@ -2286,6 +2288,26 @@ function _adminScanViolations() {
       out[r].total++;
       const phaseAt = _scanToMs(cChangedAt >= 0 ? data[i][cChangedAt] : 0);
       const msgAt   = _scanToMs(cMsgAt >= 0 ? data[i][cMsgAt] : 0);
+      // Round 87 — 'appt' basis (SVC): flag when the appointment date has
+      // already passed (or no date is recorded at all) while the card is
+      // still sitting in Site Visit Confirmed.
+      if (rule.basis === 'appt') {
+        const apptStr = cAppt >= 0 ? _normalizeDateStr(data[i][cAppt]) : '';
+        if (apptStr && apptStr >= todayStr) continue;  // appointment today/future — fine
+        const apptMs = apptStr ? Date.parse(apptStr + 'T00:00:00+08:00') : 0;
+        out[r].violations.push({
+          phase: status,
+          name: cName >= 0 ? String(data[i][cName] || '').trim() : '',
+          phone: cPhone >= 0 ? String(data[i][cPhone] || '').trim() : '',
+          assignedTo: cAssign >= 0 ? String(data[i][cAssign] || '').trim() : '',
+          groupLink: cLink >= 0 ? String(data[i][cLink] || '').trim() : '',
+          ageHours: Math.round((now - (apptMs || phaseAt || now)) / 3600000),
+          apptDate: apptStr,
+          lastAdminMsg: cMsg >= 0 ? _snippet(String(data[i][cMsg] || ''), 90) : '',
+          lastAdminMsgAgoH: msgAt ? Math.round((now - msgAt) / 3600000) : null,
+        });
+        continue;
+      }
       // 'phase' rules: only moving the card resets the clock.
       // 'msg' rules: entering the phase OR an admin msg resets it.
       const reference = rule.basis === 'msg' ? Math.max(phaseAt, msgAt) : phaseAt;
@@ -2333,7 +2355,9 @@ function _buildAdminScanMessage(rules) {
     lines.push('_' + r.action + '_', '');
     r.violations.forEach(function(v, i) {
       let line = (i + 1) + '. *' + (v.name || '(no name)') + '*';
-      if (r.key === 'qsFollowup' || r.key === 'payment') {
+      if (r.key === 'svcExpired') {
+        line += ' — ' + (v.apptDate ? 'appt was ' + v.apptDate : 'no appt date recorded');
+      } else if (r.key === 'qsFollowup' || r.key === 'payment') {
         line += ' — last admin msg ' + (v.lastAdminMsgAgoH === null ? 'never' : _scanAge(v.lastAdminMsgAgoH) + ' ago');
       } else {
         line += ' — ' + _scanAge(v.ageHours) + ' in phase';
