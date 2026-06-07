@@ -71,6 +71,7 @@ function doPost(e) {
       case 'saveEstimation':     return handleSaveEstimation(body);  // round 83 — persist SE summary (autocount.gs)
       case 'syncAutocount':      return handleSyncAutocount(body);   // round 83 — AutoCount QT + group rename + value tag (autocount.gs)
       case 'uploadEstimationPdf': return handleUploadEstimationPdf(body);  // round 83.3 — archive SE PDF to Drive (autocount.gs)
+      case 'adminScan':          return handleAdminScan(body);  // round 85 — phase-scan violation board
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -531,6 +532,9 @@ function handleUpdateLastAdminMsg(body) {
     const sender = String(body.senderName || '').trim() || 'Staff';
     const text = String(body.msgText || '').trim().slice(0, 500); // cap storage
     setCellByHeader(sheet, i + 1, 'Last Admin Msg', sender + ': ' + text);
+    // Round 85 — timestamp powers the phase-scan follow-up compliance checks
+    // (Quotation Sent 3-day cadence, daily payment reminders).
+    try { setCellByHeader(sheet, i + 1, 'Last Admin Msg At', new Date().toISOString()); } catch (_e) { /* column missing until bootstrap runs */ }
     return jsonResponse({status: 'ok', rowNum: i + 1});
   }
   return jsonResponse({status: 'ok', skipped: true, reason: 'group not linked'});
@@ -2224,4 +2228,185 @@ function testSetPending() {
   };
   const r = doPost(fakeEvent);
   Logger.log(r.getContent());
+}
+
+// ================================================================
+// Round 85 — Admin Phase-Scan: stuck-card + follow-up compliance
+// ================================================================
+// Admin must keep cards moving through four phase checks. One rule engine
+// feeds both the kanban "Phase Scan" board (action 'adminScan') and the
+// daily 9 AM MYT WA digest to every Users-tab admin.
+//
+//   1. Pending QT          — stuck > 48h  (basis: time in phase)
+//   2. Quotation Sent      — no admin follow-up msg in 72h (basis: last
+//                            admin msg, reset by entering the phase)
+//   3. Pending I.Date      — stuck > 24h  (QC must give install date)
+//   4. Pending Downpayment / Pending Balance — no payment reminder in 24h,
+//                            incl. weekends (basis: last admin msg)
+//
+// 'Last Admin Msg At' is written by handleUpdateLastAdminMsg (n8n Parse &
+// Route fires it for every staff message in a linked group). Cards without
+// it fall back to Status Changed At, so day-one has no false flood.
+
+const ADMIN_SCAN_RULES = [
+  { key: 'pendingQt',  phases: ['Pending QT'],         maxHours: 48, basis: 'phase', icon: '⏳', label: 'PENDING QT — stuck 2+ days',          action: 'Move out: send estimation, or back to PSV/SVC if revisit needed' },
+  { key: 'qsFollowup', phases: ['Quotation Sent'],     maxHours: 72, basis: 'msg',   icon: '💬', label: 'QUOTATION SENT — follow-up due (3d+)', action: 'Send manual follow-up (discount / check-in) in the group' },
+  { key: 'pendingIdate', phases: ['Pending I.Date'],   maxHours: 24, basis: 'phase', icon: '📅', label: 'PENDING I.DATE — 24h+ without date',   action: 'Chase QC for the installation date' },
+  { key: 'payment',    phases: ['Pending Downpayment', 'Pending Balance'], maxHours: 24, basis: 'msg', icon: '💰', label: 'PAYMENT REMINDER DUE (24h+)', action: 'Send payment reminder into the group today' },
+];
+
+// Sheets may hand back ISO strings or Date objects — normalize to epoch ms.
+function _scanToMs(v) {
+  if (!v) return 0;
+  if (v instanceof Date) return v.getTime();
+  const t = Date.parse(String(v));
+  return isNaN(t) ? 0 : t;
+}
+
+// Core engine: one sheet read, returns per-rule {rule, total, violations[]}.
+function _adminScanViolations() {
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const data = sheet.getDataRange().getValues();
+  const col = function(name) { return h.colByName[name] ? h.colByName[name] - 1 : -1; };
+  const cStatus = col('Status'), cChangedAt = col('Status Changed At'),
+        cMsgAt = col('Last Admin Msg At'), cMsg = col('Last Admin Msg'),
+        cName = col('Name'), cPhone = col('Phone'), cAssign = col('Assigned To'),
+        cLink = col('Group Invite Link (AJ)');
+  const now = Date.now();
+
+  const out = ADMIN_SCAN_RULES.map(function(r) { return { key: r.key, icon: r.icon, label: r.label, action: r.action, total: 0, violations: [] }; });
+
+  for (let i = 1; i < data.length; i++) {
+    const status = String(data[i][cStatus] || '').trim();
+    for (let r = 0; r < ADMIN_SCAN_RULES.length; r++) {
+      const rule = ADMIN_SCAN_RULES[r];
+      if (rule.phases.indexOf(status) === -1) continue;
+      out[r].total++;
+      const phaseAt = _scanToMs(cChangedAt >= 0 ? data[i][cChangedAt] : 0);
+      const msgAt   = _scanToMs(cMsgAt >= 0 ? data[i][cMsgAt] : 0);
+      // 'phase' rules: only moving the card resets the clock.
+      // 'msg' rules: entering the phase OR an admin msg resets it.
+      const reference = rule.basis === 'msg' ? Math.max(phaseAt, msgAt) : phaseAt;
+      if (!reference) continue; // no usable timestamp — skip rather than false-flag
+      const ageHours = (now - reference) / 3600000;
+      if (ageHours <= rule.maxHours) continue;
+      out[r].violations.push({
+        phase: status,
+        name: cName >= 0 ? String(data[i][cName] || '').trim() : '',
+        phone: cPhone >= 0 ? String(data[i][cPhone] || '').trim() : '',
+        assignedTo: cAssign >= 0 ? String(data[i][cAssign] || '').trim() : '',
+        groupLink: cLink >= 0 ? String(data[i][cLink] || '').trim() : '',
+        ageHours: Math.round(ageHours),
+        lastAdminMsg: cMsg >= 0 ? _snippet(String(data[i][cMsg] || ''), 90) : '',
+        lastAdminMsgAgoH: msgAt ? Math.round((now - msgAt) / 3600000) : null,
+      });
+    }
+  }
+  // Oldest first within each rule
+  out.forEach(function(r) { r.violations.sort(function(a, b) { return b.ageHours - a.ageHours; }); });
+  return out;
+}
+
+// doPost action 'adminScan' — feeds the kanban Phase Scan board.
+function handleAdminScan(body) {
+  return jsonResponse({ status: 'ok', generatedAt: new Date().toISOString(), rules: _adminScanViolations() });
+}
+
+// Human "3 days" / "1 day 4h" / "18h" from hours.
+function _scanAge(hours) {
+  if (hours >= 48) return Math.floor(hours / 24) + ' days';
+  if (hours >= 24) return '1 day ' + (hours - 24) + 'h';
+  return hours + 'h';
+}
+
+function _buildAdminScanMessage(rules) {
+  const totalV = rules.reduce(function(s, r) { return s + r.violations.length; }, 0);
+  if (!totalV) return '';
+  const lines = [];
+  lines.push('📋 *PHASE SCAN — ' + _mytDateStr() + '*');
+  lines.push('_' + totalV + ' card' + (totalV > 1 ? 's' : '') + ' need action_');
+  rules.forEach(function(r) {
+    if (!r.violations.length) return;
+    lines.push('', '', r.icon + ' *' + r.label + ' — ' + r.violations.length + '/' + r.total + '*');
+    lines.push('_' + r.action + '_', '');
+    r.violations.forEach(function(v, i) {
+      let line = (i + 1) + '. *' + (v.name || '(no name)') + '*';
+      if (r.key === 'qsFollowup' || r.key === 'payment') {
+        line += ' — last admin msg ' + (v.lastAdminMsgAgoH === null ? 'never' : _scanAge(v.lastAdminMsgAgoH) + ' ago');
+      } else {
+        line += ' — ' + _scanAge(v.ageHours) + ' in phase';
+      }
+      if (v.assignedTo) line += ' (' + v.assignedTo + ')';
+      lines.push(line);
+      if (v.phone)     lines.push('    📞 ' + v.phone);
+      if (v.groupLink) lines.push('    🔗 ' + v.groupLink);
+      if (i < r.violations.length - 1) lines.push('');
+    });
+  });
+  return lines.join('\n');
+}
+
+// Trigger target — installed every 30 min; self-gates to the 9 AM MYT hour
+// and sends at most once per MYT day (pattern of sendSupervisorDailyReminders).
+function sendAdminScanDigest() {
+  const mytHour = new Date(Date.now() + 8 * 60 * 60 * 1000).getUTCHours();
+  if (mytHour !== 9) return;
+  const props = PropertiesService.getScriptProperties();
+  const today = _mytDateStr();
+  if (props.getProperty('lastAdminScanDate') === today) return;
+  const result = _doAdminScanDigest();
+  props.setProperty('lastAdminScanDate', today);
+  Logger.log('sendAdminScanDigest: ' + JSON.stringify(result));
+}
+
+// Manual test from the editor — bypasses hour + daily guards.
+function testAdminScanDigest() {
+  Logger.log('testAdminScanDigest: ' + JSON.stringify(_doAdminScanDigest()));
+}
+
+// DM the scan to every Users-tab admin with a phone. Skips when clean.
+function _doAdminScanDigest() {
+  const msg = _buildAdminScanMessage(_adminScanViolations());
+  if (!msg) return { sent: 0, reason: 'all phases clean' };
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!usersSheet) return { error: 'Users tab missing' };
+  const u = usersSheet.getDataRange().getValues();
+  let sent = 0;
+  for (let i = 1; i < u.length; i++) {
+    if (String(u[i][3] || '').trim().toLowerCase() !== 'admin') continue;
+    const phone = String(u[i][4] || '').replace(/\D/g, '');
+    if (!phone) continue;
+    _sendWhapiText(phone, msg);
+    sent++;
+    Utilities.sleep(600);
+  }
+  return { sent: sent };
+}
+
+// One-time: install the 30-min trigger (self-gated to 9 AM MYT). Idempotent.
+function setupAdminScanTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'sendAdminScanDigest') {
+      Logger.log('setupAdminScanTrigger: trigger already installed');
+      return;
+    }
+  }
+  ScriptApp.newTrigger('sendAdminScanDigest').timeBased().everyMinutes(30).create();
+  Logger.log('setupAdminScanTrigger: installed (every 30 min, self-gated to 9 AM MYT)');
+}
+
+// One-time: append the 'Last Admin Msg At' column to the lead sheet.
+function bootstrapLastAdminMsgAtColumn() {
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  if (h.colByName['Last Admin Msg At']) {
+    Logger.log('bootstrapLastAdminMsgAtColumn: column already present, nothing to do');
+    return;
+  }
+  const lastCol = sheet.getLastColumn();
+  sheet.getRange(1, lastCol + 1).setValue('Last Admin Msg At');
+  Logger.log('bootstrapLastAdminMsgAtColumn: added Last Admin Msg At');
 }
