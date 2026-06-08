@@ -52,6 +52,8 @@ function doPost(e) {
       case 'resetTestLead':      return handleResetTestLead(body);
       case 'setPending':         return handleSetPending(body);  // round 12 — v2 agent pending-confirmation slot
       case 'bulkMoveStatus':     return handleBulkMoveStatus(body);  // round 32 — kanban bulk move-to-phase
+      case 'bulkUpdateAssignee': return handleBulkUpdateAssignee(body);  // round 89 — bulk assign selected cards
+      case 'bulkInviteLinks':    return handleBulkInviteLinks(body);  // round 89 — fetch/return WA invite links for selected cards
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
@@ -1171,6 +1173,64 @@ function handleBulkMoveStatus(body) {
     updated++;
   });
   return jsonResponse({status: 'ok', updated: updated, missing: missing, newStatus: newStatus, fuResets: fuResets});
+}
+
+// ================================================================
+// Round 89 — bulk assign selected cards to one staff name
+// ================================================================
+// body: {phones:[], assignee, secret}  — assignee '' clears (Unassigned)
+function handleBulkUpdateAssignee(body) {
+  const phones = Array.isArray(body.phones) ? body.phones : [];
+  if (!phones.length) return jsonResponse({status: 'error', message: 'no phones'});
+  const assignee = String(body.assignee || '').trim();
+  const sheet = getSheet();
+  let updated = 0;
+  const missing = [];
+  phones.forEach(function(phone) {
+    const row = findRowByPhone(sheet, phone);
+    if (!row) { missing.push(phone); return; }
+    try { setCellByHeader(sheet, row, 'Assigned To', assignee); updated++; } catch (_e) {}
+  });
+  return jsonResponse({status: 'ok', updated: updated, missing: missing, assignee: assignee});
+}
+
+// ================================================================
+// Round 89 — return WA invite links for selected cards
+// ================================================================
+// body: {phones:[], secret}
+// Uses the saved link when present; otherwise fetches from Whapi (and
+// writes it back). Live fetches are capped per call so a big selection
+// can't blow the Apps Script 6-min limit (each fetch may 8s-retry on 429).
+function handleBulkInviteLinks(body) {
+  const phones = Array.isArray(body.phones) ? body.phones : [];
+  if (!phones.length) return jsonResponse({status: 'error', message: 'no phones'});
+  const MAX_FETCH = 12;
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const gidCol    = h.colByName['Group ID (AB)'];
+  const inviteCol = h.colByName['Group Invite Link (AJ)'];
+  const nameCol   = h.colByName['Name'];
+  const results = [];
+  let fetched = 0, skipped = 0;
+  phones.forEach(function(phone) {
+    const row = findRowByPhone(sheet, phone);
+    if (!row) { results.push({phone: phone, name: '', link: '', source: 'not_found'}); return; }
+    const name = nameCol ? String(sheet.getRange(row, nameCol).getValue() || '').trim() : '';
+    const saved = inviteCol ? String(sheet.getRange(row, inviteCol).getValue() || '').trim() : '';
+    if (saved) { results.push({phone: phone, name: name, link: saved, source: 'saved'}); return; }
+    const groupId = gidCol ? String(sheet.getRange(row, gidCol).getValue() || '').trim() : '';
+    if (!groupId) { results.push({phone: phone, name: name, link: '', source: 'no_group'}); return; }
+    if (fetched >= MAX_FETCH) { results.push({phone: phone, name: name, link: '', source: 'skipped'}); skipped++; return; }
+    fetched++;
+    const link = fetchInviteLinkForGroup(groupId);
+    if (link) {
+      if (inviteCol) { try { sheet.getRange(row, inviteCol).setValue(link); } catch (_e) {} }
+      results.push({phone: phone, name: name, link: link, source: 'fetched'});
+    } else {
+      results.push({phone: phone, name: name, link: '', source: 'failed'});
+    }
+  });
+  return jsonResponse({status: 'ok', results: results, fetched: fetched, skipped: skipped});
 }
 
 // ================================================================

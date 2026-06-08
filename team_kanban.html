@@ -406,6 +406,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <select class="action-bar-btn" id="actionBarMove" onchange="actionBulkMoveStatus(this.value); this.value='';" title="Move all selected leads to a new phase">
     <option value="">📋 Move to...</option>
   </select>
+  <select class="action-bar-btn" id="actionBarAssign" onchange="actionBulkAssign(this.value); this.value='__none';" title="Assign all selected leads to a staff member">
+    <option value="__none">👤 Assign to...</option>
+  </select>
+  <button class="action-bar-btn" id="actionBarWaLinks" onclick="actionFetchWaLinks()" title="Retrieve WhatsApp group links for selected leads">🔗 WA links</button>
   <button class="action-bar-btn" id="actionBarSelectAll" onclick="actionSelectAllVisible()">Select all visible</button>
   <button class="action-bar-btn bar-clear" id="actionBarClear" onclick="actionClearSelection()">✕ Clear</button>
 </div>
@@ -553,6 +557,24 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
         <option value="">All salespersons</option>
       </select>
       <button class="modal-btn modal-btn-info" id="btnSalesReportPdf">📄 PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- WA Group Links modal (Round 89) -->
+<div class="modal-overlay" id="waLinksModal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">🔗 WA Group Links</div>
+        <div class="modal-sub">Invite links for the selected leads. Missing ones are fetched fresh and saved.</div>
+      </div>
+      <button class="modal-close" id="btnWaLinksClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" id="waLinksBody" style="max-height:65vh;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-secondary" id="btnWaLinksCloseFooter">Close</button>
+      <button class="modal-btn modal-btn-primary" id="btnWaLinksCopyAll">📋 Copy all</button>
     </div>
   </div>
 </div>
@@ -1744,6 +1766,106 @@ async function actionBulkMoveStatus(newStatus) {
     sel.disabled = false;
   }
 }
+
+// Round 89 — bulk assign selected leads to one staff member.
+function populateBulkAssignDropdown() {
+  const sel = document.getElementById('actionBarAssign');
+  if (!sel) return;
+  const _staffDefaults = ['Ken','Admin','Alvin','Osment','William','Wong','Team KL','Team JB'];
+  const names = [];
+  const seen = {};
+  _staffDefaults.concat(USER_ASSIGN_NAMES || []).forEach(function(s) {
+    s = String(s || '').trim();
+    if (s && !seen[s]) { seen[s] = 1; names.push(s); }
+  });
+  sel.innerHTML = '<option value="__none">👤 Assign to...</option>' +
+    names.map(function(n) { return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('') +
+    '<option value="__unassign">— Unassigned —</option>';
+}
+
+async function actionBulkAssign(value) {
+  if (!value || value === '__none') return;
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) { toast('No leads selected', 'warn'); return; }
+  const assignee = (value === '__unassign') ? '' : value;
+  const label = assignee || 'Unassigned';
+  if (!confirm('Assign ' + phones.length + ' lead' + (phones.length > 1 ? 's' : '') + ' to "' + label + '"?')) return;
+  const sel = document.getElementById('actionBarAssign');
+  sel.disabled = true;
+  try {
+    const r = await apiCall('bulkUpdateAssignee', { phones: phones, assignee: assignee });
+    if (r.status !== 'ok') throw new Error(r.message || 'unknown error');
+    const miss = (r.missing && r.missing.length) ? (' (' + r.missing.length + ' not found)') : '';
+    toast('Assigned ' + r.updated + ' lead' + (r.updated > 1 ? 's' : '') + ' to ' + label + miss, 'success');
+    actionClearSelection();
+    await loadLeads();
+  } catch (e) {
+    toast('Bulk assign failed: ' + e.message, 'error');
+  } finally {
+    sel.disabled = false;
+  }
+}
+
+// Round 89 — retrieve WA group links for selected leads (fetch missing).
+async function actionFetchWaLinks() {
+  const phones = Array.from(selectedPhones);
+  if (!phones.length) { toast('No leads selected', 'warn'); return; }
+  const btn = document.getElementById('actionBarWaLinks');
+  btn.disabled = true;
+  toast('Retrieving WA links…');
+  try {
+    const r = await apiCall('bulkInviteLinks', { phones: phones });
+    if (r.status !== 'ok') throw new Error(r.message || 'unknown error');
+    window.WA_LINKS = r.results || [];
+    // reflect freshly-fetched links into the in-memory leads
+    (r.results || []).forEach(function(res) {
+      if (!res.link) return;
+      const lead = (allLeads || []).find(function(l) { return String(l['Phone'] || '') === res.phone; });
+      if (lead) lead['Group Invite Link (AJ)'] = res.link;
+    });
+    renderWaLinks(r);
+    document.getElementById('waLinksModal').classList.add('open');
+  } catch (e) {
+    toast('WA links failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderWaLinks(r) {
+  const body = document.getElementById('waLinksBody');
+  const chip = {
+    saved:    ['saved', '#E0F2FE', '#075985'],
+    fetched:  ['fetched', '#D1FAE5', '#065F46'],
+    failed:   ['fetch failed', '#FEE2E2', '#991B1B'],
+    no_group: ['no group', '#F3F4F6', '#6B7280'],
+    skipped:  ['skipped — re-run', '#FEF3C7', '#92400E'],
+    not_found:['not in CRM', '#FEE2E2', '#991B1B'],
+  };
+  let html = '';
+  (r.results || []).forEach(function(res) {
+    const c = chip[res.source] || ['?', '#F3F4F6', '#6B7280'];
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:.5px solid #F3F4F6">';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="font-weight:700;font-size:12.5px">' + escapeHtml(res.name || '(no name)') +
+      ' <span style="font-weight:600;font-size:10px;padding:1px 7px;border-radius:9px;background:' + c[1] + ';color:' + c[2] + '">' + c[0] + '</span></div>';
+    if (res.link) html += '<div style="font-size:11px;color:#2563EB;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><a href="' + escapeHtml(res.link) + '" target="_blank">' + escapeHtml(res.link) + '</a></div>';
+    html += '</div>';
+    if (res.link) html += '<button class="action-bar-btn" style="flex-shrink:0" onclick="navigator.clipboard.writeText(\'' + escapeHtml(res.link).replace(/'/g, "\\'") + '\').then(function(){toast(\'Link copied\',\'success\')})">📋</button>';
+    html += '</div>';
+  });
+  if (r.skipped) html = '<div style="font-size:11px;color:#92400E;background:#FEF3C7;padding:6px 9px;border-radius:6px;margin-bottom:8px">' + r.skipped + ' link(s) skipped to stay within limits — run again to fetch them.</div>' + html;
+  body.innerHTML = html || '<div style="color:#6B7280;padding:20px;text-align:center">No results.</div>';
+}
+
+document.getElementById('btnWaLinksClose').onclick = function(){ document.getElementById('waLinksModal').classList.remove('open'); };
+document.getElementById('btnWaLinksCloseFooter').onclick = function(){ document.getElementById('waLinksModal').classList.remove('open'); };
+document.getElementById('waLinksModal').addEventListener('click', function(e){ if (e.target.id === 'waLinksModal') this.classList.remove('open'); });
+document.getElementById('btnWaLinksCopyAll').onclick = function() {
+  const lines = (window.WA_LINKS || []).filter(function(x){ return x.link; }).map(function(x){ return (x.name || x.phone) + ': ' + x.link; });
+  if (!lines.length) { toast('No links to copy', 'warn'); return; }
+  navigator.clipboard.writeText(lines.join('\n')).then(function(){ toast('Copied ' + lines.length + ' link' + (lines.length > 1 ? 's' : ''), 'success'); });
+};
 
 async function actionTogglePauseFu() {
   const fuBtn = document.getElementById('actionBarFu');
@@ -4125,6 +4247,10 @@ if (isMobile()) {
   });
 })();
 
+// Round 89 — seed the bulk-assign dropdown (refreshed again once the
+// Users roster loads, so newly-created staff appear).
+populateBulkAssignDropdown();
+
 // ================================================================
 // Round 76 — AUTH (login gate + session)
 // ================================================================
@@ -4175,6 +4301,8 @@ async function loadRoster() {
     const a = String(u.assignName || '').trim();
     if (a && !seen[a]) { seen[a] = 1; USER_ASSIGN_NAMES.push(a); }
   });
+  // Round 89 — refresh the bulk-assign dropdown with live staff names.
+  if (typeof populateBulkAssignDropdown === 'function') populateBulkAssignDropdown();
 }
 
 function showLoginGate() {
