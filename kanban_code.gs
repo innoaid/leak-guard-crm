@@ -163,6 +163,10 @@ function _resetFuCadenceIfPhaseChanged(sheet, rowNum, prevStatus, newStatus) {
 // ================================================================
 const CALLERS = ['Alvin', 'Ken'];          // round-robin call agents
 const CALL_DELAY_DAYS = 2;                  // first call due = QS entry + 2 days
+// Round 90.1 — phases the caller may move an Accepted card to (everything
+// after Quotation Sent). First entry is the default if none/invalid given.
+const ACCEPT_PHASES = ['Pending Downpayment', 'Pending I.Date', 'I.Date Confirmed',
+  'Job In Progress', 'Pending Balance', 'Job Complete', 'Receipt Sent', 'Completed'];
 
 // Atomic round-robin: returns the next caller name, alternating globally
 // regardless of which salesperson attended. Pointer in Script Properties.
@@ -2844,7 +2848,8 @@ function _callerQueues() {
   const cStatus = col('Status'), cCaller = col('Caller'), cNext = col('Next Call Date'),
         cOutcome = col('Call Outcome'), cName = col('Name'), cPhone = col('Phone'),
         cQuote = col('Quotation (RM)'), cChanged = col('Status Changed At'),
-        cLink = col('Group Invite Link (AJ)'), cCount = col('Call Count');
+        cLink = col('Group Invite Link (AJ)'), cCount = col('Call Count'),
+        cNote = col('Last Call Note');
   const today = _mytDateStr();
   const out = {};
   for (let i = 1; i < data.length; i++) {
@@ -2863,6 +2868,7 @@ function _callerQueues() {
       lastOutcome: outcome,
       nextCallDate: nextDate,
       callCount: cCount >= 0 ? (Number(data[i][cCount]) || 0) : 0,
+      lastNote: cNote >= 0 ? String(data[i][cNote] || '').trim() : '',
       groupLink: cLink >= 0 ? String(data[i][cLink] || '').trim() : '',
     });
   }
@@ -2871,19 +2877,43 @@ function _callerQueues() {
   return out;
 }
 
-// callerJobs action — mini-page due list for one caller.
+// callerJobs action — mini-page due list for one caller, each job carrying
+// its internal-note history (from the append-only Calls sheet) so the caller
+// has context before calling the same client again.
 function handleCallerJobs(body) {
   const caller = String(body.caller || '').trim();
   if (!caller) return jsonResponse({status: 'error', message: 'caller required'});
   const queues = _callerQueues();
-  // case-insensitive match to the canonical caller name
   let key = caller;
   Object.keys(queues).forEach(function(k) { if (k.toLowerCase() === caller.toLowerCase()) key = k; });
-  return jsonResponse({status: 'ok', caller: key, jobs: queues[key] || []});
+  const jobs = queues[key] || [];
+
+  // Build phone(last8) -> [{date, note}] from the Calls sheet (one read).
+  const hist = {};
+  const calls = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(CALLS_SHEET);
+  if (calls && jobs.length) {
+    const cd = calls.getDataRange().getValues();
+    const ch = getHeaders(calls);
+    const cTs = ch.colByName['Timestamp'] - 1, cPhone = ch.colByName['Phone'] - 1, cNote = ch.colByName['Note'] - 1;
+    for (let i = 1; i < cd.length; i++) {
+      const note = String(cd[i][cNote] || '').trim();
+      if (!note) continue;
+      const k = _last8(cd[i][cPhone]);
+      (hist[k] = hist[k] || []).push({ date: _normalizeDateStr(cd[i][cTs]), note: note });
+    }
+  }
+  jobs.forEach(function(j) {
+    const list = hist[_last8(j.phone)] || [];
+    list.reverse(); // newest first
+    j.noteHistory = list.slice(0, 5);
+  });
+  return jsonResponse({status: 'ok', caller: key, jobs: jobs});
 }
 
 // logCall action — caller records an outcome.
-// body: {caller, phone, outcome:'follow_up'|'accepted'|'rejected', nextDate?, note?}
+// body: {caller, phone, outcome:'follow_up'|'accepted'|'rejected',
+//        targetPhase? (accepted), nextDate? (follow_up),
+//        note? (internal, kept as history), groupMsg? (follow_up, sent to WA group)}
 function handleLogCall(body) {
   const caller = String(body.caller || '').trim();
   const phone = String(body.phone || '').trim();
@@ -2898,40 +2928,60 @@ function handleLogCall(body) {
   const sheet = getSheet();
   const row = findRowByPhone(sheet, phone);
   if (!row) return jsonResponse({status: 'error', message: 'lead not found'});
-  const name = (function(){ try { const h = getHeaders(sheet); return String(sheet.getRange(row, h.colByName['Name']).getValue() || '').trim(); } catch (_e) { return ''; } })();
+  const h = getHeaders(sheet);
+  const name = (function(){ try { return String(sheet.getRange(row, h.colByName['Name']).getValue() || '').trim(); } catch (_e) { return ''; } })();
+  // Round 90.1 — two distinct fields: internal note (private, kept as
+  // history) vs groupMsg (customer-facing, posted to the WA group).
+  const note = String(body.note || '').slice(0, 500);
+  const groupMsg = String(body.groupMsg || '').slice(0, 1000);
 
-  // Append to Calls sheet (append-only history → report)
+  // Append to Calls sheet (append-only history → report + note history).
+  // The 'Note' column holds the INTERNAL note only.
   const calls = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(CALLS_SHEET);
   if (calls) {
     calls.appendRow([new Date().toISOString(), phone, name, caller, outcome,
-      outcome === 'follow_up' ? nextDate : '', String(body.note || '').slice(0, 300)]);
+      outcome === 'follow_up' ? nextDate : '', note]);
   }
 
   // Update the lead row's current call state
   try { setCellByHeader(sheet, row, 'Call Outcome', outcome); } catch (_e) {}
   try { setCellByHeader(sheet, row, 'Last Call At', new Date().toISOString()); } catch (_e) {}
+  if (note) { try { setCellByHeader(sheet, row, 'Last Call Note', note); } catch (_e) {} }
   try {
-    const h = getHeaders(sheet);
     if (h.colByName['Call Count']) {
       const cur = Number(sheet.getRange(row, h.colByName['Call Count']).getValue() || 0);
       sheet.getRange(row, h.colByName['Call Count']).setValue(cur + 1);
     }
   } catch (_e) {}
 
+  let groupMsgSent = false;
   if (outcome === 'follow_up') {
     try { setCellByHeader(sheet, row, 'Next Call Date', nextDate); } catch (_e) {}
+    // Round 90.1 — post the optional customer message into the WA group now.
+    if (groupMsg && h.colByName['Group ID (AB)']) {
+      const groupId = String(sheet.getRange(row, h.colByName['Group ID (AB)']).getValue() || '').trim();
+      if (groupId) { _sendWhapiText(groupId, groupMsg); groupMsgSent = true; }
+    }
   } else {
     try { setCellByHeader(sheet, row, 'Next Call Date', ''); } catch (_e) {}
-    const newStatus = (outcome === 'accepted') ? 'Pending Downpayment' : 'Rejected';
-    const h = getHeaders(sheet);
+    // Round 90.1 — accepted moves to the caller-chosen phase (default
+    // Pending Downpayment); rejected → Rejected.
+    let newStatus;
+    if (outcome === 'accepted') {
+      const tp = String(body.targetPhase || '').trim();
+      newStatus = ACCEPT_PHASES.indexOf(tp) !== -1 ? tp : 'Pending Downpayment';
+    } else {
+      newStatus = 'Rejected';
+    }
     let prevStatus = '';
     try { prevStatus = String(sheet.getRange(row, h.colByName['Status']).getValue() || '').trim(); } catch (_e) {}
     try { setCellByHeader(sheet, row, 'Status', newStatus); } catch (_e) {}
     try { setCellByHeader(sheet, row, 'Status Changed At', new Date().toISOString()); } catch (_e) {}
     try { setCellByHeader(sheet, row, 'Changed By', 'Caller:' + caller); } catch (_e) {}
     _resetFuCadenceIfPhaseChanged(sheet, row, prevStatus, newStatus);
+    return jsonResponse({status: 'ok', outcome: outcome, newStatus: newStatus});
   }
-  return jsonResponse({status: 'ok', outcome: outcome});
+  return jsonResponse({status: 'ok', outcome: outcome, groupMsgSent: groupMsgSent});
 }
 
 // ── Reminders: 3x/day (8am, 3pm, 7pm MYT) per caller ──
@@ -2962,6 +3012,7 @@ function _buildCallerMessage(caller, jobs) {
     if (c.callCount) bits.push(c.callCount + ' call' + (c.callCount > 1 ? 's' : '') + ' so far');
     if (c.lastOutcome === 'follow_up') bits.push('follow-up due');
     if (bits.length) lines.push('    ⏱ ' + bits.join(' · '));
+    if (c.lastNote) lines.push('    📝 last note: ' + _snippet(c.lastNote, 120));
     if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
     if (i < jobs.length - 1) lines.push('');
   });
@@ -3053,7 +3104,7 @@ function handleCallerReport(body) {
 function bootstrapCallerColumns() {
   const sheet = getSheet();
   const h = getHeaders(sheet);
-  const wanted = ['Caller', 'Next Call Date', 'Call Outcome', 'Call Count', 'Last Call At']
+  const wanted = ['Caller', 'Next Call Date', 'Call Outcome', 'Call Count', 'Last Call At', 'Last Call Note']
     .filter(function(n) { return !h.colByName[n]; });
   if (!wanted.length) { Logger.log('bootstrapCallerColumns: all present'); return; }
   const lastCol = sheet.getLastColumn();

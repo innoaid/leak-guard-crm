@@ -22,11 +22,21 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .btns{display:flex;gap:8px;margin-top:12px}
 .btn{flex:1;border:none;border-radius:10px;padding:12px 8px;font-size:14px;font-weight:700;cursor:pointer;color:#fff}
 .btn-acc{background:#10B981}.btn-rej{background:#EF4444}.btn-fu{background:#F59E0B}
-.fu-panel{margin-top:10px;display:none;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px}
-.fu-panel.open{display:block}
-.fu-panel label{font-size:12px;font-weight:700;color:#92400E;display:block;margin-bottom:4px}
-.fu-panel input,.fu-panel textarea{width:100%;border:1px solid #D1D5DB;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;margin-bottom:8px}
-.fu-panel .go{background:#F59E0B;color:#fff;border:none;border-radius:8px;padding:10px;width:100%;font-weight:700;font-size:14px;cursor:pointer}
+.fu-panel,.acc-panel{margin-top:10px;display:none;border-radius:10px;padding:10px}
+.fu-panel{background:#FFFBEB;border:1px solid #FDE68A}
+.acc-panel{background:#ECFDF5;border:1px solid #A7F3D0}
+.fu-panel.open,.acc-panel.open{display:block}
+.fu-panel label,.acc-panel label{font-size:12px;font-weight:700;color:#92400E;display:block;margin-bottom:4px}
+.acc-panel label{color:#065F46}
+.fu-panel input,.fu-panel textarea,.acc-panel select{width:100%;border:1px solid #D1D5DB;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;margin-bottom:8px;background:#fff}
+.go{color:#fff;border:none;border-radius:8px;padding:10px;width:100%;font-weight:700;font-size:14px;cursor:pointer}
+.fu-panel .go{background:#F59E0B}
+.acc-panel .go-acc{background:#10B981}
+.hist{margin-top:8px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px}
+.hist-h{font-size:11px;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px}
+.hist-row{font-size:12px;color:#374151;line-height:1.5;padding:2px 0;border-top:.5px solid #F3F4F6}
+.hist-row:first-of-type{border-top:none}
+.hist-d{font-weight:700;color:#6B7280}
 .empty{text-align:center;color:#6b7280;padding:60px 20px;font-size:15px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
 .toast.on{opacity:1}
@@ -45,6 +55,8 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
 const SECRET = 'ABC';
 const CALLER = (new URLSearchParams(location.search).get('caller') || '').trim();
+// Phases an Accepted card may be moved to (mirror of ACCEPT_PHASES server-side).
+const ACCEPT_PHASES = ['Pending Downpayment','Pending I.Date','I.Date Confirmed','Job In Progress','Pending Balance','Job Complete','Receipt Sent','Completed'];
 
 function toast(msg, kind){
   const t = document.getElementById('toast');
@@ -81,43 +93,66 @@ function cardHtml(j, i){
   if (j.daysSinceQs >= 0) bits.push('<b>' + j.daysSinceQs + 'd</b> since QT');
   if (j.callCount) bits.push(j.callCount + ' call' + (j.callCount>1?'s':'') + ' so far');
   if (j.lastOutcome === 'follow_up') bits.push('follow-up' + (j.nextCallDate ? ' due ' + esc(j.nextCallDate) : ''));
+  // Past internal notes (most recent first) for context before calling again.
+  let histHtml = '';
+  if (j.noteHistory && j.noteHistory.length) {
+    histHtml = '<div class="hist"><div class="hist-h">📝 Notes history</div>' +
+      j.noteHistory.map(function(n){ return '<div class="hist-row"><span class="hist-d">' + esc(n.date) + '</span> ' + esc(n.note) + '</div>'; }).join('') +
+      '</div>';
+  }
+  const phaseOpts = ACCEPT_PHASES.map(function(p){ return '<option value="'+esc(p)+'">'+esc(p)+'</option>'; }).join('');
   return '<div class="card" id="card'+i+'">' +
     '<div class="cname">' + esc(j.name || '(no name)') + '</div>' +
     '<div class="meta">' + bits.join(' · ') + '</div>' +
     (j.quotationRm ? '<div class="rmtag">RM ' + Number(j.quotationRm).toLocaleString() + '</div>' : '') +
+    histHtml +
     '<div class="links">' +
       (tel ? '<a href="tel:'+tel+'">📞 Call ' + esc(j.phone) + '</a>' : '') +
       (j.groupLink ? '<a href="'+esc(j.groupLink)+'" target="_blank">💬 WA group</a>' : '') +
     '</div>' +
     '<div class="btns">' +
-      '<button class="btn btn-acc" onclick="logOutcome('+i+',\'accepted\')">✅ Accepted</button>' +
+      '<button class="btn btn-acc" onclick="toggleAcc('+i+')">✅ Accepted</button>' +
       '<button class="btn btn-rej" onclick="logOutcome('+i+',\'rejected\')">❌ Rejected</button>' +
       '<button class="btn btn-fu" onclick="toggleFu('+i+')">📅 Follow-up</button>' +
+    '</div>' +
+    '<div class="acc-panel" id="acc'+i+'">' +
+      '<label>Move job card to phase</label>' +
+      '<select id="accp'+i+'">' + phaseOpts + '</select>' +
+      '<button class="go go-acc" onclick="logAccepted('+i+')">Confirm accepted</button>' +
     '</div>' +
     '<div class="fu-panel" id="fu'+i+'">' +
       '<label>Next follow-up date</label>' +
       '<input type="date" id="fud'+i+'" min="'+todayStr()+'" value="'+todayStr()+'">' +
-      '<label>Note (optional)</label>' +
-      '<textarea id="fun'+i+'" rows="2" placeholder="e.g. asked for discount, will decide next week"></textarea>' +
+      '<label>📝 Internal note (our reference — not sent to customer)</label>' +
+      '<textarea id="fun'+i+'" rows="2" placeholder="e.g. asked for discount, comparing quotes, call back after payday"></textarea>' +
+      '<label>💬 Message to customer\'s WA group (optional — sent now)</label>' +
+      '<textarea id="fug'+i+'" rows="2" placeholder="e.g. Hi, just following up on your waterproofing quotation — any questions we can help with?"></textarea>' +
       '<button class="go" onclick="logFollowUp('+i+')">Save follow-up</button>' +
     '</div>' +
   '</div>';
 }
 
-function toggleFu(i){ document.getElementById('fu'+i).classList.toggle('open'); }
+function toggleFu(i){ document.getElementById('fu'+i).classList.toggle('open'); document.getElementById('acc'+i).classList.remove('open'); }
+function toggleAcc(i){ document.getElementById('acc'+i).classList.toggle('open'); document.getElementById('fu'+i).classList.remove('open'); }
 
 async function logOutcome(i, outcome){
   const j = JOBS[i]; if (!j) return;
-  const verb = outcome === 'accepted' ? 'ACCEPTED' : 'REJECTED';
-  if (!confirm('Mark ' + (j.name || 'this customer') + ' as ' + verb + '?')) return;
+  if (!confirm('Mark ' + (j.name || 'this customer') + ' as REJECTED?')) return;
   await send(i, { caller: CALLER, phone: j.phone, outcome: outcome });
+}
+async function logAccepted(i){
+  const j = JOBS[i]; if (!j) return;
+  const phase = document.getElementById('accp'+i).value;
+  if (!confirm('Mark ' + (j.name || 'this customer') + ' as ACCEPTED and move to "' + phase + '"?')) return;
+  await send(i, { caller: CALLER, phone: j.phone, outcome: 'accepted', targetPhase: phase });
 }
 async function logFollowUp(i){
   const j = JOBS[i]; if (!j) return;
   const date = document.getElementById('fud'+i).value;
   const note = document.getElementById('fun'+i).value;
+  const groupMsg = document.getElementById('fug'+i).value;
   if (!date){ toast('Pick a date', 'err'); return; }
-  await send(i, { caller: CALLER, phone: j.phone, outcome: 'follow_up', nextDate: date, note: note });
+  await send(i, { caller: CALLER, phone: j.phone, outcome: 'follow_up', nextDate: date, note: note, groupMsg: groupMsg });
 }
 async function send(i, payload){
   const res = await api('logCall', payload);
