@@ -326,6 +326,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <button class="hdr-btn" id="btnManageStaff" title="Add / view staff logins" style="display:none">👥 Manage Staff</button>
     <button class="hdr-btn" id="btnPhaseScan" title="Stuck cards + follow-up compliance across phases" style="display:none">📋 Phase Scan</button>
     <button class="hdr-btn" id="btnSalesReport" title="Salesperson scoreboard + weekly meeting agenda" style="display:none">📊 Sales Report</button>
+    <button class="hdr-btn" id="btnCallerReport" title="Caller calls + closing rate" style="display:none">📞 Caller Report</button>
     <button class="hdr-btn" id="btnArchive">📦 Archive <span class="badge" id="archCount">0</span></button>
     <button class="hdr-btn logout" id="btnLogout" title="Sign out" style="display:none">Sign out</button>
   </div>
@@ -557,6 +558,40 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
         <option value="">All salespersons</option>
       </select>
       <button class="modal-btn modal-btn-info" id="btnSalesReportPdf">📄 PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Caller Report modal (Round 90) -->
+<div class="modal-overlay" id="callerReportModal">
+  <div class="modal" style="max-width:760px">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">📞 Caller Report</div>
+        <div class="modal-sub">Calls logged + closing rate per caller (Alvin / Ken)</div>
+      </div>
+      <button class="modal-close" id="btnCallerReportClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <select id="crPreset" class="modal-select" style="width:auto">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="month">This month</option>
+          <option value="all">All time</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <span id="crCustomRange" style="display:none">
+          <input type="date" id="crFrom" class="modal-select" style="width:auto"> –
+          <input type="date" id="crTo" class="modal-select" style="width:auto">
+        </span>
+        <button class="modal-btn modal-btn-primary" id="btnCrGenerate" style="margin-left:auto">Generate</button>
+      </div>
+      <div id="crBody"><div style="text-align:center;padding:30px;color:#6B7280">Pick a range and hit Generate</div></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-secondary" id="btnCallerReportCloseFooter">Close</button>
+      <button class="modal-btn modal-btn-info" id="btnCallerReportPdf">📄 PDF</button>
     </div>
   </div>
 </div>
@@ -4078,6 +4113,61 @@ async function exportSalesPdf() {
 }
 
 document.getElementById('btnSalesReportPdf').onclick = exportSalesPdf;
+
+// ================================================================
+// Round 90 — Caller Report: calls + closing rate per caller.
+// ================================================================
+function crRangeDates() {
+  const preset = document.getElementById('crPreset').value;
+  const today = new Date(Date.now() + 8 * 3600 * 1000);
+  const iso = function(d){ return d.toISOString().slice(0,10); };
+  if (preset === 'custom') return { from: document.getElementById('crFrom').value || '', to: document.getElementById('crTo').value || '' };
+  if (preset === 'all') return { from: '2020-01-01', to: iso(today) };
+  if (preset === 'month') { const f = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)); return { from: iso(f), to: iso(today) }; }
+  return { from: iso(new Date(today.getTime() - Number(preset) * 86400000)), to: iso(today) };
+}
+
+async function crGenerate() {
+  const body = document.getElementById('crBody');
+  body.innerHTML = '<div style="text-align:center;padding:30px;color:#6B7280">⏳ Crunching…</div>';
+  const range = crRangeDates();
+  const res = await apiCall('callerReport', { from: range.from, to: range.to });
+  if (!res || res.status !== 'ok') { body.innerHTML = '<div style="padding:14px;background:#FEE2E2;color:#991B1B;border-radius:6px">Failed: ' + escapeHtml((res && res.message) || 'unknown') + '</div>'; return; }
+  window.CR_LAST = { from: res.from, to: res.to };
+  let html = '<div class="pdf-sec" style="font-size:11px;color:#6B7280;margin-bottom:8px">Range: ' + escapeHtml(res.from) + ' → ' + escapeHtml(res.to) + '</div>';
+  if (!res.people.length) {
+    html += '<div style="color:#6B7280;padding:20px;text-align:center">No calls logged in this range.</div>';
+  } else {
+    html += '<table class="pdf-sec" style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<tr style="text-align:left;color:#6B7280;border-bottom:1px solid #E5E7EB">' +
+      '<th style="padding:5px 6px">Caller</th><th>Calls</th><th>Cards</th><th>Accepted</th><th>Rejected</th><th>Follow-ups</th><th>Closing %</th><th>Open queue</th></tr>';
+    res.people.forEach(function(p) {
+      html += '<tr style="border-bottom:.5px solid #F3F4F6">' +
+        '<td style="padding:6px;font-weight:700">' + escapeHtml(p.caller) + '</td>' +
+        '<td>' + p.calls + '</td><td>' + p.cardsCalled + '</td>' +
+        '<td style="color:#065F46;font-weight:700">' + p.accepted + '</td>' +
+        '<td style="color:#991B1B">' + p.rejected + '</td><td>' + p.followUps + '</td>' +
+        '<td><b>' + p.closingRate + '%</b> <span style="color:#9CA3AF">(' + p.closingRateAll + '% of called)</span></td>' +
+        '<td>' + p.openQueue + '</td></tr>';
+    });
+    html += '</table>';
+    html += '<div style="font-size:10.5px;color:#9CA3AF;margin-top:6px">Closing % = accepted ÷ (accepted + rejected). "of called" = accepted ÷ unique cards called.</div>';
+  }
+  body.innerHTML = html;
+}
+
+document.getElementById('btnCallerReport').onclick = function(){ document.getElementById('callerReportModal').classList.add('open'); };
+document.getElementById('crPreset').onchange = function(){ document.getElementById('crCustomRange').style.display = this.value === 'custom' ? '' : 'none'; };
+document.getElementById('btnCrGenerate').onclick = crGenerate;
+function closeCallerReportModal(){ document.getElementById('callerReportModal').classList.remove('open'); }
+document.getElementById('btnCallerReportClose').onclick = closeCallerReportModal;
+document.getElementById('btnCallerReportCloseFooter').onclick = closeCallerReportModal;
+document.getElementById('callerReportModal').addEventListener('click', function(e){ if (e.target.id === 'callerReportModal') closeCallerReportModal(); });
+document.getElementById('btnCallerReportPdf').onclick = function() {
+  if (!window.CR_LAST) { toast('Generate the report first', 'warn'); return; }
+  exportReportPdf('Caller Report', window.CR_LAST.from + ' → ' + window.CR_LAST.to,
+    document.getElementById('crBody'), 'Caller-Report-' + window.CR_LAST.from + '-to-' + window.CR_LAST.to + '.pdf');
+};
 document.getElementById('btnBulkLinkClose').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkCloseFooter').onclick = closeBulkLinkModal;
 document.getElementById('btnBulkLinkRefetch').onclick = fetchBulkLinkPreview;
@@ -4286,6 +4376,9 @@ function applySession(sess) {
   // Round 86 — Sales Report is admin-only.
   const srBtn = document.getElementById('btnSalesReport');
   if (srBtn) srBtn.style.display = (sess.role === 'admin') ? '' : 'none';
+  // Round 90 — Caller Report is admin-only.
+  const crBtn = document.getElementById('btnCallerReport');
+  if (crBtn) crBtn.style.display = (sess.role === 'admin') ? '' : 'none';
   // Round 80 — load the roster so the assignee picker has live names.
   loadRoster();
 }

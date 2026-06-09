@@ -54,6 +54,9 @@ function doPost(e) {
       case 'bulkMoveStatus':     return handleBulkMoveStatus(body);  // round 32 — kanban bulk move-to-phase
       case 'bulkUpdateAssignee': return handleBulkUpdateAssignee(body);  // round 89 — bulk assign selected cards
       case 'bulkInviteLinks':    return handleBulkInviteLinks(body);  // round 89 — fetch/return WA invite links for selected cards
+      case 'callerJobs':         return handleCallerJobs(body);  // round 90 — caller mini-page due list
+      case 'logCall':            return handleLogCall(body);     // round 90 — caller logs an outcome
+      case 'callerReport':       return handleCallerReport(body);  // round 90 — caller performance report
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
@@ -155,6 +158,55 @@ function _resetFuCadenceIfPhaseChanged(sheet, rowNum, prevStatus, newStatus) {
   return true;
 }
 
+// ================================================================
+// Round 90 — caller (telesales) round-robin on Quotation Sent
+// ================================================================
+const CALLERS = ['Alvin', 'Ken'];          // round-robin call agents
+const CALL_DELAY_DAYS = 2;                  // first call due = QS entry + 2 days
+
+// Atomic round-robin: returns the next caller name, alternating globally
+// regardless of which salesperson attended. Pointer in Script Properties.
+function _nextCaller() {
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(5000); } catch (_e) { /* fall through, best-effort */ }
+  try {
+    const props = PropertiesService.getScriptProperties();
+    let idx = Number(props.getProperty('callerRrIdx') || 0);
+    const caller = CALLERS[idx % CALLERS.length];
+    props.setProperty('callerRrIdx', String((idx + 1) % CALLERS.length));
+    return caller;
+  } finally {
+    try { lock.releaseLock(); } catch (_e) {}
+  }
+}
+
+// today + n days as YYYY-MM-DD (MYT).
+function _mytDatePlus(days) {
+  const m = new Date(Date.now() + 8 * 60 * 60 * 1000 + (days || 0) * 86400000);
+  return m.getUTCFullYear() + '-' +
+    String(m.getUTCMonth() + 1).padStart(2, '0') + '-' +
+    String(m.getUTCDate()).padStart(2, '0');
+}
+
+// Hook: assign a caller + first-call date when a card enters Quotation Sent.
+// Idempotent — only fires on the transition into QS and only if no Caller yet.
+// Called at the same sites as _resetFuCadenceIfPhaseChanged.
+function _assignCallerOnQuotationSent(sheet, rowNum, prevStatus, newStatus) {
+  if (String(newStatus || '').trim() !== 'Quotation Sent') return false;
+  if (String(prevStatus || '').trim() === 'Quotation Sent') return false;
+  const h = getHeaders(sheet);
+  const callerCol = h.colByName['Caller'];
+  if (!callerCol) return false; // columns not bootstrapped yet
+  const existing = String(sheet.getRange(rowNum, callerCol).getValue() || '').trim();
+  if (existing) return false;
+  const caller = _nextCaller();
+  try { setCellByHeader(sheet, rowNum, 'Caller', caller); } catch (_e) {}
+  try { setCellByHeader(sheet, rowNum, 'Next Call Date', _mytDatePlus(CALL_DELAY_DAYS)); } catch (_e) {}
+  try { setCellByHeader(sheet, rowNum, 'Call Outcome', ''); } catch (_e) {}
+  try { setCellByHeader(sheet, rowNum, 'Call Count', 0); } catch (_e) {}
+  return true;
+}
+
 // Round 70 — compute the new group name when a QT-MMYY-NNN PDF is detected.
 // - Strips a leading SV-/SVJB- booking prefix
 // - If a QT-MMYY-NNN[/NNN...] prefix already exists with the same MMYY,
@@ -232,6 +284,7 @@ function handleUpdateStatus(body) {
   if (changedBy) sheet.getRange(rowNum, changedBy).setValue(body.changedBy || 'Kanban');
 
   const fuReset = _resetFuCadenceIfPhaseChanged(sheet, rowNum, prevStatus, body.status);
+  _assignCallerOnQuotationSent(sheet, rowNum, prevStatus, body.status);  // round 90
 
   return jsonResponse({status: 'ok', rowNum: rowNum, fuReset: fuReset});
 }
@@ -1170,6 +1223,7 @@ function handleBulkMoveStatus(body) {
     try { setCellByHeader(sheet, row, 'Status Changed At', ts);        } catch (_e) {}
     try { setCellByHeader(sheet, row, 'Changed By',        'Kanban_Bulk'); } catch (_e) {}
     if (_resetFuCadenceIfPhaseChanged(sheet, row, prevStatus, newStatus)) fuResets++;
+    _assignCallerOnQuotationSent(sheet, row, prevStatus, newStatus);  // round 90
     updated++;
   });
   return jsonResponse({status: 'ok', updated: updated, missing: missing, newStatus: newStatus, fuResets: fuResets});
@@ -2752,4 +2806,323 @@ function bootstrapLastAdminMsgAtColumn() {
   const lastCol = sheet.getLastColumn();
   sheet.getRange(1, lastCol + 1).setValue('Last Admin Msg At');
   Logger.log('bootstrapLastAdminMsgAtColumn: added Last Admin Msg At');
+}
+
+// ================================================================
+// Round 90 — caller (telesales) follow-up: queue, reminders, logging, report
+// ================================================================
+
+const CALLS_SHEET = 'Calls';
+const CALLS_HEADERS = ['Timestamp', 'Phone', 'Name', 'Caller', 'Outcome', 'Next Call Date', 'Note'];
+// Public mini-page the caller opens from the reminder DM.
+const CALLER_PAGE_URL = 'https://leakguard.my/caller.html';
+
+// Resolve a caller name -> WhatsApp phone via the Users tab (matches Name
+// or AssignName, case-insensitive). Returns '' if missing.
+function _callerPhone(name) {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!usersSheet) return '';
+  const u = usersSheet.getDataRange().getValues();
+  const want = String(name || '').trim().toLowerCase();
+  for (let i = 1; i < u.length; i++) {
+    const nm = String(u[i][2] || '').trim().toLowerCase();
+    const an = String(u[i][5] || '').trim().toLowerCase();
+    if (nm === want || an === want) return String(u[i][4] || '').replace(/\D/g, '');
+  }
+  return '';
+}
+
+// Build each caller's open call list: cards they own that are due
+// (Next Call Date <= today) and not yet accepted/rejected.
+// Returns { Alvin: [...], Ken: [...] } keyed by caller name.
+function _callerQueues() {
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const data = sheet.getDataRange().getValues();
+  const col = function(n) { return h.colByName[n] ? h.colByName[n] - 1 : -1; };
+  const cStatus = col('Status'), cCaller = col('Caller'), cNext = col('Next Call Date'),
+        cOutcome = col('Call Outcome'), cName = col('Name'), cPhone = col('Phone'),
+        cQuote = col('Quotation (RM)'), cChanged = col('Status Changed At'),
+        cLink = col('Group Invite Link (AJ)'), cCount = col('Call Count');
+  const today = _mytDateStr();
+  const out = {};
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][cStatus] || '').trim() !== 'Quotation Sent') continue;
+    const caller = cCaller >= 0 ? String(data[i][cCaller] || '').trim() : '';
+    if (!caller) continue;
+    const outcome = cOutcome >= 0 ? String(data[i][cOutcome] || '').trim() : '';
+    if (outcome === 'accepted' || outcome === 'rejected') continue;
+    const nextDate = cNext >= 0 ? _normalizeDateStr(data[i][cNext]) : '';
+    if (nextDate && nextDate > today) continue; // not due yet
+    (out[caller] = out[caller] || []).push({
+      name: cName >= 0 ? String(data[i][cName] || '').trim() : '',
+      phone: cPhone >= 0 ? String(data[i][cPhone] || '').trim() : '',
+      quotationRm: cQuote >= 0 ? (Number(data[i][cQuote]) || 0) : 0,
+      daysSinceQs: cChanged >= 0 ? _daysSinceMyt(data[i][cChanged]) : -1,
+      lastOutcome: outcome,
+      nextCallDate: nextDate,
+      callCount: cCount >= 0 ? (Number(data[i][cCount]) || 0) : 0,
+      groupLink: cLink >= 0 ? String(data[i][cLink] || '').trim() : '',
+    });
+  }
+  // oldest-waiting first
+  Object.keys(out).forEach(function(k) { out[k].sort(function(a, b) { return (b.daysSinceQs || 0) - (a.daysSinceQs || 0); }); });
+  return out;
+}
+
+// callerJobs action — mini-page due list for one caller.
+function handleCallerJobs(body) {
+  const caller = String(body.caller || '').trim();
+  if (!caller) return jsonResponse({status: 'error', message: 'caller required'});
+  const queues = _callerQueues();
+  // case-insensitive match to the canonical caller name
+  let key = caller;
+  Object.keys(queues).forEach(function(k) { if (k.toLowerCase() === caller.toLowerCase()) key = k; });
+  return jsonResponse({status: 'ok', caller: key, jobs: queues[key] || []});
+}
+
+// logCall action — caller records an outcome.
+// body: {caller, phone, outcome:'follow_up'|'accepted'|'rejected', nextDate?, note?}
+function handleLogCall(body) {
+  const caller = String(body.caller || '').trim();
+  const phone = String(body.phone || '').trim();
+  const outcome = String(body.outcome || '').trim();
+  if (!phone || ['follow_up', 'accepted', 'rejected'].indexOf(outcome) === -1) {
+    return jsonResponse({status: 'error', message: 'phone + valid outcome required'});
+  }
+  const nextDate = _normalizeDateStr(body.nextDate || '');
+  if (outcome === 'follow_up' && !/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+    return jsonResponse({status: 'error', message: 'follow_up needs a nextDate (YYYY-MM-DD)'});
+  }
+  const sheet = getSheet();
+  const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({status: 'error', message: 'lead not found'});
+  const name = (function(){ try { const h = getHeaders(sheet); return String(sheet.getRange(row, h.colByName['Name']).getValue() || '').trim(); } catch (_e) { return ''; } })();
+
+  // Append to Calls sheet (append-only history → report)
+  const calls = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(CALLS_SHEET);
+  if (calls) {
+    calls.appendRow([new Date().toISOString(), phone, name, caller, outcome,
+      outcome === 'follow_up' ? nextDate : '', String(body.note || '').slice(0, 300)]);
+  }
+
+  // Update the lead row's current call state
+  try { setCellByHeader(sheet, row, 'Call Outcome', outcome); } catch (_e) {}
+  try { setCellByHeader(sheet, row, 'Last Call At', new Date().toISOString()); } catch (_e) {}
+  try {
+    const h = getHeaders(sheet);
+    if (h.colByName['Call Count']) {
+      const cur = Number(sheet.getRange(row, h.colByName['Call Count']).getValue() || 0);
+      sheet.getRange(row, h.colByName['Call Count']).setValue(cur + 1);
+    }
+  } catch (_e) {}
+
+  if (outcome === 'follow_up') {
+    try { setCellByHeader(sheet, row, 'Next Call Date', nextDate); } catch (_e) {}
+  } else {
+    try { setCellByHeader(sheet, row, 'Next Call Date', ''); } catch (_e) {}
+    const newStatus = (outcome === 'accepted') ? 'Pending Downpayment' : 'Rejected';
+    const h = getHeaders(sheet);
+    let prevStatus = '';
+    try { prevStatus = String(sheet.getRange(row, h.colByName['Status']).getValue() || '').trim(); } catch (_e) {}
+    try { setCellByHeader(sheet, row, 'Status', newStatus); } catch (_e) {}
+    try { setCellByHeader(sheet, row, 'Status Changed At', new Date().toISOString()); } catch (_e) {}
+    try { setCellByHeader(sheet, row, 'Changed By', 'Caller:' + caller); } catch (_e) {}
+    _resetFuCadenceIfPhaseChanged(sheet, row, prevStatus, newStatus);
+  }
+  return jsonResponse({status: 'ok', outcome: outcome});
+}
+
+// ── Reminders: 3x/day (8am, 3pm, 7pm MYT) per caller ──
+function _doCallerReminders() {
+  const queues = _callerQueues();
+  let sent = 0, skipped = 0;
+  CALLERS.forEach(function(caller) {
+    const jobs = queues[caller] || [];
+    if (!jobs.length) { skipped++; return; }
+    const phone = _callerPhone(caller);
+    if (!phone) { skipped++; Logger.log('caller reminder: no phone for ' + caller); return; }
+    _sendWhapiText(phone, _buildCallerMessage(caller, jobs));
+    sent++;
+    Utilities.sleep(600);
+  });
+  return { sent: sent, skipped: skipped };
+}
+
+function _buildCallerMessage(caller, jobs) {
+  const lines = [];
+  lines.push('📞 *Call list — ' + caller + '*');
+  lines.push('_' + jobs.length + ' customer' + (jobs.length > 1 ? 's' : '') + ' to follow up_', '');
+  jobs.forEach(function(c, i) {
+    lines.push((i + 1) + '. *' + (c.name || '(no name)') + '*' + (c.quotationRm ? ' — RM' + Math.round(c.quotationRm) : ''));
+    if (c.phone) lines.push('    📞 ' + c.phone);
+    const bits = [];
+    if (c.daysSinceQs >= 0) bits.push(c.daysSinceQs + 'd since QT');
+    if (c.callCount) bits.push(c.callCount + ' call' + (c.callCount > 1 ? 's' : '') + ' so far');
+    if (c.lastOutcome === 'follow_up') bits.push('follow-up due');
+    if (bits.length) lines.push('    ⏱ ' + bits.join(' · '));
+    if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
+    if (i < jobs.length - 1) lines.push('');
+  });
+  lines.push('', 'Log outcomes here:', CALLER_PAGE_URL + '?caller=' + encodeURIComponent(caller));
+  return lines.join('\n');
+}
+
+// Trigger target — 30-min trigger, self-gates to the 8am/3pm/7pm MYT hours,
+// once per slot per day (guard property remembers date_hour).
+function sendCallerReminders() {
+  const mytHour = new Date(Date.now() + 8 * 60 * 60 * 1000).getUTCHours();
+  if (mytHour !== 8 && mytHour !== 15 && mytHour !== 19) return;
+  const props = PropertiesService.getScriptProperties();
+  const slot = _mytDateStr() + '_' + mytHour;
+  if (props.getProperty('lastCallerReminder') === slot) return;
+  const result = _doCallerReminders();
+  props.setProperty('lastCallerReminder', slot);
+  Logger.log('sendCallerReminders[' + slot + ']: ' + JSON.stringify(result));
+}
+
+// Manual test from the editor — bypasses the hour + slot guards.
+function testCallerReminders() {
+  Logger.log('testCallerReminders: ' + JSON.stringify(_doCallerReminders()));
+}
+
+function setupCallerReminderTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'sendCallerReminders') {
+      Logger.log('setupCallerReminderTrigger: already installed');
+      return;
+    }
+  }
+  ScriptApp.newTrigger('sendCallerReminders').timeBased().everyMinutes(30).create();
+  Logger.log('setupCallerReminderTrigger: installed (every 30 min, self-gated to 8am/3pm/7pm MYT)');
+}
+
+// callerReport action — per-caller performance from the Calls sheet.
+function handleCallerReport(body) {
+  const todayStr = _mytDateStr();
+  let from = String(body.from || '').trim();
+  let to = String(body.to || '').trim() || todayStr;
+  if (!from) { const d = new Date(Date.now() + 8 * 3600 * 1000); d.setUTCDate(d.getUTCDate() - 30); from = d.toISOString().slice(0, 10); }
+
+  const calls = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(CALLS_SHEET);
+  const agg = {};
+  const ensure = function(name) {
+    const k = name || 'Unknown';
+    if (!agg[k]) agg[k] = { caller: k, calls: 0, cards: {}, accepted: 0, rejected: 0, followUps: 0, openQueue: 0 };
+    return agg[k];
+  };
+  if (calls) {
+    const cd = calls.getDataRange().getValues();
+    const ch = getHeaders(calls);
+    const cTs = ch.colByName['Timestamp'] - 1, cPhone = ch.colByName['Phone'] - 1,
+          cCaller = ch.colByName['Caller'] - 1, cOutcome = ch.colByName['Outcome'] - 1;
+    for (let i = 1; i < cd.length; i++) {
+      const ds = _normalizeDateStr(cd[i][cTs]);
+      if (!ds || ds < from || ds > to) continue;
+      const a = ensure(String(cd[i][cCaller] || '').trim());
+      a.calls++;
+      a.cards[_last8(cd[i][cPhone])] = 1;
+      const o = String(cd[i][cOutcome] || '').trim();
+      if (o === 'accepted') a.accepted++;
+      else if (o === 'rejected') a.rejected++;
+      else if (o === 'follow_up') a.followUps++;
+    }
+  }
+  // current open-queue size per caller
+  const queues = _callerQueues();
+  Object.keys(queues).forEach(function(k) { ensure(k).openQueue = queues[k].length; });
+
+  const people = Object.keys(agg).map(function(k) {
+    const a = agg[k];
+    const cardsCalled = Object.keys(a.cards).length;
+    const decided = a.accepted + a.rejected;
+    return {
+      caller: a.caller, calls: a.calls, cardsCalled: cardsCalled,
+      accepted: a.accepted, rejected: a.rejected, followUps: a.followUps, openQueue: a.openQueue,
+      closingRate: decided ? Math.round(100 * a.accepted / decided) : 0,
+      closingRateAll: cardsCalled ? Math.round(100 * a.accepted / cardsCalled) : 0,
+    };
+  }).sort(function(a, b) { return b.accepted - a.accepted || b.calls - a.calls; });
+
+  return jsonResponse({status: 'ok', from: from, to: to, people: people });
+}
+
+// ── One-time bootstraps (run from the editor) ──
+function bootstrapCallerColumns() {
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const wanted = ['Caller', 'Next Call Date', 'Call Outcome', 'Call Count', 'Last Call At']
+    .filter(function(n) { return !h.colByName[n]; });
+  if (!wanted.length) { Logger.log('bootstrapCallerColumns: all present'); return; }
+  const lastCol = sheet.getLastColumn();
+  sheet.getRange(1, lastCol + 1, 1, wanted.length).setValues([wanted]);
+  Logger.log('bootstrapCallerColumns: added ' + wanted.join(', '));
+}
+
+function bootstrapCallsSheet() {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  let sheet = ss.getSheetByName(CALLS_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(CALLS_SHEET);
+    sheet.getRange(1, 1, 1, CALLS_HEADERS.length).setValues([CALLS_HEADERS]);
+    sheet.setFrozenRows(1);
+    Logger.log('bootstrapCallsSheet: created Calls tab');
+  } else {
+    Logger.log('bootstrapCallsSheet: already present');
+  }
+}
+
+// Seed Alvin/Ken into the Users tab (role 'caller', blank phone) so the
+// admin can fill their WhatsApp numbers via Manage Staff. Skips existing.
+function bootstrapCallerUsers() {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  const sheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!sheet) { Logger.log('bootstrapCallerUsers: Users tab missing — run bootstrapUsersSheet() first'); return; }
+  const data = sheet.getDataRange().getValues();
+  const have = {};
+  for (let i = 1; i < data.length; i++) {
+    have[String(data[i][2] || '').trim().toLowerCase()] = 1;
+    have[String(data[i][5] || '').trim().toLowerCase()] = 1;
+  }
+  CALLERS.forEach(function(name) {
+    if (have[name.toLowerCase()]) return;
+    sheet.appendRow([name.toLowerCase(), '0000', name, 'caller', '', name]);
+    Logger.log('bootstrapCallerUsers: seeded ' + name + ' (set phone + PIN in Manage Staff)');
+  });
+}
+
+// One-time: assign callers (round-robin) to existing Quotation Sent cards
+// with no caller yet. Next Call Date = max(today, StatusChangedAt + 2 days).
+function backfillCallers() {
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  if (!h.colByName['Caller']) { Logger.log('backfillCallers: run bootstrapCallerColumns() first'); return; }
+  const data = sheet.getDataRange().getValues();
+  const col = function(n) { return h.colByName[n] ? h.colByName[n] - 1 : -1; };
+  const cStatus = col('Status'), cCaller = col('Caller'), cChanged = col('Status Changed At');
+  const todayStr = _mytDateStr();
+  let assigned = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][cStatus] || '').trim() !== 'Quotation Sent') continue;
+    if (cCaller >= 0 && String(data[i][cCaller] || '').trim()) continue;
+    const row = i + 1;
+    const caller = _nextCaller();
+    // due = entry + 2 days, but never before today
+    const entry = cChanged >= 0 ? _normalizeDateStr(data[i][cChanged]) : '';
+    let due = todayStr;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(entry)) {
+      const d = new Date(Date.parse(entry + 'T00:00:00+08:00') + CALL_DELAY_DAYS * 86400000);
+      const dd = new Date(d.getTime() + 8 * 3600 * 1000);
+      const ds = dd.getUTCFullYear() + '-' + String(dd.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dd.getUTCDate()).padStart(2, '0');
+      due = ds > todayStr ? ds : todayStr;
+    }
+    try { setCellByHeader(sheet, row, 'Caller', caller); } catch (_e) {}
+    try { setCellByHeader(sheet, row, 'Next Call Date', due); } catch (_e) {}
+    try { setCellByHeader(sheet, row, 'Call Outcome', ''); } catch (_e) {}
+    try { setCellByHeader(sheet, row, 'Call Count', 0); } catch (_e) {}
+    assigned++;
+  }
+  Logger.log('backfillCallers: assigned ' + assigned + ' card(s)');
 }

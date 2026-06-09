@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Call List</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 40px}
+.hdr{background:#2D2A6E;color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:5}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .sub{font-size:12px;opacity:.85;margin-top:2px}
+.wrap{max-width:560px;margin:0 auto;padding:14px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card.gone{opacity:.4;pointer-events:none}
+.cname{font-size:16px;font-weight:800}
+.meta{font-size:12.5px;color:#6b7280;margin-top:3px;line-height:1.5}
+.meta b{color:#374151}
+.rmtag{display:inline-block;background:#EEF2FF;color:#2D2A6E;font-weight:700;font-size:12px;padding:2px 9px;border-radius:9px;margin-top:5px}
+.links{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:13px;color:#2563EB;text-decoration:none;border:1px solid #BFDBFE;border-radius:8px;padding:6px 12px;background:#EFF6FF}
+.btns{display:flex;gap:8px;margin-top:12px}
+.btn{flex:1;border:none;border-radius:10px;padding:12px 8px;font-size:14px;font-weight:700;cursor:pointer;color:#fff}
+.btn-acc{background:#10B981}.btn-rej{background:#EF4444}.btn-fu{background:#F59E0B}
+.fu-panel{margin-top:10px;display:none;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px}
+.fu-panel.open{display:block}
+.fu-panel label{font-size:12px;font-weight:700;color:#92400E;display:block;margin-bottom:4px}
+.fu-panel input,.fu-panel textarea{width:100%;border:1px solid #D1D5DB;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;margin-bottom:8px}
+.fu-panel .go{background:#F59E0B;color:#fff;border:none;border-radius:8px;padding:10px;width:100%;font-weight:700;font-size:14px;cursor:pointer}
+.empty{text-align:center;color:#6b7280;padding:60px 20px;font-size:15px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+.toast.on{opacity:1}
+.toast.err{background:#DC2626}.toast.ok{background:#059669}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1 id="hTitle">Call List</h1>
+  <div class="sub" id="hSub">Loading…</div>
+</div>
+<div class="wrap" id="list"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SECRET = 'ABC';
+const CALLER = (new URLSearchParams(location.search).get('caller') || '').trim();
+
+function toast(msg, kind){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast on ' + (kind || '');
+  setTimeout(function(){ t.className = 'toast ' + (kind || ''); }, 2600);
+}
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+function todayStr(){ const d = new Date(Date.now() + 8*3600*1000); return d.toISOString().slice(0,10); }
+
+async function api(action, payload){
+  const r = await fetch(APPS_SCRIPT_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify(Object.assign({action:action, secret:SECRET}, payload))
+  });
+  return r.json();
+}
+
+let JOBS = [];
+async function load(){
+  if (!CALLER){ document.getElementById('hSub').textContent = 'No caller specified in the link.'; return; }
+  document.getElementById('hTitle').textContent = '📞 ' + CALLER + ' — Call List';
+  const res = await api('callerJobs', { caller: CALLER });
+  const list = document.getElementById('list');
+  if (!res || res.status !== 'ok'){ document.getElementById('hSub').textContent = 'Load failed.'; return; }
+  JOBS = res.jobs || [];
+  document.getElementById('hSub').textContent = JOBS.length + ' customer' + (JOBS.length === 1 ? '' : 's') + ' to follow up';
+  if (!JOBS.length){ list.innerHTML = '<div class="empty">✅ All caught up — no calls due.</div>'; return; }
+  list.innerHTML = JOBS.map(function(j, i){ return cardHtml(j, i); }).join('');
+}
+
+function cardHtml(j, i){
+  const tel = String(j.phone || '').replace(/\D/g,'');
+  const bits = [];
+  if (j.daysSinceQs >= 0) bits.push('<b>' + j.daysSinceQs + 'd</b> since QT');
+  if (j.callCount) bits.push(j.callCount + ' call' + (j.callCount>1?'s':'') + ' so far');
+  if (j.lastOutcome === 'follow_up') bits.push('follow-up' + (j.nextCallDate ? ' due ' + esc(j.nextCallDate) : ''));
+  return '<div class="card" id="card'+i+'">' +
+    '<div class="cname">' + esc(j.name || '(no name)') + '</div>' +
+    '<div class="meta">' + bits.join(' · ') + '</div>' +
+    (j.quotationRm ? '<div class="rmtag">RM ' + Number(j.quotationRm).toLocaleString() + '</div>' : '') +
+    '<div class="links">' +
+      (tel ? '<a href="tel:'+tel+'">📞 Call ' + esc(j.phone) + '</a>' : '') +
+      (j.groupLink ? '<a href="'+esc(j.groupLink)+'" target="_blank">💬 WA group</a>' : '') +
+    '</div>' +
+    '<div class="btns">' +
+      '<button class="btn btn-acc" onclick="logOutcome('+i+',\'accepted\')">✅ Accepted</button>' +
+      '<button class="btn btn-rej" onclick="logOutcome('+i+',\'rejected\')">❌ Rejected</button>' +
+      '<button class="btn btn-fu" onclick="toggleFu('+i+')">📅 Follow-up</button>' +
+    '</div>' +
+    '<div class="fu-panel" id="fu'+i+'">' +
+      '<label>Next follow-up date</label>' +
+      '<input type="date" id="fud'+i+'" min="'+todayStr()+'" value="'+todayStr()+'">' +
+      '<label>Note (optional)</label>' +
+      '<textarea id="fun'+i+'" rows="2" placeholder="e.g. asked for discount, will decide next week"></textarea>' +
+      '<button class="go" onclick="logFollowUp('+i+')">Save follow-up</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function toggleFu(i){ document.getElementById('fu'+i).classList.toggle('open'); }
+
+async function logOutcome(i, outcome){
+  const j = JOBS[i]; if (!j) return;
+  const verb = outcome === 'accepted' ? 'ACCEPTED' : 'REJECTED';
+  if (!confirm('Mark ' + (j.name || 'this customer') + ' as ' + verb + '?')) return;
+  await send(i, { caller: CALLER, phone: j.phone, outcome: outcome });
+}
+async function logFollowUp(i){
+  const j = JOBS[i]; if (!j) return;
+  const date = document.getElementById('fud'+i).value;
+  const note = document.getElementById('fun'+i).value;
+  if (!date){ toast('Pick a date', 'err'); return; }
+  await send(i, { caller: CALLER, phone: j.phone, outcome: 'follow_up', nextDate: date, note: note });
+}
+async function send(i, payload){
+  const res = await api('logCall', payload);
+  if (res && res.status === 'ok'){
+    toast('Saved ✓', 'ok');
+    const c = document.getElementById('card'+i); if (c) c.classList.add('gone');
+  } else {
+    toast('Failed: ' + ((res && res.message) || 'error'), 'err');
+  }
+}
+
+load();
+</script>
+</body>
+</html>
