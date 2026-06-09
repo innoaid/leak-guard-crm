@@ -715,10 +715,16 @@ function handleClearPaymentVerification(body) {
   // Round 91 — notify every admin that a payment was verified (best-effort).
   try {
     const nm = h.colByName['Name'] ? String(sheet.getRange(rowNum, h.colByName['Name']).getValue() || '').trim() : '';
-    const amt = h.colByName['Verification Amount'] ? String(sheet.getRange(rowNum, h.colByName['Verification Amount']).getValue() || '').trim() : '';
+    // Round 91.2 — the amount cell already includes "RM" (from the
+    // "Noted with thx RM850" template), so strip any leading RM before
+    // prepending one — avoids "RMRM850".
+    const amtRaw = h.colByName['Verification Amount'] ? String(sheet.getRange(rowNum, h.colByName['Verification Amount']).getValue() || '').trim() : '';
+    const amt = amtRaw.replace(/^\s*RM\s*/i, '');
+    const link = h.colByName['Group Invite Link (AJ)'] ? String(sheet.getRange(rowNum, h.colByName['Group Invite Link (AJ)']).getValue() || '').trim() : '';
     const msg = '✅ *Payment verified*\n' + (nm || body.phone) + (amt ? ' — RM' + amt : '') +
       '\n' + curStatus + (newStatus !== curStatus ? ' → ' + newStatus : '') +
-      '\n_by ' + (body.changedBy || 'Account') + '_';
+      '\n_by ' + (body.changedBy || 'Account') + '_' +
+      (link ? '\n🔗 ' + link : '');
     _adminPhones().forEach(function(p) { _sendWhapiText(p, msg); });
   } catch (_e) { /* never block the verify response */ }
 
