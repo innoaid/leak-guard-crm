@@ -697,17 +697,19 @@ function handleClearPaymentVerification(body) {
     sheet.getRange(rowNum, h.colByName['Changed By']).setValue(body.changedBy || 'Account-Verified');
   }
 
-  // Round 65: only Pending Downpayment auto-jumps to Pending Balance on ✓ Verify.
-  // Pending Balance is template-driven (Google-review template -> Completed via R64.2).
+  // Round 91.1: a verified downpayment means the job starts → auto-jump to
+  // Job In Progress (was Pending Balance). Pending Balance is reached later
+  // (work done); Pending Balance itself is template-driven (Google-review
+  // template -> Completed via R64.2).
   let newStatus = curStatus;
   if (curStatus === 'Pending Downpayment') {
     handleUpdateStatus({
       action: 'updateStatus',
       phone: body.phone,
-      status: 'Pending Balance',
+      status: 'Job In Progress',
       changedBy: body.changedBy || 'Kanban_Verify_AutoShift'
     });
-    newStatus = 'Pending Balance';
+    newStatus = 'Job In Progress';
   }
 
   // Round 91 — notify every admin that a payment was verified (best-effort).
