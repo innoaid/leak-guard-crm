@@ -353,6 +353,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <option value="red">🔴 Red border only</option>
     <option value="non-red">⚪ Non-red only</option>
   </select>
+  <button class="refresh" id="btnToVerify" title="Show only cards pending payment verification" style="background:#FEF9C3;color:#854D0E;border:1px solid #FDE68A">💰 To Verify</button>
   <button class="btn-newlead" id="btnNewLead" title="Create a new lead manually">+ New Lead</button>
   <button class="refresh" id="btnBulkLink" title="Auto-link pre-CRM WA groups to CRM rows (bot stays silent)" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A">🔗 Bulk Link</button>
   <button class="refresh" id="btnBell" title="Recent activity (last 24h)">🔔<span id="bellDot" class="bell-dot" style="display:none"></span></button>
@@ -821,6 +822,7 @@ const ACTIVE_STATUSES = [
   'Quotation Sent',
   'Pending I.Date',          // UI label below relabels this
   'Pending Downpayment',
+  'Job In Progress',         // Round 91 — WIP column between Downpayment & Balance
   'Pending Balance',
   'Completed'
 ];
@@ -2844,6 +2846,11 @@ function rowEdit(label, inputHtml) {
 function closeLeadDetail() {
   document.getElementById('leadModal').classList.remove('open');
   currentModalLead = null;
+  // Round 91 — if this detail was opened from Phase Scan, return to it.
+  if (window.reopenScanAfterDetail) {
+    window.reopenScanAfterDetail = false;
+    if (typeof openPhaseScanModal === 'function') openPhaseScanModal();
+  }
 }
 
 async function saveLeadDetail() {
@@ -3710,6 +3717,8 @@ async function runPhaseScan() {
       if (!r.violations.length) {
         html += '<div style="font-size:12px;color:#065F46;padding:4px 0 2px">✓ clean</div>';
       } else {
+        const moveOpts = '<option value="">↦ Move to…</option>' +
+          ACTIVE_STATUSES.map(function(s){ return '<option value="'+escapeHtml(s)+'">'+escapeHtml(STATUS_LABELS[s]||s)+'</option>'; }).join('');
         r.violations.forEach(function(v) {
           const isMsgRule = (r.key === 'qsFollowup' || r.key === 'payment');
           // Round 87 — SVC rule shows the missed appointment date.
@@ -3718,13 +3727,18 @@ async function runPhaseScan() {
             : (isMsgRule
               ? 'last admin msg ' + (v.lastAdminMsgAgoH === null ? '<b>never</b>' : '<b>' + ageStr(v.lastAdminMsgAgoH) + ' ago</b>')
               : '<b>' + ageStr(v.ageHours) + '</b> in phase');
-          html += '<div class="ps-card pdf-sec" data-ps-phone="' + escapeHtml(String(v.phone)) + '" style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 10px;border:.5px solid #FCA5A5;background:#FEF2F2;border-radius:7px;margin-bottom:5px;cursor:pointer">';
-          html += '<div style="min-width:0">';
-          html += '<div style="font-weight:700;font-size:12.5px;color:#111827">' + escapeHtml(v.name || '(no name)') + (v.assignedTo ? ' <span style="font-weight:500;color:#6B7280">· ' + escapeHtml(v.assignedTo) + '</span>' : '') + '</div>';
+          const ph = escapeHtml(String(v.phone));
+          html += '<div class="ps-card pdf-sec" style="padding:7px 10px;border:.5px solid #FCA5A5;background:#FEF2F2;border-radius:7px;margin-bottom:5px">';
+          html += '<div class="ps-open" data-ps-phone="' + ph + '" style="cursor:pointer">';
+          html += '<div style="font-weight:700;font-size:12.5px;color:#111827">' + escapeHtml(v.name || '(no name)') + (v.assignedTo ? ' <span style="font-weight:500;color:#6B7280">· ' + escapeHtml(v.assignedTo) + '</span>' : '') + ' <span style="font-weight:500;font-size:10px;color:#2563EB">open →</span></div>';
           html += '<div style="font-size:11px;color:#7F1D1D">' + escapeHtml(v.phase) + ' · ' + ageLabel + '</div>';
           if (v.lastAdminMsg) html += '<div style="font-size:11px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px">💬 ' + escapeHtml(v.lastAdminMsg) + '</div>';
           html += '</div>';
-          html += '<div style="flex-shrink:0;font-size:11px;color:#2563EB">open →</div>';
+          // Round 91 — inline actions: move-to-phase + repair toggle.
+          html += '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">';
+          html += '<select class="ps-move" data-ps-phone="' + ph + '" style="flex:1;font-size:11px;padding:5px;border:1px solid #D1D5DB;border-radius:6px;background:#fff">' + moveOpts + '</select>';
+          html += '<button class="ps-repair" data-ps-phone="' + ph + '" style="flex-shrink:0;font-size:11px;padding:5px 9px;border:1px solid #FCA5A5;border-radius:6px;background:#fff;color:#991B1B;cursor:pointer">🔧 Repair</button>';
+          html += '</div>';
           html += '</div>';
         });
       }
@@ -3732,17 +3746,53 @@ async function runPhaseScan() {
     });
   }
   body.innerHTML = html;
-  // Click a flagged card → open its lead detail modal (on top of the scan).
-  body.querySelectorAll('[data-ps-phone]').forEach(function(el) {
+  const findLead = function(p) {
+    const last8 = p.length >= 8 ? p.slice(-8) : p;
+    return (allLeads || []).find(function(l) {
+      const lp = String(l['Phone'] || '').trim();
+      return lp === p || (lp.length >= 8 && lp.endsWith(last8));
+    });
+  };
+  // Open lead detail; flag so closing the detail returns to Phase Scan.
+  body.querySelectorAll('.ps-open').forEach(function(el) {
     el.onclick = function() {
-      const p = String(el.dataset.psPhone || '').trim();
-      const last8 = p.length >= 8 ? p.slice(-8) : p;
-      const lead = (allLeads || []).find(function(l) {
-        const lp = String(l['Phone'] || '').trim();
-        return lp === p || (lp.length >= 8 && lp.endsWith(last8));
-      });
-      if (lead) { closePhaseScanModal(); openLeadDetail(lead); }
-      else toast('Lead not loaded in this view — refresh the board', 'warn');
+      const lead = findLead(String(el.dataset.psPhone || '').trim());
+      if (lead) { window.reopenScanAfterDetail = true; closePhaseScanModal(); openLeadDetail(lead); }
+      else toast('Lead not loaded — refresh the board', 'warn');
+    };
+  });
+  // Round 91 — inline move-to-phase.
+  body.querySelectorAll('.ps-move').forEach(function(sel) {
+    sel.onchange = async function() {
+      const status = sel.value; if (!status) return;
+      const phone = String(sel.dataset.psPhone || '').trim();
+      sel.disabled = true;
+      const r = await apiCall('updateStatus', { phone: phone, status: status, changedBy: 'Phase Scan' });
+      if (r && r.status === 'ok') {
+        const lead = findLead(phone); if (lead) lead['Status'] = status;
+        toast('Moved to ' + (STATUS_LABELS[status] || status), 'success');
+        loadLeads(); runPhaseScan();
+      } else { toast('Move failed: ' + ((r && r.message) || '?'), 'error'); sel.disabled = false; }
+    };
+  });
+  // Round 91 — inline repair toggle.
+  body.querySelectorAll('.ps-repair').forEach(function(btn) {
+    btn.onclick = async function() {
+      const phone = String(btn.dataset.psPhone || '').trim();
+      const lead = findLead(phone);
+      if (!lead) { toast('Lead not loaded — refresh', 'warn'); return; }
+      const cur = String(lead['Tags'] || '').split(',').map(function(t){return t.trim();}).filter(Boolean);
+      const isTagged = cur.indexOf('repair') !== -1;
+      const next = isTagged ? cur.filter(function(t){return t!=='repair';}) : cur.concat(['repair']);
+      btn.disabled = true;
+      const r = await apiCall('updateTag', { phone: phone, tags: next.join(',') });
+      if (r && r.status === 'ok') {
+        lead['Tags'] = next.join(',');
+        toast(isTagged ? 'Removed repair tag' : 'Tagged for repair', 'success');
+        loadLeads();
+        btn.disabled = false;
+        btn.style.background = isTagged ? '#fff' : '#FEE2E2';
+      } else { toast('Tag failed', 'error'); btn.disabled = false; }
     };
   });
 }
@@ -4186,6 +4236,14 @@ document.getElementById('nlPhone').oninput = function() {
 document.getElementById('searchInput').oninput = debounce(render, 200);
 document.getElementById('staffFilter').onchange = render;
 document.getElementById('tagFilter').onchange = render;
+// Round 91 — one-tap pending-verification filter (toggles the tag filter).
+document.getElementById('btnToVerify').onclick = function() {
+  const tf = document.getElementById('tagFilter');
+  const on = tf.value === 'pending_verification';
+  tf.value = on ? '' : 'pending_verification';
+  this.style.outline = on ? '' : '2px solid #CA8A04';
+  render();
+};
 // Red-border filter: persist choice in localStorage so it survives reload
 (function initRedFilter() {
   var sel = document.getElementById('redFilter');

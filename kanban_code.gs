@@ -165,7 +165,10 @@ const CALLERS = ['Alvin', 'Ken'];          // round-robin call agents
 const CALL_DELAY_DAYS = 2;                  // first call due = QS entry + 2 days
 // Round 90.1 — phases the caller may move an Accepted card to (everything
 // after Quotation Sent). First entry is the default if none/invalid given.
-const ACCEPT_PHASES = ['Pending Downpayment', 'Pending I.Date', 'I.Date Confirmed',
+// Round 91 — canonical back-half order: I.Date → Downpayment → Job In Progress
+// → Pending Balance (matches the kanban columns; fixes the old reversed order
+// that blocked the I.Date→Downpayment auto-template shift).
+const ACCEPT_PHASES = ['Pending I.Date', 'I.Date Confirmed', 'Pending Downpayment',
   'Job In Progress', 'Pending Balance', 'Job Complete', 'Receipt Sent', 'Completed'];
 
 // Atomic round-robin: returns the next caller name, alternating globally
@@ -449,9 +452,11 @@ function handleUpdateStatusByGroup(body) {
     // back to an earlier phase. Manual kanban clicks (changedBy='Kanban') are
     // unaffected; only calls tagged 'Auto-Template:*' from Parse & Route gate.
     if (String(body.changedBy || '').indexOf('Auto-Template') === 0) {
+      // Round 91 — I.Date before Downpayment so the I.Date→Downpayment
+      // template shift counts as forward (allowed), not a regression.
       const _funnel = ['New Lead','Pending Invitation','Pending Site Visit',
                        'Site Visit Confirmed','Pending QT','Quotation Sent',
-                       'Pending Downpayment','Pending I.Date','I.Date Confirmed',
+                       'Pending I.Date','I.Date Confirmed','Pending Downpayment',
                        'Job In Progress','Pending Balance','Job Complete',
                        'Receipt Sent','Completed'];
       const _cur = _funnel.indexOf(prevStatus);
@@ -704,6 +709,17 @@ function handleClearPaymentVerification(body) {
     });
     newStatus = 'Pending Balance';
   }
+
+  // Round 91 — notify every admin that a payment was verified (best-effort).
+  try {
+    const nm = h.colByName['Name'] ? String(sheet.getRange(rowNum, h.colByName['Name']).getValue() || '').trim() : '';
+    const amt = h.colByName['Verification Amount'] ? String(sheet.getRange(rowNum, h.colByName['Verification Amount']).getValue() || '').trim() : '';
+    const msg = '✅ *Payment verified*\n' + (nm || body.phone) + (amt ? ' — RM' + amt : '') +
+      '\n' + curStatus + (newStatus !== curStatus ? ' → ' + newStatus : '') +
+      '\n_by ' + (body.changedBy || 'Account') + '_';
+    _adminPhones().forEach(function(p) { _sendWhapiText(p, msg); });
+  } catch (_e) { /* never block the verify response */ }
+
   return jsonResponse({status: 'ok', rowNum: rowNum, tags: next.join(','), newStatus: newStatus});
 }
 
@@ -1203,8 +1219,8 @@ function handleBulkMoveStatus(body) {
   // catch typos before they corrupt the sheet.
   const ALLOWED = [
     'New Lead','Pending Invitation','Pending Site Visit','Site Visit Confirmed',
-    'Pending QT','Quotation Sent','Pending I.Date','Pending Downpayment',
-    'Pending Balance','Completed','Job Complete','Receipt Sent',
+    'Pending QT','Quotation Sent','Pending I.Date','I.Date Confirmed','Pending Downpayment',
+    'Job In Progress','Pending Balance','Completed','Job Complete','Receipt Sent',
     'Lost','Cold Lead','Rejected','Out of Area','Human Handoff'
   ];
   if (ALLOWED.indexOf(newStatus) === -1) {
@@ -1782,15 +1798,18 @@ function _filterStaffJobs(data, h, assignName) {
   const cLink   = h.colByName['Group Invite Link (AJ)'];
   const cGName  = h.colByName['Group Name (AE)'];
   const cQtDate = h.colByName['Date QT Issued'];  // Round 79
+  const cLoc    = h.colByName['Location'];          // Round 91 (KL detection)
+  const cAddr   = h.colByName['Full Address'];      // Round 91
+  const cChg    = h.colByName['Status Changed At']; // Round 91 (days in phase)
   const want = String(assignName || '').trim();
 
   const assigned = [];
   const repair = [];
   const qtFollowups = [];  // Round 79: Quotation Sent + ≥3 days call list
+  const idateKL = [];      // Round 91: Pending I.Date, KL only (QC reminder)
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const status = cStatus ? String(row[cStatus - 1] || '').trim() : '';
-    if (STAFF_DONE_STATUSES.indexOf(status) !== -1) continue;  // skip archived/final
     const card = {
       name:      cName  ? String(row[cName  - 1] || '').trim() : '',
       phone:     cPhone ? String(row[cPhone - 1] || '').trim() : '',
@@ -1800,8 +1819,23 @@ function _filterStaffJobs(data, h, assignName) {
       groupName: cGName ? String(row[cGName - 1] || '').trim() : ''
     };
     const tags = cTags ? String(row[cTags - 1] || '').toLowerCase() : '';
-    const isMine = !!(want && cAssign && String(row[cAssign - 1] || '').trim() === want);
+    // Round 91 — repair queue surfaces repair-tagged cards in ANY status,
+    // INCLUDING Job Complete / Completed (a finished job still pending repair).
     if (tags.indexOf('repair') !== -1) repair.push(card);
+
+    // Round 91 — Pending I.Date, KL only (address has no JB/Johor marker).
+    if (status === 'Pending I.Date') {
+      const loc  = cLoc  ? String(row[cLoc  - 1] || '') : '';
+      const addr = cAddr ? String(row[cAddr - 1] || '') : '';
+      if (!_isJbAddress(loc, addr)) {
+        idateKL.push(Object.assign({}, card, {
+          daysInPhase: cChg ? _daysSinceMyt(row[cChg - 1]) : -1
+        }));
+      }
+    }
+
+    if (STAFF_DONE_STATUSES.indexOf(status) !== -1) continue;  // assigned/qtFollowups skip archived/final
+    const isMine = !!(want && cAssign && String(row[cAssign - 1] || '').trim() === want);
     if (isMine) assigned.push(card);
     // Round 79 — QT follow-up: my QS card aged ≥3 days since QT issued.
     if (isMine && status === 'Quotation Sent' && cQtDate) {
@@ -1809,7 +1843,14 @@ function _filterStaffJobs(data, h, assignName) {
       if (days >= 3) qtFollowups.push(Object.assign({}, card, {daysSinceQt: days}));
     }
   }
-  return {assigned: assigned, repair: repair, qtFollowups: qtFollowups};
+  return {assigned: assigned, repair: repair, qtFollowups: qtFollowups, idateKL: idateKL};
+}
+
+// Round 91 — KL vs JB by address text (mirror of the n8n Gen-Seq _isJbWord).
+// JB when 'JB' or 'JOHOR' appears as a word in Location or Full Address.
+function _isJbAddress(location, fullAddress) {
+  const re = /(?:^|[^A-Z])(JB|JOHOR)(?:[^A-Z]|$)/i;
+  return re.test(String(location || '')) || re.test(String(fullAddress || ''));
 }
 
 // body: {action:'staffJobs', phone OR name, secret}
@@ -1964,8 +2005,11 @@ function _doSupervisorReminders() {
     const phone = String(u[i][4] || '').replace(/\D/g, '');
     if (!phone) { skipped++; continue; }
     const jobs = _filterStaffJobs(data, h, String(u[i][5] || '').trim());
-    if (!jobs.assigned.length && !jobs.repair.length && (!jobs.qtFollowups || !jobs.qtFollowups.length)) { skipped++; continue; }
-    _sendWhapiText(phone, _buildReminderMessage(String(u[i][2] || '').trim(), jobs));
+    const isQc = (_role === 'quality_supervisor');
+    const idateCount = (isQc && jobs.idateKL) ? jobs.idateKL.length : 0;
+    if (!jobs.assigned.length && !jobs.repair.length &&
+        (!jobs.qtFollowups || !jobs.qtFollowups.length) && !idateCount) { skipped++; continue; }
+    _sendWhapiText(phone, _buildReminderMessage(String(u[i][2] || '').trim(), jobs, _role));
     sent++;
     Utilities.sleep(600);  // gentle pacing between sends
   }
@@ -1974,10 +2018,21 @@ function _doSupervisorReminders() {
 
 // Round 79.1 — formatted layout: WhatsApp *bold* section titles,
 // numbered items, double-blank-line section gaps, customer name bolded.
-function _buildReminderMessage(name, jobs) {
+function _buildReminderMessage(name, jobs, role) {
   const lines = [];
   lines.push('🔔 *Good morning ' + (name || 'there') + '*');
   lines.push('_Your jobs today_');
+
+  // Round 91 — quality_supervisor only: KL installation dates still pending.
+  if (role === 'quality_supervisor' && jobs.idateKL && jobs.idateKL.length) {
+    lines.push('', '', '📅 *INSTALLATION DATE PENDING (KL) — ' + jobs.idateKL.length + '*', '_Lock in the install date_', '');
+    jobs.idateKL.forEach(function(c, i) {
+      lines.push((i + 1) + '. *' + (c.name || '(no name)') + '*' + (c.daysInPhase >= 0 ? ' — ' + c.daysInPhase + 'd waiting' : ''));
+      if (c.phone)     lines.push('    📞 ' + c.phone);
+      if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
+      if (i < jobs.idateKL.length - 1) lines.push('');
+    });
+  }
 
   if (jobs.assigned.length) {
     lines.push('', '', '📋 *ASSIGNED — ' + jobs.assigned.length + '*', '');
@@ -2555,9 +2610,10 @@ function setupAdminScanTrigger() {
 //                   last admin/customer msgs, notes, links (for the
 //                   weekly director 1-on-1; independent of date range)
 
+// Round 91 — I.Date → Downpayment → Job In Progress → Pending Balance.
 const SALES_FUNNEL = ['New Lead','Pending Invitation','Pending Site Visit',
-  'Site Visit Confirmed','Pending QT','Quotation Sent','Pending Downpayment',
-  'Pending I.Date','I.Date Confirmed','Job In Progress','Pending Balance',
+  'Site Visit Confirmed','Pending QT','Quotation Sent','Pending I.Date',
+  'I.Date Confirmed','Pending Downpayment','Job In Progress','Pending Balance',
   'Job Complete','Receipt Sent','Completed'];
 const SALES_LOST = ['Rejected', 'Lost', 'Cold Lead', 'Out of Area'];
 
@@ -2820,6 +2876,21 @@ const CALLS_SHEET = 'Calls';
 const CALLS_HEADERS = ['Timestamp', 'Phone', 'Name', 'Caller', 'Outcome', 'Next Call Date', 'Note'];
 // Public mini-page the caller opens from the reminder DM.
 const CALLER_PAGE_URL = 'https://leakguard.my/caller.html';
+
+// Round 91 — phones of all Users-tab admins (role 'admin', has phone).
+function _adminPhones() {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  const usersSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!usersSheet) return [];
+  const u = usersSheet.getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < u.length; i++) {
+    if (String(u[i][3] || '').trim().toLowerCase() !== 'admin') continue;
+    const p = String(u[i][4] || '').replace(/\D/g, '');
+    if (p) out.push(p);
+  }
+  return out;
+}
 
 // Resolve a caller name -> WhatsApp phone via the Users tab (matches Name
 // or AssignName, case-insensitive). Returns '' if missing.
