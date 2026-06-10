@@ -25,6 +25,7 @@ const SHARED_SECRET = 'ABC'; // matches team_kanban.html
 const N8N_BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
 const N8N_WAGROUP_URL = 'https://gate.whapi.cloud/messages/text';
 const N8N_RENAME_GROUP_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-rename-group'; // Round 70 — auto-rename WA group on QT-PDF detection
+const N8N_QT_READ_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-read'; // Round 92 — read AutoCount QT total value + sqft by docNo
 const WHAPI_TOKEN     = 'tjJeSotqcmnYBfQulcRxcFHHQ8QtDcC5';
 
 // ================================================================
@@ -424,6 +425,30 @@ function handleUpdateStatusByGroup(body) {
           });
         } catch (_e) { /* best-effort; CRM is source of truth either way */ }
       }
+
+      // Round 92 — also pull the AutoCount quotation's total value + total
+      // sqft (for QTs created manually in AutoCount, not via the estimation
+      // builder) and record them on the card, mirroring autocount.gs. Reads
+      // via the lg-quotation-read webhook (creds live in n8n). Best-effort;
+      // a docNo not found in AutoCount just leaves the columns untouched.
+      try {
+        const _qtRow = i + 1;
+        const _docNo = 'QT-' + body.qtCode;
+        const _resp = UrlFetchApp.fetch(N8N_QT_READ_URL, {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify({docNo: _docNo}),
+          muteHttpExceptions: true,
+        });
+        if (_resp.getResponseCode() === 200) {
+          const _d = JSON.parse(_resp.getContentText());
+          if (_d && _d.success) {
+            try { setCellByHeader(sheet, _qtRow, 'AutoCount QT No', _docNo); } catch (_e) {}
+            if (_d.total)    { try { setCellByHeader(sheet, _qtRow, 'Quotation (RM)', _d.total); } catch (_e) {} }
+            if (_d.totalSqft) { try { setCellByHeader(sheet, _qtRow, 'Total Sqft', _d.totalSqft); } catch (_e) {} }
+          }
+        }
+      } catch (_e) { /* best-effort; phase shift + rename already done */ }
     }
 
     // Round 82: if Parse & Route attached an SI code (invoice PDF detected),
