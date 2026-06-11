@@ -446,6 +446,22 @@ function handleUpdateStatusByGroup(body) {
             try { setCellByHeader(sheet, _qtRow, 'AutoCount QT No', _docNo); } catch (_e) {}
             if (_d.total)    { try { setCellByHeader(sheet, _qtRow, 'Quotation (RM)', _d.total); } catch (_e) {} }
             if (_d.totalSqft) { try { setCellByHeader(sheet, _qtRow, 'Total Sqft', _d.totalSqft); } catch (_e) {} }
+            // Round 92.1 — also add/refresh the value tag so the card shows
+            // "RM<v> · <s>sqft" (matches the estimation-builder path in
+            // autocount.gs _applyCrmSideEffects — same format for the filter).
+            if (_d.total) {
+              try {
+                const _tagsCol = headers.colByName['Tags'];
+                if (_tagsCol) {
+                  const _newTag = 'RM' + Math.round(_d.total) + ' · ' + Math.round(_d.totalSqft || 0) + 'sqft';
+                  const _cur = String(sheet.getRange(_qtRow, _tagsCol).getValue() || '').trim();
+                  const _list = _cur.split(',').map(function(t){ return t.trim(); })
+                    .filter(function(t){ return t && !/^RM\d.*sqft$/i.test(t); });
+                  _list.push(_newTag);
+                  sheet.getRange(_qtRow, _tagsCol).setValue(_list.join(','));
+                }
+              } catch (_e) {}
+            }
           }
         }
       } catch (_e) { /* best-effort; phase shift + rename already done */ }
