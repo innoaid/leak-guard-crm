@@ -77,6 +77,7 @@ function doPost(e) {
       case 'saveEstimation':     return handleSaveEstimation(body);  // round 83 — persist SE summary (autocount.gs)
       case 'syncAutocount':      return handleSyncAutocount(body);   // round 83 — AutoCount QT + group rename + value tag (autocount.gs)
       case 'uploadEstimationPdf': return handleUploadEstimationPdf(body);  // round 83.3 — archive SE PDF to Drive (autocount.gs)
+      case 'linkQt':             return handleLinkQt(body);  // round 93 — link an existing AutoCount QT to a card (autocount.gs)
       case 'adminScan':          return handleAdminScan(body);  // round 85 — phase-scan violation board
       case 'salesReport':        return handleSalesReport(body);  // round 86 — sales scoreboard + weekly meeting agenda
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});

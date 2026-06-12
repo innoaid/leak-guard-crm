@@ -220,6 +220,70 @@ function handleSyncAutocount(body) {
 }
 
 // ================================================================
+// Round 93 — manually link an EXISTING AutoCount QT to a card.
+// ================================================================
+// For job cards added manually (already past Quotation Sent) with no QT
+// data and no PDF going into the group. Reads the QT from AutoCount by
+// docNo (lg-quotation-read) and records value + sqft + chip. Does NOT
+// change the phase, rename the group, or post anything to WhatsApp.
+// body: {phone, qtNo, secret}
+function handleLinkQt(body) {
+  const phone = String(body.phone || '').trim();
+  let docNo = String(body.qtNo || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (!phone) return jsonResponse({status: 'error', message: 'phone required'});
+  if (!docNo) return jsonResponse({status: 'error', message: 'QT number required'});
+  // Accept "0626-040" or "QT-0626-040".
+  if (/^\d{4}-\d{3}$/.test(docNo)) docNo = 'QT-' + docNo;
+  if (!/^QT-\d{4}-\d{3}$/.test(docNo)) {
+    return jsonResponse({status: 'error', message: 'invalid QT number — expected QT-MMYY-NNN'});
+  }
+
+  // Read totals from AutoCount via the n8n webhook (creds live there).
+  let acData;
+  try {
+    const resp = UrlFetchApp.fetch(N8N_QT_READ_URL, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({docNo: docNo}),
+      muteHttpExceptions: true,
+    });
+    if (resp.getResponseCode() !== 200) return jsonResponse({status: 'error', message: 'AutoCount read HTTP ' + resp.getResponseCode()});
+    acData = JSON.parse(resp.getContentText());
+  } catch (e) {
+    return jsonResponse({status: 'error', message: 'AutoCount read failed: ' + String(e && e.message || e)});
+  }
+  if (!acData || !acData.success) {
+    return jsonResponse({status: 'error', message: docNo + ' not found in AutoCount'});
+  }
+
+  const sheet = getSheet();
+  const rowNum = findRowByPhone(sheet, phone);
+  if (!rowNum) return jsonResponse({status: 'error', message: 'lead not found'});
+
+  const total = Math.round(Number(acData.total) || 0);
+  const sqft  = Math.round(Number(acData.totalSqft) || 0);
+  let tag = '';
+  try { setCellByHeader(sheet, rowNum, 'AutoCount QT No', docNo); } catch (_e) {}
+  if (total) { try { setCellByHeader(sheet, rowNum, 'Quotation (RM)', total); } catch (_e) {} }
+  if (sqft)  { try { setCellByHeader(sheet, rowNum, 'Total Sqft', sqft); } catch (_e) {} }
+  if (total) {
+    try {
+      const h = getHeaders(sheet);
+      const tagsCol = h.colByName['Tags'];
+      if (tagsCol) {
+        tag = 'RM' + total + ' · ' + sqft + 'sqft';
+        const cur = String(sheet.getRange(rowNum, tagsCol).getValue() || '').trim();
+        const list = cur.split(',').map(function(t){ return t.trim(); })
+          .filter(function(t){ return t && !/^RM\d.*sqft$/i.test(t); });
+        list.push(tag);
+        sheet.getRange(rowNum, tagsCol).setValue(list.join(','));
+      }
+    } catch (_e) {}
+  }
+  return jsonResponse({status: 'ok', docNo: docNo, total: total, totalSqft: sqft, tag: tag});
+}
+
+// ================================================================
 // Helpers
 // ================================================================
 

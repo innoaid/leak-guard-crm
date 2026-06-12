@@ -496,6 +496,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       <button class="modal-btn modal-btn-info" id="btnEditAppt" style="display:none">Edit appointment</button>
       <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Estimation</button>
       <button class="modal-btn modal-btn-info" id="btnSyncAutocount" style="display:none">🔗 Sync to AutoCount</button>
+      <button class="modal-btn modal-btn-info" id="btnLinkQt">🔗 Link QT</button>
       <button class="modal-btn modal-btn-info" id="btnEditDetails">✏️ Edit details</button>
       <button class="modal-btn modal-btn-info" id="btnSendReschedule">Send reschedule link</button>
       <button class="modal-btn modal-btn-info" id="btnArchiveLead" style="background:#FEE2E2;color:#991B1B">🗄 Archive</button>
@@ -4351,6 +4352,33 @@ document.getElementById('btnSyncAutocount').onclick = async function() {
   } else {
     toast('AutoCount sync failed: ' + (res.message || 'unknown'), 'error');
     btn.textContent = origLabel;
+  }
+};
+// Round 93 — manually link an existing AutoCount QT to this card
+// (reads value/sqft from AutoCount; no group send, no phase change).
+document.getElementById('btnLinkQt').onclick = async function() {
+  if (!currentModalLead) return;
+  const qtNo = (prompt('Enter the AutoCount QT number to link (e.g. QT-0626-040):') || '').trim();
+  if (!qtNo) return;
+  const btn = this;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Linking…';
+  const res = await apiCall('linkQt', { phone: currentModalLead['Phone'], qtNo: qtNo });
+  btn.disabled = false;
+  btn.textContent = orig;
+  if (res && res.status === 'ok') {
+    toast('Linked ' + res.docNo + ' — RM' + res.total + ' · ' + res.totalSqft + 'sqft', 'success');
+    currentModalLead['AutoCount QT No'] = res.docNo;
+    if (res.tag) {
+      const tagSet = String(currentModalLead['Tags'] || '').split(',').map(function(t){ return t.trim(); })
+        .filter(function(t){ return t && !/^RM\d.*sqft$/i.test(t); });
+      tagSet.push(res.tag);
+      currentModalLead['Tags'] = tagSet.join(',');
+    }
+    render();
+  } else {
+    toast('Link failed: ' + ((res && res.message) || 'unknown'), 'error');
   }
 };
 document.getElementById('leadModal').addEventListener('click', function(e){
