@@ -648,8 +648,14 @@ function handleUpdateLastAdminMsg(body) {
 }
 
 // ================================================================
-// Round 64 — payment verification queue (Pending Downpayment + Pending Balance)
+// Round 64 — payment verification queue (Round 94: all post-quote phases)
 // ================================================================
+// Phases in which the admin's "payment received" template adds the
+// pending_verification tag. Round 94 widened this from just
+// Downpayment/Balance to the whole post-quote region (Round 91 funnel
+// reorder parks cards at Pending I.Date before Downpayment).
+const PAY_VERIFY_PHASES = ['Pending I.Date', 'I.Date Confirmed', 'Pending Downpayment', 'Job In Progress', 'Pending Balance'];
+
 // WA Receiver detects admin's "Noted with thx" template, extracts the RM amount,
 // and fires this handler. Adds 'pending_verification' tag + writes the amount
 // + sent date to two CRM columns so account team can see the queue at a glance.
@@ -683,9 +689,11 @@ function handleAddPaymentVerification(body) {
     const rowNum = i + 1;
     const status = String(data[i][statusCol - 1] || '').trim();
 
-    // Gate: only fire for Pending Downpayment or Pending Balance phases.
-    // If admin sends the template in another phase (e.g., wrong group), no-op.
-    if (status !== 'Pending Downpayment' && status !== 'Pending Balance') {
+    // Gate: fire for any post-quote phase. Round 91 reordered the funnel so
+    // cards now sit at Pending I.Date (before Downpayment) when a payment is
+    // acknowledged — restricting to Downpayment/Balance silently dropped those
+    // (Round 94). Still no-ops for pre-quote phases / wrong group.
+    if (PAY_VERIFY_PHASES.indexOf(status) === -1) {
       return jsonResponse({status: 'ok', skipped: true, reason: 'phase not eligible: ' + status, rowNum: rowNum});
     }
 
