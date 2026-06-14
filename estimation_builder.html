@@ -646,6 +646,9 @@ function slabMembraneRm(s){ return slabSqft(s)*membraneRate(); }
 function extraTotal(e){ return (Number(e.qty)||0)*(Number(e.price)||0); }
 function slabExtrasRm(s){ return s.extras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
 function slabTotal(s){ return slabMembraneRm(s)+slabExtrasRm(s); }
+// Round 95.2 — a slab counts only if measured or has a priced service; empty
+// slabs are ignored in output (and never block submission).
+function slabIsActive(s){ return slabSqft(s) > 0 || slabExtrasRm(s) > 0; }
 function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
 function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabSqft(s); },0); }
 // Round 75 — MOQ adjustment: if total membrane area < MOQ_SQFT, bill the shortfall × rate.
@@ -708,6 +711,7 @@ function buildAutocountLineItems(){
     });
   } else {
     state.slabs.forEach(function(s){
+      if (!slabIsActive(s)) return;  // Round 95.2 — skip empty slabs
       const sq = slabSqft(s);
       if (sq > 0) {
         items.push({
@@ -1335,6 +1339,7 @@ function renderGrand(){
   } else {
     // Per-slab blocks
     state.slabs.forEach(function(s){
+      if (!slabIsActive(s)) return;  // Round 95.2 — skip empty slabs
       const lines = [];
       if (slabSqft(s) > 0) {
         lines.push('<div class="grand-line"><span class="l-label">Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(slabMembraneRm(s))+'</span></div>');
@@ -1653,10 +1658,9 @@ function updateSlabSubtotalLabel(s){ updateSlabSubtotal(s); }
 
 function updateSubmitState(){
   const btn = document.getElementById('btnSubmit');
-  // Round 95 — photos optional; any service type counts. A slab that's been
-  // added but not measured (0 sqft) still blocks until measured or removed.
-  const noEmptySlab = state.slabs.every(function(s){ return slabSqft(s)>0; });
-  const ok = !!state.submittedBy && hasBillableItem() && noEmptySlab;
+  // Round 95.2 — photos optional; any service type counts. Empty slabs are
+  // ignored (not a blocker), so E-Gel/wall-crack-only estimates can send.
+  const ok = !!state.submittedBy && hasBillableItem();
   btn.disabled = !ok;
   btn.textContent = ok ? ('Send Estimation — ' + rm(grandTotal())) : 'Send Estimation';
 }
@@ -1688,7 +1692,6 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
   if (!state.submittedBy) { toast('Pick the inspector first','warn'); return; }
   // Round 95 — any service type qualifies (membrane slab, E-Gel, or wall crack).
   if (!hasBillableItem()) { toast('Add at least one service (slab, E-Gel, or wall crack)','warn'); return; }
-  if (!state.slabs.every(function(s){ return slabSqft(s)>0; })) { toast('A slab has no measurements — measure or remove it','warn'); return; }
   // Round 74.2 — confirm before sending so a misclick can be cancelled.
   const _custName = String(currentLead['Name'] || 'customer').trim();
   const _totalStr = rm(grandTotal());
@@ -1984,6 +1987,7 @@ function buildPrintView(overrideRef) {
 
   // 4. Per slab — measurements section + photos
   state.slabs.forEach(function(s){
+    if (!slabIsActive(s)) return;  // Round 95.2 — skip empty slabs
     const isFlashing = s.mode === 'flashing';
     let slabHtml = '<div class="pv-slab">';
     slabHtml +=
@@ -2115,6 +2119,7 @@ function buildPrintView(overrideRef) {
     html += minBlk;
   } else {
     state.slabs.forEach(function(s){
+      if (!slabIsActive(s)) return;  // Round 95.2 — skip empty slabs
       let slabBlk = '<div class="pv-grand-block">';
       slabBlk += '<div class="pv-grand-block-h">'+escapeHtml(s.name)+'</div>';
       if (slabSqft(s) > 0) {
