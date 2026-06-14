@@ -221,9 +221,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .pv-slab{margin-bottom:20px;page-break-inside:avoid;border:.5px solid #e5e7eb;border-radius:8px;padding:14px 16px;background:#fff}
 .pv-slab-h{font-size:14px;font-weight:800;color:#111;margin-bottom:10px;padding-bottom:7px;border-bottom:.5px solid #e5e7eb;display:flex;justify-content:space-between;align-items:baseline}
 .pv-slab-h .pv-slab-mode{font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
-.pv-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px}
+.pv-photos{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:11px}
 .pv-photo{border:.5px solid #e5e7eb;border-radius:6px;overflow:hidden;background:#fff}
-.pv-photo img{width:100%;height:auto;max-height:230px;object-fit:cover;display:block}
+.pv-photo img{width:100%;height:auto;max-height:150px;object-fit:cover;display:block}
 .pv-section{margin-bottom:9px}
 .pv-section-h{font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
 .pv-tbl{width:100%;border-collapse:collapse;font-size:11px}
@@ -296,16 +296,24 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     </div>
   </div>
 
-  <!-- STEP 2 — Slabs -->
+  <!-- STEP 2 — Services -->
   <div class="step">
     <div class="step-h">
       <span class="step-num">2</span>
-      <span class="step-title">Slabs / Areas</span>
-      <span class="step-summary" id="step2Summary">No slabs yet</span>
+      <span class="step-title">Services</span>
+      <span class="step-summary" id="step2Summary">No services yet</span>
     </div>
     <div class="step-body">
+      <!-- Membrane slabs -->
       <div id="slabsList"></div>
-      <button class="add-slab-btn" id="btnAddSlabBig" type="button">+ Add another slab</button>
+      <button class="add-slab-btn" id="btnAddSlabBig" type="button">+ Membrane Slab</button>
+      <!-- Round 95 — other service types -->
+      <div id="egelList" style="margin-top:10px"></div>
+      <div id="wallCrackList"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="add-row" id="btnAddEgel" type="button">+ Toilet E-Gel</button>
+        <button class="add-row" id="btnAddWallCrack" type="button">+ Wall Crack</button>
+      </div>
     </div>
   </div>
 
@@ -439,7 +447,7 @@ const MOQ_SQFT = 300;
 // preset seeds the base price and the inspector adjusts per band. Bump
 // PRESETS_VERSION whenever these defaults change — devices with older saved
 // settings get the new lists on next load (their membrane rate is kept).
-const PRESETS_VERSION = 2;
+const PRESETS_VERSION = 3;
 const DEFAULT_SETTINGS = {
   membraneRate: 8.50,
   slabPresets: [
@@ -448,7 +456,7 @@ const DEFAULT_SETTINGS = {
     { label: 'Plumber — remove & reinstall water tank (2 trips)',         qty: 1, unit: 'unit', price: 650  },
     { label: 'Plumber — remove & reinstall water pump (2 trips)',         qty: 1, unit: 'unit', price: 200  },
     { label: 'Remove & reinstall AC',                                     qty: 1, unit: 'unit', price: 300  },
-    { label: 'E-Gel injection — toilet (3 yrs warranty)',                 qty: 1, unit: 'unit', price: 1800 },
+    { label: 'WASA',                                                      qty: 0, unit: 'sqft', price: 2    },
     { label: 'Flexi cementitious coating',                                qty: 0, unit: 'sqft', price: 4.5  },
     { label: 'Two-layer elastomeric coating',                             qty: 1, unit: 'job',  price: 500  },
   ],
@@ -504,7 +512,9 @@ function saveSettings(s){
 }
 let settings = loadSettings();
 
-let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], discountType:'percent', discountValue:0 };
+// Round 95 — egel (toilet E-Gel) + wallCracks are top-level service types
+// alongside membrane slabs.
+let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], discountType:'percent', discountValue:0 };
 
 // Ephemeral UI collapse state per slab — not persisted (re-derived on render)
 const uiCollapse = new Map(); // slabId -> { measurements: bool, services: bool }
@@ -570,6 +580,11 @@ function newManualRow(){ return { id:uuid(), label:'', length:0, width:0 }; }
 function manualRowSqft(r){ return (Number(r.length)||0)*(Number(r.width)||0); }
 function slabManualFloorTotal(s){ return (s.manualFloor||[]).reduce(function(sum,r){ return sum+manualRowSqft(r); },0); }
 function newExtra(preset){ return { id:uuid(), label:(preset&&preset.label)||'', qty:(preset&&preset.qty)||1, unit:(preset&&preset.unit)||'job', price:(preset&&preset.price)||0 }; }
+// Round 95 — service-type factories.
+const EGEL_DEFAULT_PRICE = 1800;
+const WALLCRACK_SCOPE = 'External wall crack repair (with abseiling where required): groove all identified cracks, apply L-crack filler, then 2 coats of liquid waterproofing membrane. Scope & price subject to site condition.';
+function newEgel(){ return { id:uuid(), qty:1, price:EGEL_DEFAULT_PRICE }; }
+function newWallCrack(){ return { id:uuid(), desc:WALLCRACK_SCOPE, price:0 }; }
 
 function loadState(){
   try {
@@ -592,13 +607,17 @@ function loadState(){
           };
         });
         state.siteExtras = (parsed.siteExtras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; });
+        // Round 95 — top-level service types
+        state.egel = (parsed.egel||[]).map(function(g){ return {id:g.id||uuid(),qty:Number(g.qty)||0,price:Number(g.price)||EGEL_DEFAULT_PRICE}; });
+        state.wallCracks = (parsed.wallCracks||[]).map(function(w){ return {id:w.id||uuid(),desc:w.desc||WALLCRACK_SCOPE,price:Number(w.price)||0}; });
         // Round 74 — discount on grand total
         state.discountType = (parsed.discountType === 'value') ? 'value' : 'percent';
         state.discountValue = Number(parsed.discountValue) || 0;
       }
     }
   } catch(_){}
-  if (!state.slabs.length) state.slabs.push(newSlab('Slab 1'));
+  // Round 95 — no forced default slab; the inspector picks a service type
+  // (Membrane Slab / Toilet E-Gel / Wall Crack).
   document.getElementById('fSubmittedBy').value = state.submittedBy || '';
   document.getElementById('fNotes').value = state.notes || '';
   renderAll();
@@ -610,6 +629,7 @@ function saveState(){
       submittedBy:state.submittedBy, notes:state.notes,
       slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor,collapsed:!!s.collapsed,iscannerXMarks:s.iscannerXMarks||null}; }),
       siteExtras:state.siteExtras,
+      egel:state.egel||[], wallCracks:state.wallCracks||[],
       discountType:state.discountType||'percent', discountValue:Number(state.discountValue)||0
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
@@ -643,8 +663,18 @@ function moqAdjustment(){
 function moqMode(){ const t = grandMembraneSqft(); return t > 0 && t < MOQ_SQFT; }
 function allSlabExtras(){ return state.slabs.reduce(function(arr,s){ return arr.concat(s.extras||[]); },[]); }
 
+// Round 95 — service-type totals (outside the membrane MOQ).
+function egelTotal(){ return (state.egel||[]).reduce(function(sum,g){ return sum+(Number(g.qty)||0)*(Number(g.price)||0); },0); }
+function wallCrackTotal(){ return (state.wallCracks||[]).reduce(function(sum,w){ return sum+(Number(w.price)||0); },0); }
+// Any billable item present? (slab with sqft, or an E-Gel toilet, or a priced wall crack)
+function hasBillableItem(){
+  return state.slabs.some(function(s){ return slabSqft(s)>0; })
+    || (state.egel||[]).some(function(g){ return (Number(g.qty)||0)>0; })
+    || (state.wallCracks||[]).some(function(w){ return (Number(w.price)||0)>0; });
+}
+
 // Round 74 — discount on grand total. grandSubtotal is pre-discount; grandTotal post-discount.
-function grandSubtotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm()+moqAdjustment(); }
+function grandSubtotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm()+moqAdjustment()+egelTotal()+wallCrackTotal(); }
 function discountAmount(){
   const sub = grandSubtotal();
   const v = Number(state.discountValue) || 0;
@@ -697,6 +727,17 @@ function buildAutocountLineItems(){
     if ((Number(e.qty)||0) > 0 && (Number(e.price)||0) > 0) {
       items.push({ desc: e.label || 'Additional cost', qty: Number(e.qty)||0,
         unit: e.unit || 'job', price: Number(e.price)||0, furtherDescription: '' });
+    }
+  });
+  // Round 95 — service types: Toilet E-Gel + Wall Crack lines.
+  (state.egel||[]).forEach(function(g){
+    if ((Number(g.qty)||0) > 0 && (Number(g.price)||0) > 0) {
+      items.push({ desc: 'Toilet E-Gel Injection (3 yrs warranty)', qty: Number(g.qty)||0, unit: 'unit', price: Number(g.price)||0, furtherDescription: '' });
+    }
+  });
+  (state.wallCracks||[]).forEach(function(w){
+    if ((Number(w.price)||0) > 0) {
+      items.push({ desc: 'External Wall Crack Repair Service', qty: 1, unit: 'unit', price: Number(w.price)||0, furtherDescription: String(w.desc||'').slice(0,200) });
     }
   });
   // 'unit' (not '') for adjustment lines — verified accepted by AutoCount
@@ -872,19 +913,89 @@ async function runOcrOnPhoto(slab, photo) {
 
 // ========= RENDER =========
 function renderAll(){
-  renderSlabs(); renderSiteExtras(); renderSiteChips(); renderGrand(); renderStepSummaries(); updateSubmitState();
+  renderSlabs(); renderEgel(); renderWallCracks(); renderSiteExtras(); renderSiteChips(); renderGrand(); renderStepSummaries(); updateSubmitState();
+}
+
+// Round 95 — Toilet E-Gel service rows.
+function renderEgel(){
+  const list = document.getElementById('egelList');
+  if (!list) return;
+  list.innerHTML = '';
+  (state.egel||[]).forEach(function(g){
+    const div = document.createElement('div');
+    div.className = 'row';
+    div.innerHTML =
+      '<div class="row-label"><span>🚽 Toilet E-Gel Injection</span><button class="row-x" data-del-egel="'+g.id+'" type="button" aria-label="Remove">×</button></div>'+
+      '<div class="extras-fields">'+
+        '<input type="number" inputmode="numeric" step="1" min="0" placeholder="Toilets" value="'+(g.qty||'')+'" data-egel-field="qty" data-egel-id="'+g.id+'">'+
+        '<input type="number" inputmode="decimal" step="50" min="0" placeholder="RM / toilet" value="'+(g.price||'')+'" data-egel-field="price" data-egel-id="'+g.id+'">'+
+        '<span class="fld-out" data-egel-out="'+g.id+'">= '+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span>'+
+      '</div>';
+    list.appendChild(div);
+  });
+  list.querySelectorAll('input[data-egel-field]').forEach(function(el){
+    const update = function(){
+      const g = state.egel.find(function(x){ return x.id === el.dataset.egelId; });
+      if (!g) return;
+      g[el.dataset.egelField] = Number(el.value)||0;
+      const out = list.querySelector('[data-egel-out="'+g.id+'"]');
+      if (out) out.textContent = '= ' + rm((Number(g.qty)||0)*(Number(g.price)||0));
+      renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update); el.addEventListener('change', update);
+  });
+  list.querySelectorAll('[data-del-egel]').forEach(function(b){
+    b.onclick = function(){ state.egel = state.egel.filter(function(x){ return x.id !== b.dataset.delEgel; }); saveState(); renderAll(); };
+  });
+}
+
+// Round 95 — External Wall Crack service rows (manual price, subject to condition).
+function renderWallCracks(){
+  const list = document.getElementById('wallCrackList');
+  if (!list) return;
+  list.innerHTML = '';
+  (state.wallCracks||[]).forEach(function(w){
+    const div = document.createElement('div');
+    div.className = 'row';
+    div.innerHTML =
+      '<div class="row-label"><span>🧱 External Wall Crack</span><button class="row-x" data-del-wc="'+w.id+'" type="button" aria-label="Remove">×</button></div>'+
+      '<textarea rows="3" placeholder="Scope / condition" data-wc-field="desc" data-wc-id="'+w.id+'" style="width:100%;margin-bottom:6px">'+escapeHtml(w.desc||'')+'</textarea>'+
+      '<div class="extras-fields">'+
+        '<input type="number" inputmode="decimal" step="50" min="0" placeholder="RM amount (subject to condition)" value="'+(w.price||'')+'" data-wc-field="price" data-wc-id="'+w.id+'">'+
+        '<span class="fld-out" data-wc-out="'+w.id+'">= '+rm(Number(w.price)||0)+'</span>'+
+      '</div>';
+    list.appendChild(div);
+  });
+  list.querySelectorAll('[data-wc-field]').forEach(function(el){
+    const update = function(){
+      const w = state.wallCracks.find(function(x){ return x.id === el.dataset.wcId; });
+      if (!w) return;
+      const f = el.dataset.wcField;
+      w[f] = (f==='price') ? (Number(el.value)||0) : el.value;
+      const out = list.querySelector('[data-wc-out="'+w.id+'"]');
+      if (out) out.textContent = '= ' + rm(Number(w.price)||0);
+      renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update); el.addEventListener('change', update);
+  });
+  list.querySelectorAll('[data-del-wc]').forEach(function(b){
+    b.onclick = function(){ state.wallCracks = state.wallCracks.filter(function(x){ return x.id !== b.dataset.delWc; }); saveState(); renderAll(); };
+  });
 }
 
 function renderStepSummaries(){
   // STEP 1
   document.getElementById('step1Summary').textContent =
     state.submittedBy ? '✓ ' + state.submittedBy : 'Pick your name to begin';
-  // STEP 2
+  // STEP 2 — services (membrane slabs + E-Gel + wall crack)
   const nSlabs = state.slabs.length;
-  const totalArea = grandMembraneSqft();
-  const slabPart = nSlabs ? (nSlabs + ' slab' + (nSlabs>1?'s':'')) : 'No slabs';
-  document.getElementById('step2Summary').textContent =
-    nSlabs ? (slabPart + ' · ' + sqft(totalArea)) : 'No slabs yet';
+  const nEgel = (state.egel||[]).length;
+  const nWc = (state.wallCracks||[]).length;
+  const parts = [];
+  if (nSlabs) parts.push(nSlabs + ' slab' + (nSlabs>1?'s':'') + ' · ' + sqft(grandMembraneSqft()));
+  if (nEgel) parts.push(nEgel + ' E-Gel');
+  if (nWc) parts.push(nWc + ' wall crack');
+  document.getElementById('step2Summary').textContent = parts.length ? parts.join(' · ') : 'No services yet';
   // STEP 3
   const nSite = state.siteExtras.length;
   document.getElementById('step3Summary').textContent =
@@ -1244,6 +1355,18 @@ function renderGrand(){
     });
   }
 
+  // Round 95 — Toilet E-Gel + Wall Crack blocks (on-screen preview)
+  (state.egel||[]).forEach(function(g, gi){
+    if ((Number(g.qty)||0) <= 0) return;
+    html += '<div class="grand-block"><div class="grand-block-h">Toilet E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</div>'+
+      '<div class="grand-line"><span class="l-label">'+(Number(g.qty)||0)+' toilet(s) × '+rm(g.price)+'</span><span class="l-val">'+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span></div></div>';
+  });
+  (state.wallCracks||[]).forEach(function(w, wi){
+    if ((Number(w.price)||0) <= 0) return;
+    html += '<div class="grand-block"><div class="grand-block-h">External Wall Crack'+((state.wallCracks.length>1)?(' #'+(wi+1)):'')+'</div>'+
+      '<div class="grand-line"><span class="l-label">Subject to site condition</span><span class="l-val">'+rm(Number(w.price)||0)+'</span></div></div>';
+  });
+
   // Additional Costs block (site-wide)
   if (state.siteExtras.length) {
     let acLines = '';
@@ -1530,11 +1653,12 @@ function updateSlabSubtotalLabel(s){ updateSlabSubtotal(s); }
 
 function updateSubmitState(){
   const btn = document.getElementById('btnSubmit');
-  const slabsValid = state.slabs.length>=1 && state.slabs.every(function(s){ return slabSqft(s)>0; });
-  const photosCount = totalPhotos();
-  const ok = state.submittedBy && slabsValid && photosCount>=1;
+  // Round 95 — photos optional; any service type counts. A slab that's been
+  // added but not measured (0 sqft) still blocks until measured or removed.
+  const noEmptySlab = state.slabs.every(function(s){ return slabSqft(s)>0; });
+  const ok = !!state.submittedBy && hasBillableItem() && noEmptySlab;
   btn.disabled = !ok;
-  btn.textContent = ok ? ('Send Estimation — '+state.slabs.length+' slab'+(state.slabs.length>1?'s':'')+', '+rm(grandTotal())) : 'Send Estimation';
+  btn.textContent = ok ? ('Send Estimation — ' + rm(grandTotal())) : 'Send Estimation';
 }
 
 document.getElementById('fSubmittedBy').addEventListener('change', function(e){ state.submittedBy=e.target.value; saveState(); renderStepSummaries(); updateSubmitState(); });
@@ -1554,12 +1678,17 @@ function handleAddSlab(){
 }
 document.getElementById('btnAddSlabBig').addEventListener('click', handleAddSlab);
 document.getElementById('btnAddSiteExtra').addEventListener('click', function(){ state.siteExtras.push(newExtra()); saveState(); renderAll(); });
+// Round 95 — add other service types
+document.getElementById('btnAddEgel').addEventListener('click', function(){ state.egel.push(newEgel()); saveState(); renderAll(); });
+document.getElementById('btnAddWallCrack').addEventListener('click', function(){ state.wallCracks.push(newWallCrack()); saveState(); renderAll(); });
 
 // Round 72 — real submit flow: SE counter → render PDF → merge boilerplate → send to WA group.
 document.getElementById('btnSubmit').addEventListener('click', async function(){
   if (!currentLead || !currentLead['Phone']) { toast('Customer not loaded yet','error'); return; }
   if (!state.submittedBy) { toast('Pick the inspector first','warn'); return; }
-  if (!state.slabs.length) { toast('Add at least one slab','warn'); return; }
+  // Round 95 — any service type qualifies (membrane slab, E-Gel, or wall crack).
+  if (!hasBillableItem()) { toast('Add at least one service (slab, E-Gel, or wall crack)','warn'); return; }
+  if (!state.slabs.every(function(s){ return slabSqft(s)>0; })) { toast('A slab has no measurements — measure or remove it','warn'); return; }
   // Round 74.2 — confirm before sending so a misclick can be cancelled.
   const _custName = String(currentLead['Name'] || 'customer').trim();
   const _totalStr = rm(grandTotal());
@@ -1774,7 +1903,7 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
 
 document.getElementById('btnClear').addEventListener('click', function(){
   if (!confirm('Clear all slabs, services, and photos?')) return;
-  state = { submittedBy:'', notes:'', slabs:[newSlab('Slab 1')], siteExtras:[], discountType:'percent', discountValue:0 };
+  state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], discountType:'percent', discountValue:0 };
   uiCollapse.clear();
   document.getElementById('fSubmittedBy').value='';
   document.getElementById('fNotes').value='';
@@ -1865,7 +1994,7 @@ function buildPrintView(overrideRef) {
 
     // Round v3.4: cap photos at 2 per slab to keep canvas area below iPad's
     // 2^24 px² limit (was 4 in v3.3, hit blank-PDF on iPad).
-    const photoSubset = (s.photos || []).slice(0, 2);
+    const photoSubset = (s.photos || []).slice(0, 4);
     if (photoSubset.length) {
       slabHtml += '<div class="pv-photos">' + photoSubset.map(function(p){
         return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';
@@ -1945,6 +2074,28 @@ function buildPrintView(overrideRef) {
     html += '</div>';
   }
 
+  // Round 95 — Toilet E-Gel Injection detail
+  (state.egel || []).forEach(function(g, gi){
+    if ((Number(g.qty)||0) <= 0) return;
+    html += '<div class="pv-slab">'+
+      '<div class="pv-slab-h"><span>Toilet E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</span><span class="pv-slab-mode">Per toilet</span></div>'+
+      '<div class="pv-section">'+
+        '<div class="pv-line"><span>E-Gel injection · '+(Number(g.qty)||0)+' toilet(s) @ '+rm(g.price)+'</span><span>'+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span></div>'+
+        '<div class="pv-line" style="font-size:10px;color:#6b7280">3-year warranty · non-hacking · non-dusty · resume use 1 hour after application</div>'+
+      '</div></div>';
+  });
+
+  // Round 95 — External Wall Crack Service detail (subject to condition)
+  (state.wallCracks || []).forEach(function(w, wi){
+    if ((Number(w.price)||0) <= 0) return;
+    html += '<div class="pv-slab">'+
+      '<div class="pv-slab-h"><span>External Wall Crack Service'+((state.wallCracks.length>1)?(' #'+(wi+1)):'')+'</span><span class="pv-slab-mode">Subject to condition</span></div>'+
+      '<div class="pv-section">'+
+        (w.desc ? '<div class="pv-line" style="font-size:10.5px;color:#374151;display:block">'+escapeHtml(w.desc)+'</div>' : '')+
+        '<div class="pv-line sub"><span>Wall crack service</span><span>'+rm(Number(w.price)||0)+'</span></div>'+
+      '</div></div>';
+  });
+
   // 6. Grand total — per-slab line items + Additional Costs (Round v3.4)
   html += '<div class="pv-grand">';
   html += '<div class="pv-grand-h">Estimated Total — Breakdown</div>';
@@ -1978,6 +2129,33 @@ function buildPrintView(overrideRef) {
       html += slabBlk;
     });
   }
+
+  // Round 95 — Method of Statement (Membrane), shown once when any membrane slab exists.
+  if (state.slabs.some(function(s){ return slabSqft(s) > 0; })) {
+    html += '<div class="pv-grand-block">'+
+      '<div class="pv-grand-block-h">Method of Statement (Membrane)</div>'+
+      '<div class="pv-grand-line indent"><span>1. Surface preparation incl. cut &amp; repair crack and high-pressure water-jet cleaning</span><span></span></div>'+
+      '<div class="pv-grand-line indent"><span>2. Angle fillet on surrounding edge of the area</span><span></span></div>'+
+      '<div class="pv-grand-line indent"><span>3. First layer bitumen primer apply</span><span></span></div>'+
+      '<div class="pv-grand-line indent"><span>4. Second layer torch-on membrane install</span><span></span></div>'+
+      '</div>';
+  }
+
+  // Round 95 — Toilet E-Gel + Wall Crack breakdown blocks
+  (state.egel || []).forEach(function(g, gi){
+    if ((Number(g.qty)||0) <= 0) return;
+    html += '<div class="pv-grand-block">'+
+      '<div class="pv-grand-block-h">Toilet E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</div>'+
+      '<div class="pv-grand-line"><span>'+(Number(g.qty)||0)+' toilet(s) × '+rm(g.price)+'</span><span>'+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span></div>'+
+      '</div>';
+  });
+  (state.wallCracks || []).forEach(function(w, wi){
+    if ((Number(w.price)||0) <= 0) return;
+    html += '<div class="pv-grand-block">'+
+      '<div class="pv-grand-block-h">External Wall Crack Service'+((state.wallCracks.length>1)?(' #'+(wi+1)):'')+'</div>'+
+      '<div class="pv-grand-line"><span>Wall crack repair (subject to site condition)</span><span>'+rm(Number(w.price)||0)+'</span></div>'+
+      '</div>';
+  });
 
   if ((state.siteExtras || []).length) {
     let acBlk = '<div class="pv-grand-block">';
@@ -2071,8 +2249,8 @@ async function generateEstimatePdf() {
     toast('Pick "Submitted by" before generating the estimate', 'info');
     return;
   }
-  if (!state.slabs.length || state.slabs.every(function(s){ return slabSqft(s) === 0; })) {
-    toast('Add at least one slab with measurements before generating', 'info');
+  if (!hasBillableItem()) {
+    toast('Add at least one service (slab, E-Gel, or wall crack) before generating', 'info');
     return;
   }
 
