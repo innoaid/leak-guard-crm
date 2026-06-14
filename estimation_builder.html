@@ -1662,7 +1662,10 @@ function updateSubmitState(){
   // ignored (not a blocker), so E-Gel/wall-crack-only estimates can send.
   const ok = !!state.submittedBy && hasBillableItem();
   btn.disabled = !ok;
-  btn.textContent = ok ? ('Send Estimation — ' + rm(grandTotal())) : 'Send Estimation';
+  // Round 95.4 — tell the user WHY it's disabled instead of a dead button.
+  btn.textContent = ok ? ('Send Estimation — ' + rm(grandTotal()))
+    : (!state.submittedBy ? '⚠ Pick "Submitted by" first'
+       : '⚠ Add a service to send');
 }
 
 document.getElementById('fSubmittedBy').addEventListener('change', function(e){ state.submittedBy=e.target.value; saveState(); renderStepSummaries(); updateSubmitState(); });
