@@ -1467,7 +1467,7 @@ function wireSlabHandlers(list){
   list.querySelectorAll('[data-remove-slab]').forEach(function(b){
     b.onclick = function(ev){
       ev.stopPropagation();
-      if (state.slabs.length<=1){ toast('At least 1 slab required','info'); return; }
+      // Round 95.3 — slabs are optional now; the last slab can be removed.
       if (!confirm('Remove this slab and its photos?')) return;
       state.slabs = state.slabs.filter(function(x){ return x.id!==b.dataset.removeSlab; });
       uiCollapse.delete(b.dataset.removeSlab);
