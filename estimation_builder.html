@@ -583,8 +583,8 @@ function newExtra(preset){ return { id:uuid(), label:(preset&&preset.label)||'',
 // Round 95 — service-type factories.
 const EGEL_DEFAULT_PRICE = 1800;
 const WALLCRACK_SCOPE = 'External wall crack repair (with abseiling where required): groove all identified cracks, apply L-crack filler, then 2 coats of liquid waterproofing membrane. Scope & price subject to site condition.';
-function newEgel(){ return { id:uuid(), qty:1, price:EGEL_DEFAULT_PRICE }; }
-function newWallCrack(){ return { id:uuid(), desc:WALLCRACK_SCOPE, price:0 }; }
+function newEgel(){ return { id:uuid(), qty:1, price:EGEL_DEFAULT_PRICE, photos:[] }; }
+function newWallCrack(){ return { id:uuid(), desc:WALLCRACK_SCOPE, price:0, photos:[] }; }
 
 function loadState(){
   try {
@@ -608,8 +608,8 @@ function loadState(){
         });
         state.siteExtras = (parsed.siteExtras||[]).map(function(e){ return {id:e.id||uuid(),label:e.label||'',qty:Number(e.qty)||0,unit:e.unit||'job',price:Number(e.price)||0}; });
         // Round 95 — top-level service types
-        state.egel = (parsed.egel||[]).map(function(g){ return {id:g.id||uuid(),qty:Number(g.qty)||0,price:Number(g.price)||EGEL_DEFAULT_PRICE}; });
-        state.wallCracks = (parsed.wallCracks||[]).map(function(w){ return {id:w.id||uuid(),desc:w.desc||WALLCRACK_SCOPE,price:Number(w.price)||0}; });
+        state.egel = (parsed.egel||[]).map(function(g){ return {id:g.id||uuid(),qty:Number(g.qty)||0,price:Number(g.price)||EGEL_DEFAULT_PRICE,photos:[]}; });
+        state.wallCracks = (parsed.wallCracks||[]).map(function(w){ return {id:w.id||uuid(),desc:w.desc||WALLCRACK_SCOPE,price:Number(w.price)||0,photos:[]}; });
         // Round 74 — discount on grand total
         state.discountType = (parsed.discountType === 'value') ? 'value' : 'percent';
         state.discountValue = Number(parsed.discountValue) || 0;
@@ -629,7 +629,9 @@ function saveState(){
       submittedBy:state.submittedBy, notes:state.notes,
       slabs:state.slabs.map(function(s){ return {id:s.id,name:s.name,mode:s.mode,floorSqft:s.floorSqft,upturns:s.upturns,extras:s.extras,manualFloor:s.manualFloor,collapsed:!!s.collapsed,iscannerXMarks:s.iscannerXMarks||null}; }),
       siteExtras:state.siteExtras,
-      egel:state.egel||[], wallCracks:state.wallCracks||[],
+      // Round 96 — strip photos from saved drafts (dataURLs would bloat localStorage), like slabs.
+      egel:(state.egel||[]).map(function(g){ return {id:g.id,qty:g.qty,price:g.price}; }),
+      wallCracks:(state.wallCracks||[]).map(function(w){ return {id:w.id,desc:w.desc,price:w.price}; }),
       discountType:state.discountType||'percent', discountValue:Number(state.discountValue)||0
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
@@ -649,6 +651,9 @@ function slabTotal(s){ return slabMembraneRm(s)+slabExtrasRm(s); }
 // Round 95.2 — a slab counts only if measured or has a priced service; empty
 // slabs are ignored in output (and never block submission).
 function slabIsActive(s){ return slabSqft(s) > 0 || slabExtrasRm(s) > 0; }
+// Round 96 — a slab should still appear in the PDF detail (to show its photos)
+// even if not yet measured/priced. Billing/breakdown loops keep using slabIsActive.
+function slabHasContent(s){ return slabIsActive(s) || (s.photos && s.photos.length > 0); }
 function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
 function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabSqft(s); },0); }
 // Round 75 — MOQ adjustment: if total membrane area < MOQ_SQFT, bill the shortfall × rate.
@@ -828,6 +833,42 @@ async function handlePhotoFiles(slabId, files){
   }
 }
 
+// Round 96 — generic photo upload for non-slab service types (E-Gel, Wall
+// Crack). Same compress + Drive-audit pattern as handlePhotoFiles, no OCR.
+async function handleServicePhotoFiles(arrName, id, files){
+  if (!files || !files.length) return;
+  const arr = state[arrName] || [];
+  const item = arr.find(function(x){ return x.id === id; });
+  if (!item) return;
+  if (!item.photos) item.photos = [];
+  const ov = document.getElementById('uploadOverlay');
+  const ut = document.getElementById('uploadText');
+  ov.classList.add('on');
+  let added = 0;
+  const label = arrName === 'egel' ? 'Toilet E-Gel' : 'Wall Crack';
+  for (const f of Array.from(files)) {
+    ut.textContent = 'Compressing… ('+(added+1)+'/'+files.length+')';
+    try {
+      const okb = Math.round(f.size/1024);
+      const dataUrl = await compressImage(f,1280);
+      const photo = { id:uuid(), dataUrl, originalKB:okb, compressedKB:dataUrlSizeKB(dataUrl), ocr:null, driveUrl:null };
+      item.photos.push(photo);
+      added++;
+      if (currentLead && currentLead['Phone']) {
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST', headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action:'uploadEstimationPhoto', secret:SHARED_SECRET, phone:currentLead['Phone'], slabName:label, photoLabel:'', dataUrl:dataUrl })
+        }).then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(j){ if (j && j.url) photo.driveUrl = j.url; })
+          .catch(function(){});
+      }
+    } catch(_){ toast('Failed to read one photo','error'); }
+  }
+  if (added) toast('Added '+added+' photo'+(added>1?'s':''),'success');
+  ov.classList.remove('on');
+  renderAll();
+}
+
 // Round 73 — Upload iScanner photo, ask backend (gpt-4o vision via n8n)
 // to detect color/X marks and group sides. Replaces slab.upturns entirely.
 async function handleIscannerFile(slabId, file) {
@@ -920,6 +961,40 @@ function renderAll(){
   renderSlabs(); renderEgel(); renderWallCracks(); renderSiteExtras(); renderSiteChips(); renderGrand(); renderStepSummaries(); updateSubmitState();
 }
 
+// Round 96 — photo strip + uploader markup for a service item (E-Gel/Wall Crack).
+function serviceItemPhotosHtml(arrName, item){
+  let h = '';
+  if (item.photos && item.photos.length) {
+    h += '<div class="slab-photos" style="margin-top:6px">' + item.photos.map(function(p,i){
+      return '<div class="photo-slot"><img src="'+p.dataUrl+'" alt="">'+
+        '<button class="photo-slot-del" type="button" data-del-svc-photo="'+arrName+'|'+item.id+'|'+p.id+'" aria-label="Remove">×</button>'+
+        '<div class="photo-slot-meta">#'+(i+1)+' · '+p.compressedKB+'KB</div></div>';
+    }).join('') + '</div>';
+  }
+  h += '<label class="chip" style="display:inline-block;margin-top:6px;cursor:pointer">📷 Add photo'+
+       '<input type="file" accept="image/*" capture="environment" multiple data-svc-photo="'+arrName+'|'+item.id+'" style="display:none"></label>';
+  return h;
+}
+
+// Round 96 — wire the upload inputs + photo-remove buttons inside a service list.
+function wireServicePhotoControls(list){
+  list.querySelectorAll('input[data-svc-photo]').forEach(function(el){
+    el.onchange = function(){
+      const parts = el.dataset.svcPhoto.split('|');
+      handleServicePhotoFiles(parts[0], parts[1], el.files);
+      el.value = '';
+    };
+  });
+  list.querySelectorAll('[data-del-svc-photo]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.delSvcPhoto.split('|');
+      const item = (state[parts[0]]||[]).find(function(x){ return x.id === parts[1]; });
+      if (item && item.photos) item.photos = item.photos.filter(function(p){ return p.id !== parts[2]; });
+      renderAll();
+    };
+  });
+}
+
 // Round 95 — Toilet E-Gel service rows.
 function renderEgel(){
   const list = document.getElementById('egelList');
@@ -934,9 +1009,11 @@ function renderEgel(){
         '<input type="number" inputmode="numeric" step="1" min="0" placeholder="Toilets" value="'+(g.qty||'')+'" data-egel-field="qty" data-egel-id="'+g.id+'">'+
         '<input type="number" inputmode="decimal" step="50" min="0" placeholder="RM / toilet" value="'+(g.price||'')+'" data-egel-field="price" data-egel-id="'+g.id+'">'+
         '<span class="fld-out" data-egel-out="'+g.id+'">= '+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span>'+
-      '</div>';
+      '</div>'+
+      serviceItemPhotosHtml('egel', g);
     list.appendChild(div);
   });
+  wireServicePhotoControls(list);
   list.querySelectorAll('input[data-egel-field]').forEach(function(el){
     const update = function(){
       const g = state.egel.find(function(x){ return x.id === el.dataset.egelId; });
@@ -967,9 +1044,11 @@ function renderWallCracks(){
       '<div class="extras-fields">'+
         '<input type="number" inputmode="decimal" step="50" min="0" placeholder="RM amount (subject to condition)" value="'+(w.price||'')+'" data-wc-field="price" data-wc-id="'+w.id+'">'+
         '<span class="fld-out" data-wc-out="'+w.id+'">= '+rm(Number(w.price)||0)+'</span>'+
-      '</div>';
+      '</div>'+
+      serviceItemPhotosHtml('wallCracks', w);
     list.appendChild(div);
   });
+  wireServicePhotoControls(list);
   list.querySelectorAll('[data-wc-field]').forEach(function(el){
     const update = function(){
       const w = state.wallCracks.find(function(x){ return x.id === el.dataset.wcId; });
@@ -1990,7 +2069,7 @@ function buildPrintView(overrideRef) {
 
   // 4. Per slab — measurements section + photos
   state.slabs.forEach(function(s){
-    if (!slabIsActive(s)) return;  // Round 95.2 — skip empty slabs
+    if (!slabHasContent(s)) return;  // Round 96 — keep photo'd slabs so their photos render
     const isFlashing = s.mode === 'flashing';
     let slabHtml = '<div class="pv-slab">';
     slabHtml +=
@@ -2086,6 +2165,7 @@ function buildPrintView(overrideRef) {
     if ((Number(g.qty)||0) <= 0) return;
     html += '<div class="pv-slab">'+
       '<div class="pv-slab-h"><span>Toilet E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</span><span class="pv-slab-mode">Per toilet</span></div>'+
+      ((g.photos&&g.photos.length) ? '<div class="pv-photos">'+g.photos.slice(0,4).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
       '<div class="pv-section">'+
         '<div class="pv-line"><span>E-Gel injection · '+(Number(g.qty)||0)+' toilet(s) @ '+rm(g.price)+'</span><span>'+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span></div>'+
         '<div class="pv-line" style="font-size:10px;color:#6b7280">3-year warranty · non-hacking · non-dusty · resume use 1 hour after application</div>'+
@@ -2097,6 +2177,7 @@ function buildPrintView(overrideRef) {
     if ((Number(w.price)||0) <= 0) return;
     html += '<div class="pv-slab">'+
       '<div class="pv-slab-h"><span>External Wall Crack Service'+((state.wallCracks.length>1)?(' #'+(wi+1)):'')+'</span><span class="pv-slab-mode">Subject to condition</span></div>'+
+      ((w.photos&&w.photos.length) ? '<div class="pv-photos">'+w.photos.slice(0,4).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
       '<div class="pv-section">'+
         (w.desc ? '<div class="pv-line" style="font-size:10.5px;color:#374151;display:block">'+escapeHtml(w.desc)+'</div>' : '')+
         '<div class="pv-line sub"><span>Wall crack service</span><span>'+rm(Number(w.price)||0)+'</span></div>'+
