@@ -1840,6 +1840,11 @@ const STAFF_DONE_STATUSES = [
   'Lost', 'Cold Lead', 'Rejected', 'Out of Area', 'Human Handoff'
 ];
 
+// Round 98 — AssignName (Users tab col F) of the rep who owns every
+// JB/Johor job card. His daily reminder + '-pending' return the JB
+// lists (built by _filterJbJobs) instead of the generic supervisor set.
+const JB_OWNER_ASSIGN = 'Osment';
+
 // Pure filter over already-read leads data.
 //   data: sheet.getDataRange().getValues() (row 0 = headers)
 //   h:    getHeaders(sheet) → {headers, colByName}
@@ -1902,6 +1907,117 @@ function _filterStaffJobs(data, h, assignName) {
     }
   }
   return {assigned: assigned, repair: repair, qtFollowups: qtFollowups, idateKL: idateKL};
+}
+
+// Round 98 — collect ALL JB/Johor cards (by address, any Assigned To)
+// sitting in the four phases Osment chases, grouped for the 3-section
+// reminder. Returns {svcqt, idate, wip}:
+//   svcqt = SVC-Confirmed with an expired/missing appt date  +  Pending QT
+//   idate = Pending I.Date
+//   wip   = Job In Progress
+function _filterJbJobs(data, h) {
+  const cName   = h.colByName['Name'];
+  const cPhone  = h.colByName['Phone'];
+  const cStatus = h.colByName['Status'];
+  const cNotes  = h.colByName['Notes'];
+  const cLink   = h.colByName['Group Invite Link (AJ)'];
+  const cLoc    = h.colByName['Location'];
+  const cAddr   = h.colByName['Full Address'];
+  const cAppt   = h.colByName['Date Appt Confirmed'];
+  const cChg    = h.colByName['Status Changed At'];
+  const todayStr = _mytDateStr();
+
+  const svcqt = [], idate = [], wip = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const status = cStatus ? String(row[cStatus - 1] || '').trim() : '';
+    if (status !== 'Site Visit Confirmed' && status !== 'Pending QT' &&
+        status !== 'Pending I.Date' && status !== 'Job In Progress') continue;
+
+    const loc  = cLoc  ? String(row[cLoc  - 1] || '') : '';
+    const addr = cAddr ? String(row[cAddr - 1] || '') : '';
+    if (!_isJbAddress(loc, addr)) continue;
+
+    const card = {
+      name:      cName  ? String(row[cName  - 1] || '').trim() : '',
+      phone:     cPhone ? String(row[cPhone - 1] || '').trim() : '',
+      status:    status,
+      notes:     cNotes ? String(row[cNotes - 1] || '').trim() : '',
+      groupLink: cLink  ? String(row[cLink  - 1] || '').trim() : ''
+    };
+
+    if (status === 'Site Visit Confirmed') {
+      // Expired SVC only: skip cards whose appointment is today or later.
+      const apptStr = cAppt ? _normalizeDateStr(row[cAppt - 1]) : '';
+      if (apptStr && apptStr >= todayStr) continue;
+      card.apptDate = apptStr;
+      svcqt.push(card);
+    } else if (status === 'Pending QT') {
+      card.daysInPhase = cChg ? _daysSinceMyt(row[cChg - 1]) : -1;
+      svcqt.push(card);
+    } else if (status === 'Pending I.Date') {
+      card.daysInPhase = cChg ? _daysSinceMyt(row[cChg - 1]) : -1;
+      idate.push(card);
+    } else { // Job In Progress
+      card.daysInPhase = cChg ? _daysSinceMyt(row[cChg - 1]) : -1;
+      wip.push(card);
+    }
+  }
+  return {svcqt: svcqt, idate: idate, wip: wip};
+}
+
+// Round 98 — 3-section JB reminder (mirrors _buildReminderMessage style).
+// Empty sections are omitted; returns '' when there is nothing pending
+// (the daily loop then skips the send; the command path substitutes an
+// "all clear" line).
+function _buildJbReminderMessage(name, jb) {
+  const total = jb.svcqt.length + jb.idate.length + jb.wip.length;
+  if (!total) return '';
+
+  const lines = [];
+  lines.push('🔔 *Good morning ' + (name || 'there') + '*');
+  lines.push('_JB job cards today_');
+
+  if (jb.svcqt.length) {
+    lines.push('', '', '🚩 *SVC EXPIRED / PENDING QT — ' + jb.svcqt.length + '*', '');
+    jb.svcqt.forEach(function(c, i) {
+      let line = (i + 1) + '. *' + (c.name || '(no name)') + '*';
+      if (c.status === 'Site Visit Confirmed') {
+        line += ' — ' + (c.apptDate ? 'appt was ' + c.apptDate : 'no appt date recorded');
+      } else {
+        line += ' — Pending QT' + (c.daysInPhase >= 0 ? ', ' + c.daysInPhase + 'd in phase' : '');
+      }
+      lines.push(line);
+      if (c.phone)     lines.push('    📞 ' + c.phone);
+      if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
+      if (c.notes)     lines.push('    📝 ' + _snippet(c.notes, 140));
+      if (i < jb.svcqt.length - 1) lines.push('');
+    });
+  }
+
+  if (jb.idate.length) {
+    lines.push('', '', '📅 *PENDING INSTALLATION DATE — ' + jb.idate.length + '*', '');
+    jb.idate.forEach(function(c, i) {
+      lines.push((i + 1) + '. *' + (c.name || '(no name)') + '*' +
+        (c.daysInPhase >= 0 ? ' — ' + c.daysInPhase + 'd waiting' : ''));
+      if (c.phone)     lines.push('    📞 ' + c.phone);
+      if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
+      if (i < jb.idate.length - 1) lines.push('');
+    });
+  }
+
+  if (jb.wip.length) {
+    lines.push('', '', '🛠 *JOB IN PROGRESS — ' + jb.wip.length + '*', '');
+    jb.wip.forEach(function(c, i) {
+      lines.push((i + 1) + '. *' + (c.name || '(no name)') + '*' +
+        (c.daysInPhase >= 0 ? ' — ' + c.daysInPhase + 'd in progress' : ''));
+      if (c.phone)     lines.push('    📞 ' + c.phone);
+      if (c.groupLink) lines.push('    🔗 ' + c.groupLink);
+      if (i < jb.wip.length - 1) lines.push('');
+    });
+  }
+
+  return lines.join('\n');
 }
 
 // Round 91 — KL vs JB by address text (mirror of the n8n Gen-Seq _isJbWord).
@@ -1981,7 +2097,14 @@ function handleStaffCommand(body) {
   if (command === '-myjobs') {
     msg = _buildCommandMessage('📋 Your assigned jobs', jobs.assigned, 'You have no assigned jobs right now. 👍');
   } else if (command === '-pending') {
-    msg = _buildCommandMessage('🔧 Pending repair queue', jobs.repair, 'No pending repair jobs right now. 👍');
+    // Round 98 — JB owner (Osment) gets the 3-section JB list; everyone
+    // else keeps the repair queue.
+    if (String(urow[5] || '').trim().toLowerCase() === JB_OWNER_ASSIGN.toLowerCase()) {
+      msg = _buildJbReminderMessage(name, _filterJbJobs(data, h)) ||
+        '✅ No pending JB job cards right now. 👍';
+    } else {
+      msg = _buildCommandMessage('🔧 Pending repair queue', jobs.repair, 'No pending repair jobs right now. 👍');
+    }
   } else if (command === '-appt' || command === '-appointments' || command === '-myappt') {
     // Round 80 — on-demand list of this rep's upcoming Site-Visit-Confirmed appointments.
     const appts = _filterFutureAppointments(data, h, String(urow[5] || '').trim());
@@ -2062,6 +2185,18 @@ function _doSupervisorReminders() {
     if (_role !== 'supervisor' && _role !== 'quality_supervisor') continue;
     const phone = String(u[i][4] || '').replace(/\D/g, '');
     if (!phone) { skipped++; continue; }
+
+    // Round 98 — JB owner (Osment): send the 3-section JB list instead of
+    // the generic supervisor reminder. Skip if nothing is pending.
+    if (String(u[i][5] || '').trim().toLowerCase() === JB_OWNER_ASSIGN.toLowerCase()) {
+      const jbMsg = _buildJbReminderMessage(String(u[i][2] || '').trim(), _filterJbJobs(data, h));
+      if (!jbMsg) { skipped++; continue; }
+      _sendWhapiText(phone, jbMsg);
+      sent++;
+      Utilities.sleep(600);
+      continue;
+    }
+
     const jobs = _filterStaffJobs(data, h, String(u[i][5] || '').trim());
     const isQc = (_role === 'quality_supervisor');
     const idateCount = (isQc && jobs.idateKL) ? jobs.idateKL.length : 0;
