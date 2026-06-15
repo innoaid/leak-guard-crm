@@ -310,9 +310,13 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       <!-- Round 95 — other service types -->
       <div id="egelList" style="margin-top:10px"></div>
       <div id="wallCrackList"></div>
+      <div id="openSvcList"></div>
+      <div id="roofTilesList"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
         <button class="add-row" id="btnAddEgel" type="button">+ Toilet E-Gel</button>
         <button class="add-row" id="btnAddWallCrack" type="button">+ Wall Crack</button>
+        <button class="add-row" id="btnAddOpenSvc" type="button">+ Open Service</button>
+        <button class="add-row" id="btnAddRoofTile" type="button">+ Roof Tiles</button>
       </div>
     </div>
   </div>
@@ -514,7 +518,7 @@ let settings = loadSettings();
 
 // Round 95 — egel (toilet E-Gel) + wallCracks are top-level service types
 // alongside membrane slabs.
-let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], discountType:'percent', discountValue:0 };
+let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0 };
 
 // Ephemeral UI collapse state per slab — not persisted (re-derived on render)
 const uiCollapse = new Map(); // slabId -> { measurements: bool, services: bool }
@@ -585,6 +589,10 @@ const EGEL_DEFAULT_PRICE = 1800;
 const WALLCRACK_SCOPE = 'External wall crack repair (with abseiling where required): groove all identified cracks, apply L-crack filler, then 2 coats of liquid waterproofing membrane. Scope & price subject to site condition.';
 function newEgel(){ return { id:uuid(), qty:1, price:EGEL_DEFAULT_PRICE, photos:[] }; }
 function newWallCrack(){ return { id:uuid(), desc:WALLCRACK_SCOPE, price:0, photos:[] }; }
+// Round 97 — Open Service (free-form) + Roof Tiles (qty × price, fixed MoS).
+const ROOFTILE_TITLE = 'Roof Tile Waterproofing & Refurbishment Works';
+function newOpenSvc(){ return { id:uuid(), desc:'', qty:1, price:0, photos:[] }; }
+function newRoofTile(){ return { id:uuid(), desc:ROOFTILE_TITLE, qty:1, price:0, photos:[] }; }
 
 function loadState(){
   try {
@@ -610,6 +618,8 @@ function loadState(){
         // Round 95 — top-level service types
         state.egel = (parsed.egel||[]).map(function(g){ return {id:g.id||uuid(),qty:Number(g.qty)||0,price:Number(g.price)||EGEL_DEFAULT_PRICE,photos:[]}; });
         state.wallCracks = (parsed.wallCracks||[]).map(function(w){ return {id:w.id||uuid(),desc:w.desc||WALLCRACK_SCOPE,price:Number(w.price)||0,photos:[]}; });
+        state.openSvc = (parsed.openSvc||[]).map(function(o){ return {id:o.id||uuid(),desc:o.desc||'',qty:Number(o.qty)||0,price:Number(o.price)||0,photos:[]}; });
+        state.roofTiles = (parsed.roofTiles||[]).map(function(r){ return {id:r.id||uuid(),desc:r.desc||ROOFTILE_TITLE,qty:Number(r.qty)||0,price:Number(r.price)||0,photos:[]}; });
         // Round 74 — discount on grand total
         state.discountType = (parsed.discountType === 'value') ? 'value' : 'percent';
         state.discountValue = Number(parsed.discountValue) || 0;
@@ -632,6 +642,8 @@ function saveState(){
       // Round 96 — strip photos from saved drafts (dataURLs would bloat localStorage), like slabs.
       egel:(state.egel||[]).map(function(g){ return {id:g.id,qty:g.qty,price:g.price}; }),
       wallCracks:(state.wallCracks||[]).map(function(w){ return {id:w.id,desc:w.desc,price:w.price}; }),
+      openSvc:(state.openSvc||[]).map(function(o){ return {id:o.id,desc:o.desc,qty:o.qty,price:o.price}; }),
+      roofTiles:(state.roofTiles||[]).map(function(r){ return {id:r.id,desc:r.desc,qty:r.qty,price:r.price}; }),
       discountType:state.discountType||'percent', discountValue:Number(state.discountValue)||0
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
@@ -674,15 +686,21 @@ function allSlabExtras(){ return state.slabs.reduce(function(arr,s){ return arr.
 // Round 95 — service-type totals (outside the membrane MOQ).
 function egelTotal(){ return (state.egel||[]).reduce(function(sum,g){ return sum+(Number(g.qty)||0)*(Number(g.price)||0); },0); }
 function wallCrackTotal(){ return (state.wallCracks||[]).reduce(function(sum,w){ return sum+(Number(w.price)||0); },0); }
-// Any billable item present? (slab with sqft, or an E-Gel toilet, or a priced wall crack)
+// Round 97 — Open Service + Roof Tiles (qty × price).
+function openSvcTotal(){ return (state.openSvc||[]).reduce(function(sum,o){ return sum+(Number(o.qty)||0)*(Number(o.price)||0); },0); }
+function roofTilesTotal(){ return (state.roofTiles||[]).reduce(function(sum,r){ return sum+(Number(r.qty)||0)*(Number(r.price)||0); },0); }
+// Any billable item present? (slab with sqft, or an E-Gel toilet, or a priced
+// wall crack / open service / roof tile)
 function hasBillableItem(){
   return state.slabs.some(function(s){ return slabSqft(s)>0; })
     || (state.egel||[]).some(function(g){ return (Number(g.qty)||0)>0; })
-    || (state.wallCracks||[]).some(function(w){ return (Number(w.price)||0)>0; });
+    || (state.wallCracks||[]).some(function(w){ return (Number(w.price)||0)>0; })
+    || (state.openSvc||[]).some(function(o){ return (Number(o.qty)||0)>0 && (Number(o.price)||0)>0; })
+    || (state.roofTiles||[]).some(function(r){ return (Number(r.qty)||0)>0 && (Number(r.price)||0)>0; });
 }
 
 // Round 74 — discount on grand total. grandSubtotal is pre-discount; grandTotal post-discount.
-function grandSubtotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm()+moqAdjustment()+egelTotal()+wallCrackTotal(); }
+function grandSubtotal(){ return state.slabs.reduce(function(sum,s){ return sum+slabTotal(s); },0)+siteExtrasRm()+moqAdjustment()+egelTotal()+wallCrackTotal()+openSvcTotal()+roofTilesTotal(); }
 function discountAmount(){
   const sub = grandSubtotal();
   const v = Number(state.discountValue) || 0;
@@ -747,6 +765,17 @@ function buildAutocountLineItems(){
   (state.wallCracks||[]).forEach(function(w){
     if ((Number(w.price)||0) > 0) {
       items.push({ desc: 'External Wall Crack Repair Service', qty: 1, unit: 'unit', price: Number(w.price)||0, furtherDescription: String(w.desc||'').slice(0,200) });
+    }
+  });
+  // Round 97 — Open Service + Roof Tiles (qty × price).
+  (state.openSvc||[]).forEach(function(o){
+    if ((Number(o.qty)||0) > 0 && (Number(o.price)||0) > 0) {
+      items.push({ desc: String(o.desc||'').trim() || 'Service', qty: Number(o.qty)||0, unit: 'unit', price: Number(o.price)||0, furtherDescription: '' });
+    }
+  });
+  (state.roofTiles||[]).forEach(function(r){
+    if ((Number(r.qty)||0) > 0 && (Number(r.price)||0) > 0) {
+      items.push({ desc: String(r.desc||'').trim() || ROOFTILE_TITLE, qty: Number(r.qty)||0, unit: 'unit', price: Number(r.price)||0, furtherDescription: '' });
     }
   });
   // 'unit' (not '') for adjustment lines — verified accepted by AutoCount
@@ -958,8 +987,51 @@ async function runOcrOnPhoto(slab, photo) {
 
 // ========= RENDER =========
 function renderAll(){
-  renderSlabs(); renderEgel(); renderWallCracks(); renderSiteExtras(); renderSiteChips(); renderGrand(); renderStepSummaries(); updateSubmitState();
+  renderSlabs(); renderEgel(); renderWallCracks(); renderOpenSvc(); renderRoofTiles(); renderSiteExtras(); renderSiteChips(); renderGrand(); renderStepSummaries(); updateSubmitState();
 }
+
+// Round 97 — Open Service + Roof Tiles rows (qty × price, free-form desc, photos).
+function _renderQtyPriceSvc(opts){
+  const list = document.getElementById(opts.listId);
+  if (!list) return;
+  list.innerHTML = '';
+  (state[opts.arr]||[]).forEach(function(it){
+    const div = document.createElement('div');
+    div.className = 'row';
+    div.innerHTML =
+      '<div class="row-label"><span>'+opts.icon+' '+opts.title+'</span><button class="row-x" data-del-qp="'+opts.arr+'|'+it.id+'" type="button" aria-label="Remove">×</button></div>'+
+      '<input type="text" placeholder="Description" value="'+escapeHtml(it.desc||'')+'" data-qp-field="desc" data-qp-arr="'+opts.arr+'" data-qp-id="'+it.id+'" style="width:100%;margin-bottom:6px">'+
+      '<div class="extras-fields">'+
+        '<input type="number" inputmode="decimal" step="1" min="0" placeholder="Qty" value="'+(it.qty||'')+'" data-qp-field="qty" data-qp-arr="'+opts.arr+'" data-qp-id="'+it.id+'">'+
+        '<input type="number" inputmode="decimal" step="50" min="0" placeholder="Unit price" value="'+(it.price||'')+'" data-qp-field="price" data-qp-arr="'+opts.arr+'" data-qp-id="'+it.id+'">'+
+        '<span class="fld-out" data-qp-out="'+it.id+'">= '+rm((Number(it.qty)||0)*(Number(it.price)||0))+'</span>'+
+      '</div>'+
+      serviceItemPhotosHtml(opts.arr, it);
+    list.appendChild(div);
+  });
+  wireServicePhotoControls(list);
+  list.querySelectorAll('[data-qp-field]').forEach(function(el){
+    const update = function(){
+      const it = (state[el.dataset.qpArr]||[]).find(function(x){ return x.id === el.dataset.qpId; });
+      if (!it) return;
+      const f = el.dataset.qpField;
+      it[f] = (f==='desc') ? el.value : (Number(el.value)||0);
+      const out = list.querySelector('[data-qp-out="'+it.id+'"]');
+      if (out) out.textContent = '= ' + rm((Number(it.qty)||0)*(Number(it.price)||0));
+      renderGrand(); renderStepSummaries(); updateSubmitState(); saveState();
+    };
+    el.addEventListener('input', update); el.addEventListener('change', update);
+  });
+  list.querySelectorAll('[data-del-qp]').forEach(function(b){
+    b.onclick = function(){
+      const parts = b.dataset.delQp.split('|');
+      state[parts[0]] = (state[parts[0]]||[]).filter(function(x){ return x.id !== parts[1]; });
+      saveState(); renderAll();
+    };
+  });
+}
+function renderOpenSvc(){ _renderQtyPriceSvc({ listId:'openSvcList', arr:'openSvc', icon:'📝', title:'Open Service' }); }
+function renderRoofTiles(){ _renderQtyPriceSvc({ listId:'roofTilesList', arr:'roofTiles', icon:'🏠', title:'Roof Tiles' }); }
 
 // Round 96 — photo strip + uploader markup for a service item (E-Gel/Wall Crack).
 function serviceItemPhotosHtml(arrName, item){
@@ -1078,6 +1150,9 @@ function renderStepSummaries(){
   if (nSlabs) parts.push(nSlabs + ' slab' + (nSlabs>1?'s':'') + ' · ' + sqft(grandMembraneSqft()));
   if (nEgel) parts.push(nEgel + ' E-Gel');
   if (nWc) parts.push(nWc + ' wall crack');
+  const nOpen = (state.openSvc||[]).length, nRoof = (state.roofTiles||[]).length;
+  if (nOpen) parts.push(nOpen + ' open');
+  if (nRoof) parts.push(nRoof + ' roof tile');
   document.getElementById('step2Summary').textContent = parts.length ? parts.join(' · ') : 'No services yet';
   // STEP 3
   const nSite = state.siteExtras.length;
@@ -1450,6 +1525,17 @@ function renderGrand(){
     html += '<div class="grand-block"><div class="grand-block-h">External Wall Crack'+((state.wallCracks.length>1)?(' #'+(wi+1)):'')+'</div>'+
       '<div class="grand-line"><span class="l-label">Subject to site condition</span><span class="l-val">'+rm(Number(w.price)||0)+'</span></div></div>';
   });
+  // Round 97 — Open Service + Roof Tiles (on-screen preview)
+  (state.openSvc||[]).forEach(function(o){
+    if ((Number(o.qty)||0) <= 0 || (Number(o.price)||0) <= 0) return;
+    html += '<div class="grand-block"><div class="grand-block-h">'+escapeHtml(o.desc||'Service')+'</div>'+
+      '<div class="grand-line"><span class="l-label">'+(Number(o.qty)||0)+' × '+rm(o.price)+'</span><span class="l-val">'+rm((Number(o.qty)||0)*(Number(o.price)||0))+'</span></div></div>';
+  });
+  (state.roofTiles||[]).forEach(function(r, ri){
+    if ((Number(r.qty)||0) <= 0 || (Number(r.price)||0) <= 0) return;
+    html += '<div class="grand-block"><div class="grand-block-h">'+escapeHtml(r.desc||ROOFTILE_TITLE)+((state.roofTiles.length>1)?(' #'+(ri+1)):'')+'</div>'+
+      '<div class="grand-line"><span class="l-label">'+(Number(r.qty)||0)+' × '+rm(r.price)+'</span><span class="l-val">'+rm((Number(r.qty)||0)*(Number(r.price)||0))+'</span></div></div>';
+  });
 
   // Additional Costs block (site-wide)
   if (state.siteExtras.length) {
@@ -1767,6 +1853,8 @@ document.getElementById('btnAddSiteExtra').addEventListener('click', function(){
 // Round 95 — add other service types
 document.getElementById('btnAddEgel').addEventListener('click', function(){ state.egel.push(newEgel()); saveState(); renderAll(); });
 document.getElementById('btnAddWallCrack').addEventListener('click', function(){ state.wallCracks.push(newWallCrack()); saveState(); renderAll(); });
+document.getElementById('btnAddOpenSvc').addEventListener('click', function(){ state.openSvc.push(newOpenSvc()); saveState(); renderAll(); });
+document.getElementById('btnAddRoofTile').addEventListener('click', function(){ state.roofTiles.push(newRoofTile()); saveState(); renderAll(); });
 
 // Round 72 — real submit flow: SE counter → render PDF → merge boilerplate → send to WA group.
 document.getElementById('btnSubmit').addEventListener('click', async function(){
@@ -1988,7 +2076,7 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
 
 document.getElementById('btnClear').addEventListener('click', function(){
   if (!confirm('Clear all slabs, services, and photos?')) return;
-  state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], discountType:'percent', discountValue:0 };
+  state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0 };
   uiCollapse.clear();
   document.getElementById('fSubmittedBy').value='';
   document.getElementById('fNotes').value='';
@@ -2184,6 +2272,24 @@ function buildPrintView(overrideRef) {
       '</div></div>';
   });
 
+  // Round 97 — Open Service detail
+  (state.openSvc || []).forEach(function(o){
+    if ((Number(o.qty)||0) <= 0 || (Number(o.price)||0) <= 0) return;
+    html += '<div class="pv-slab">'+
+      '<div class="pv-slab-h"><span>'+escapeHtml(o.desc||'Service')+'</span><span class="pv-slab-mode">Service</span></div>'+
+      ((o.photos&&o.photos.length) ? '<div class="pv-photos">'+o.photos.slice(0,4).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
+      '<div class="pv-section"><div class="pv-line sub"><span>'+(Number(o.qty)||0)+' × '+rm(o.price)+'</span><span>'+rm((Number(o.qty)||0)*(Number(o.price)||0))+'</span></div></div></div>';
+  });
+
+  // Round 97 — Roof Tiles detail
+  (state.roofTiles || []).forEach(function(r, ri){
+    if ((Number(r.qty)||0) <= 0 || (Number(r.price)||0) <= 0) return;
+    html += '<div class="pv-slab">'+
+      '<div class="pv-slab-h"><span>'+escapeHtml(r.desc||ROOFTILE_TITLE)+((state.roofTiles.length>1)?(' #'+(ri+1)):'')+'</span><span class="pv-slab-mode">Roof tile</span></div>'+
+      ((r.photos&&r.photos.length) ? '<div class="pv-photos">'+r.photos.slice(0,4).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
+      '<div class="pv-section"><div class="pv-line sub"><span>'+(Number(r.qty)||0)+' × '+rm(r.price)+'</span><span>'+rm((Number(r.qty)||0)*(Number(r.price)||0))+'</span></div></div></div>';
+  });
+
   // 6. Grand total — per-slab line items + Additional Costs (Round v3.4)
   html += '<div class="pv-grand">';
   html += '<div class="pv-grand-h">Estimated Total — Breakdown</div>';
@@ -2245,6 +2351,31 @@ function buildPrintView(overrideRef) {
       '<div class="pv-grand-line"><span>Wall crack repair (subject to site condition)</span><span>'+rm(Number(w.price)||0)+'</span></div>'+
       '</div>';
   });
+  // Round 97 — Open Service + Roof Tiles breakdown blocks
+  (state.openSvc || []).forEach(function(o){
+    if ((Number(o.qty)||0) <= 0 || (Number(o.price)||0) <= 0) return;
+    html += '<div class="pv-grand-block">'+
+      '<div class="pv-grand-block-h">'+escapeHtml(o.desc||'Service')+'</div>'+
+      '<div class="pv-grand-line"><span>'+(Number(o.qty)||0)+' × '+rm(o.price)+'</span><span>'+rm((Number(o.qty)||0)*(Number(o.price)||0))+'</span></div>'+
+      '</div>';
+  });
+  (state.roofTiles || []).forEach(function(r, ri){
+    if ((Number(r.qty)||0) <= 0 || (Number(r.price)||0) <= 0) return;
+    html += '<div class="pv-grand-block">'+
+      '<div class="pv-grand-block-h">'+escapeHtml(r.desc||ROOFTILE_TITLE)+((state.roofTiles.length>1)?(' #'+(ri+1)):'')+'</div>'+
+      '<div class="pv-grand-line"><span>'+(Number(r.qty)||0)+' × '+rm(r.price)+'</span><span>'+rm((Number(r.qty)||0)*(Number(r.price)||0))+'</span></div>'+
+      '</div>';
+  });
+  // Round 97 — Method of Statement (Roof Tile), once when any roof-tile item exists.
+  if ((state.roofTiles||[]).some(function(r){ return (Number(r.qty)||0)>0 && (Number(r.price)||0)>0; })) {
+    html += '<div class="pv-grand-block">'+
+      '<div class="pv-grand-block-h">Method of Statement (Roof Tile)</div>'+
+      '<div class="pv-grand-line indent"><span>1. High-pressure water-jet clean the entire roof (dirt, algae, moss, contaminants).</span><span></span></div>'+
+      '<div class="pv-grand-line indent"><span>2. Inspect &amp; replace/repair all damaged, cracked, displaced or broken tiles.</span><span></span></div>'+
+      '<div class="pv-grand-line indent"><span>3. Supply &amp; install torch-on membrane at critical areas (flashing, ridges, V-gutters/valleys).</span><span></span></div>'+
+      '<div class="pv-grand-line indent"><span>4. Apply 3-layer roof coating: 1st primer · 2nd protective sealer · 3rd premium top finish (UV/weather resistant).</span><span></span></div>'+
+      '</div>';
+  }
 
   if ((state.siteExtras || []).length) {
     let acBlk = '<div class="pv-grand-block">';
