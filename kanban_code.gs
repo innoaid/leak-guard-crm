@@ -2631,6 +2631,77 @@ function _scanToMs(v) {
   return isNaN(t) ? 0 : t;
 }
 
+// epoch ms → 'MM-DD HH:MM' in MYT (gotcha #3 idiom: +8h shift, getUTC*).
+function _mytStamp(ms) {
+  if (!ms) return '?';
+  const m = new Date(ms + 8 * 60 * 60 * 1000);
+  return String(m.getUTCMonth() + 1).padStart(2, '0') + '-' +
+    String(m.getUTCDate()).padStart(2, '0') + ' ' +
+    String(m.getUTCHours()).padStart(2, '0') + ':' +
+    String(m.getUTCMinutes()).padStart(2, '0');
+}
+
+// Outage recovery — READ-ONLY. After a Whapi stop, the bot's outbound
+// WhatsApp silently failed (no retry). n8n writes the Sheet first, THEN
+// sends WA, so a phase move / QT issue is still recorded even though the
+// group message was dropped. This scans for cards touched in the last
+// `hoursBack` hours (default 6) and groups them by the message that was
+// most likely missed, so each can be re-sent manually.
+//
+// Run from the editor: scanOutageGaps(6) → View execution log.
+// Sends nothing, writes nothing. Returns the same report as JSON.
+function scanOutageGaps(hoursBack) {
+  const hrs = Number(hoursBack) > 0 ? Number(hoursBack) : 6;
+  const cutoff = Date.now() - hrs * 60 * 60 * 1000;
+
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const data = sheet.getDataRange().getValues();
+  const col = function(name) { return h.colByName[name] ? h.colByName[name] - 1 : -1; };
+  const cStatus = col('Status'), cChg = col('Status Changed At'), cQt = col('Date QT Issued'),
+        cName = col('Name'), cGName = col('Group Name (AE)'), cLink = col('Group Invite Link (AJ)');
+
+  const appt = [], qt = [], other = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const status = cStatus >= 0 ? String(row[cStatus] || '').trim() : '';
+    const changedMs = cChg >= 0 ? _scanToMs(row[cChg]) : 0;
+    const qtMs      = cQt  >= 0 ? _scanToMs(row[cQt])  : 0;
+    const recentMove = changedMs && changedMs >= cutoff;
+    const qtRecent   = qtMs && qtMs >= cutoff;
+    if (!recentMove && !qtRecent) continue;
+
+    const rec = {
+      svId:      cGName >= 0 ? String(row[cGName] || '').trim() : '',
+      name:      cName  >= 0 ? String(row[cName]  || '').trim() : '',
+      status:    status,
+      changedAt: _mytStamp(recentMove ? changedMs : qtMs),
+      groupLink: cLink  >= 0 ? String(row[cLink]  || '').trim() : ''
+    };
+    if (status === 'Site Visit Confirmed')                 appt.push(rec);
+    else if (status === 'Quotation Sent' || qtRecent)      qt.push(rec);
+    else                                                   other.push(rec);
+  }
+
+  const lines = [];
+  lines.push('🔎 OUTAGE GAP SCAN — last ' + hrs + 'h (cutoff ' + _mytStamp(cutoff) + ' MYT)');
+  const section = function(title, hint, arr) {
+    lines.push('', title + ' — ' + arr.length);
+    if (hint) lines.push('  (' + hint + ')');
+    arr.forEach(function(r) {
+      lines.push('  • ' + (r.svId || '(no group)') + '  ' + (r.name || '(no name)') +
+        ' — ' + r.status + ' @ ' + r.changedAt +
+        (r.groupLink ? '  🔗 ' + r.groupLink : ''));
+    });
+  };
+  section('📆 APPT CONFIRMATIONS', 'verify the group got the slot/date confirmation (Dana\'s class)', appt);
+  section('🧾 QT SENDS', 'verify the quote/PDF reached the group', qt);
+  section('🔁 OTHER PHASE MOVES', 'verify group rename + any phase notification', other);
+  const report = lines.join('\n');
+  Logger.log(report);
+  return { hoursBack: hrs, cutoffMyt: _mytStamp(cutoff), appt: appt, qt: qt, other: other, report: report };
+}
+
 // Core engine: one sheet read, returns per-rule {rule, total, violations[]}.
 function _adminScanViolations() {
   const sheet = getSheet();
