@@ -1043,8 +1043,15 @@ function serviceItemPhotosHtml(arrName, item){
         '<div class="photo-slot-meta">#'+(i+1)+' · '+p.compressedKB+'KB</div></div>';
     }).join('') + '</div>';
   }
-  h += '<label class="chip" style="display:inline-block;margin-top:6px;cursor:pointer">📷 Add photo'+
-       '<input type="file" accept="image/*" capture="environment" multiple data-svc-photo="'+arrName+'|'+item.id+'" style="display:none"></label>';
+  // Round 102 — non-slab services (E-Gel, Wall Crack, Open Service, Roof Tiles)
+  // get the same Camera + Album split as membrane slabs. The album input omits
+  // `capture` so it opens the photo gallery instead of forcing the camera.
+  h += '<div class="photo-actions" style="margin-top:6px">'+
+         '<label class="photo-btn"><span class="ico">📷</span><span>Take Photo</span>'+
+           '<input type="file" accept="image/*" capture="environment" multiple data-svc-photo="'+arrName+'|'+item.id+'"></label>'+
+         '<label class="photo-btn"><span class="ico">🖼️</span><span>From Album</span>'+
+           '<input type="file" accept="image/*" multiple data-svc-photo="'+arrName+'|'+item.id+'"></label>'+
+       '</div>';
   return h;
 }
 
