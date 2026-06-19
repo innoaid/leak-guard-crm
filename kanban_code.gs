@@ -3286,6 +3286,7 @@ function _callerQueues() {
 function handleCallerJobs(body) {
   const caller = String(body.caller || '').trim();
   if (!caller) return jsonResponse({status: 'error', message: 'caller required'});
+  _ensureCallersAssigned();  // round 101 — adopt any QS card missing a caller before listing
   const queues = _callerQueues();
   let key = caller;
   Object.keys(queues).forEach(function(k) { if (k.toLowerCase() === caller.toLowerCase()) key = k; });
@@ -3389,6 +3390,7 @@ function handleLogCall(body) {
 
 // ── Reminders: 3x/day (8am, 3pm, 7pm MYT) per caller ──
 function _doCallerReminders() {
+  _ensureCallersAssigned();  // round 101 — adopt any QS card missing a caller before reminding
   const queues = _callerQueues();
   let sent = 0, skipped = 0;
   CALLERS.forEach(function(caller) {
@@ -3550,9 +3552,21 @@ function bootstrapCallerUsers() {
 // One-time: assign callers (round-robin) to existing Quotation Sent cards
 // with no caller yet. Next Call Date = max(today, StatusChangedAt + 2 days).
 function backfillCallers() {
+  const n = _ensureCallersAssigned();
+  if (n < 0) { Logger.log('backfillCallers: run bootstrapCallerColumns() first'); return; }
+  Logger.log('backfillCallers: assigned ' + n + ' card(s)');
+}
+
+// Round 101 — self-healing core: adopt every Quotation Sent card with a blank
+// Caller (same rule + Next Call Date math as backfillCallers, but silent and
+// returns the count). Called from backfillCallers() AND from the two queue
+// consume points (_doCallerReminders, handleCallerJobs) so a QS card never
+// stays invisible to callers regardless of how it reached QS or whether a
+// deploy lagged the Round-90 auto-assign hook. Returns -1 if columns missing.
+function _ensureCallersAssigned() {
   const sheet = getSheet();
   const h = getHeaders(sheet);
-  if (!h.colByName['Caller']) { Logger.log('backfillCallers: run bootstrapCallerColumns() first'); return; }
+  if (!h.colByName['Caller']) return -1;
   const data = sheet.getDataRange().getValues();
   const col = function(n) { return h.colByName[n] ? h.colByName[n] - 1 : -1; };
   const cStatus = col('Status'), cCaller = col('Caller'), cChanged = col('Status Changed At');
@@ -3578,5 +3592,5 @@ function backfillCallers() {
     try { setCellByHeader(sheet, row, 'Call Count', 0); } catch (_e) {}
     assigned++;
   }
-  Logger.log('backfillCallers: assigned ' + assigned + ' card(s)');
+  return assigned;
 }
