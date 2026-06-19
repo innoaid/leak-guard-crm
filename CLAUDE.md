@@ -1,21 +1,34 @@
 # Kanban CRM — Project Memory
 
 ## What this project is
-A Kanban-style CRM. The **database is a Google Sheet**, and the app is built with
-**Google Apps Script that is container-bound to that Sheet**. This repo holds the
-`.gs` server code and `.html` UI files.
+A Kanban-style CRM. The **database is a Google Sheet**. The `.gs` server code runs as a
+**Google Apps Script web app** bound to that Sheet; the `.html` UI files are served as a
+**static GitHub Pages site** at `leakguard.my`. WhatsApp/automation runs in **n8n cloud**.
 
-**GitHub is the source of truth for all code.**
+**GitHub is the source of truth for all code.** New here / onboarding a fresh machine? See
+**`README.md`** (quick start) and **`docs/ARCHITECTURE.md`** (system map).
 
 ---
 
-## The three copies of the code (these must be kept in sync)
+## TWO deploy targets (don't confuse them)
+- **`.html` files → GitHub Pages.** Just `git push origin main` — Pages auto-deploys to
+  `leakguard.my` in ~1–3 min. **No Apps Script paste.** (`.nojekyll` at root keeps the build
+  reliable; don't delete it. Hard-refresh / wait out the ~10-min CDN cache to see changes.)
+- **`.gs` files → Apps Script (paste-only).** Paste into the Apps Script editor + redeploy
+  (steps below). Pushing `.gs` to GitHub does **not** make the live Sheet run it.
+
+---
+
+## The copies of the code (these must be kept in sync)
 1. **Laptop** local files
 2. **Desktop** local files
-3. **Live Apps Script** (in the cloud, bound to the Sheet)
+3. **Live Apps Script** (the `.gs` code, bound to the Sheet)
+4. **GitHub Pages** (the live `.html` UI at `leakguard.my`)
 
-- **Git** keeps laptop ↔ desktop in sync (through GitHub).
-- **The deploy step** (below) keeps local files ↔ live Apps Script in sync.
+- **Git** keeps laptop ↔ desktop in sync (through GitHub). Work in **one folder** on the
+  **`main`** branch only (no feature branches).
+- **Deploying:** `.gs` → paste into Apps Script (below); `.html` → just `git push origin main`
+  (GitHub Pages auto-deploys).
 - The Sheet's CRM **data** is already cloud-synced automatically — both machines
   see the same records. Only the **code** needs manual syncing.
 
@@ -39,13 +52,15 @@ Get the latest from GitHub before touching anything. Then edit with Claude Code.
 
 ---
 
-## Routine — push my code to the LIVE app (so the Sheet runs it)
+## Routine — push my `.gs` code to the LIVE app (so the Sheet runs it)
+> Only for **`.gs`** files. `.html` files deploy by `git push origin main` (GitHub Pages) —
+> do NOT paste them into Apps Script.
 My normal manual method:
-1. Open the updated file (in this repo, or its GitHub raw page).
+1. Open the updated `.gs` file (in this repo, or its GitHub raw page).
 2. Copy the **full** contents.
-3. In the Sheet: **Extensions → Apps Script**, open the matching file,
+3. In the Sheet: **Extensions → Apps Script**, open the matching `.gs` file,
    select all, paste over it.
-4. **Repeat for every file I changed** (don't forget the `.html` files).
+4. **Repeat for every `.gs` file I changed.**
 5. Save (Ctrl+S).
 6. If this is a **web app**: Deploy → Manage deployments → edit the deployment →
    set version to **New version** → Deploy.
