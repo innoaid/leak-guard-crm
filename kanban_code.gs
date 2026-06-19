@@ -2702,6 +2702,74 @@ function scanOutageGaps(hoursBack) {
   return { hoursBack: hrs, cutoffMyt: _mytStamp(cutoff), appt: appt, qt: qt, other: other, report: report };
 }
 
+// Round 100 — read-only diagnostic: explain why a card is (not) in the caller
+// call list. The call queue (_callerQueues) includes a card ONLY when all four
+// gates pass: Status === 'Quotation Sent', a Caller is assigned, Call Outcome
+// is not accepted/rejected, and Next Call Date is empty or due (<= today MYT).
+// QT-MMYY-NNN / SE-MMYY-NNN codes and Group Name (AE) have NO bearing on the
+// queue — a QT PDF renames the group independently of the Status shift.
+// Pass any substring of the customer's Name, Phone, or Group Name (AE)
+// (e.g. 'mandee' or '0626-047'). Sends nothing, writes nothing.
+function whyNotInCallList(query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) { Logger.log('whyNotInCallList: pass a name / phone / QT-SV code, e.g. whyNotInCallList("mandee")'); return []; }
+
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const data = sheet.getDataRange().getValues();
+  const col = function(name) { return h.colByName[name] ? h.colByName[name] - 1 : -1; };
+  const cStatus = col('Status'), cCaller = col('Caller'), cOutcome = col('Call Outcome'),
+        cNext = col('Next Call Date'), cName = col('Name'), cPhone = col('Phone'),
+        cGName = col('Group Name (AE)'), cQuote = col('Quotation (RM)');
+  const today = _mytDateStr();
+
+  const lines = ['🔎 WHY-NOT-IN-CALL-LIST — query "' + query + '" (today ' + today + ' MYT)'];
+  const out = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const name   = cName  >= 0 ? String(row[cName]  || '').trim() : '';
+    const phone  = cPhone >= 0 ? String(row[cPhone] || '').trim() : '';
+    const gname  = cGName >= 0 ? String(row[cGName] || '').trim() : '';
+    if ((name + ' ' + phone + ' ' + gname).toLowerCase().indexOf(q) === -1) continue;
+
+    const status  = cStatus  >= 0 ? String(row[cStatus]  || '').trim() : '';
+    const caller  = cCaller  >= 0 ? String(row[cCaller]  || '').trim() : '';
+    const outcome = cOutcome >= 0 ? String(row[cOutcome] || '').trim() : '';
+    const nextDate = cNext   >= 0 ? _normalizeDateStr(row[cNext]) : '';
+    const quote   = cQuote   >= 0 ? (Number(row[cQuote]) || 0) : 0;
+
+    const g1 = status === 'Quotation Sent';
+    const g2 = !!caller;
+    const g3 = outcome !== 'accepted' && outcome !== 'rejected';
+    const g4 = !nextDate || nextDate <= today;
+    const inList = g1 && g2 && g3 && g4;
+
+    let reason = '';
+    if (!g1)      reason = 'Status is "' + (status || '(blank)') + '", not "Quotation Sent" — the queue only holds Quotation Sent cards.';
+    else if (!g2) reason = 'No Caller assigned — run backfillCallers() to assign Alvin/Ken to QS cards.';
+    else if (!g3) reason = 'Call Outcome is "' + outcome + '" — already closed, intentionally dropped from the queue.';
+    else if (!g4) reason = 'Next Call Date ' + nextDate + ' is in the future — appears on/after that date.';
+
+    const rec = { row: i + 1, name: name, phone: phone, groupName: gname, status: status,
+      caller: caller, callOutcome: outcome, nextCallDate: nextDate, quotationRm: quote,
+      inCallList: inList, reason: reason || 'all gates pass' };
+    out.push(rec);
+
+    lines.push('',
+      '▸ ' + (gname || '(no group)') + '  ' + (name || '(no name)') + '  ' + (phone || '(no phone)') + '  [row ' + (i + 1) + ']',
+      '   ' + (g1 ? '✅' : '❌') + ' Status = "Quotation Sent"     (actual: "' + (status || '(blank)') + '")',
+      '   ' + (g2 ? '✅' : '❌') + ' Caller assigned               (actual: "' + (caller || '(blank)') + '")',
+      '   ' + (g3 ? '✅' : '❌') + ' Outcome not accepted/rejected (actual: "' + (outcome || '(blank)') + '")',
+      '   ' + (g4 ? '✅' : '❌') + ' Next Call Date due/empty      (actual: "' + (nextDate || '(blank)') + '", today ' + today + ')',
+      '   ' + (inList ? '➡️ IN the call list ✅' : '➡️ NOT in the call list ❌ — ' + reason));
+  }
+
+  if (!out.length) lines.push('', '⚠️ No card matched "' + query + '" (searched Name, Phone, Group Name (AE)).');
+  const report = lines.join('\n');
+  Logger.log(report);
+  return out;
+}
+
 // Core engine: one sheet read, returns per-rule {rule, total, violations[]}.
 function _adminScanViolations() {
   const sheet = getSheet();
