@@ -845,6 +845,70 @@ function handleUploadEstimationPhoto(body) {
   }
 }
 
+// ================================================================
+// Round 103 — daily Drive backup of the CRM sheet
+// ================================================================
+// Independent dated snapshots in Drive (beyond Google's built-in version
+// history) so the CRM survives accidental corruption/deletion. One-time setup:
+// run bootstrapCrmBackupFolder() then installCrmBackupTrigger() from the editor.
+// Mirrors the EST_PHOTOS_FOLDER bootstrap pattern above.
+const CRM_BACKUP_FOLDER_NAME = 'Leak Guard CRM Backups';
+const CRM_BACKUP_KEEP = 30; // newest N copies retained; older ones trashed
+
+// Run ONCE — find/create the backup folder, store its ID in Script Properties.
+function bootstrapCrmBackupFolder() {
+  const props = PropertiesService.getScriptProperties();
+  const existingId = props.getProperty('CRM_BACKUP_FOLDER_ID');
+  if (existingId) {
+    try {
+      const f = DriveApp.getFolderById(existingId);
+      Logger.log('bootstrapCrmBackupFolder: existing folder — ' + f.getName() + ' (' + existingId + ')');
+      return;
+    } catch (_e) {
+      Logger.log('bootstrapCrmBackupFolder: stored ID no longer valid, recreating');
+    }
+  }
+  const it = DriveApp.getFoldersByName(CRM_BACKUP_FOLDER_NAME);
+  const folder = it.hasNext() ? it.next() : DriveApp.createFolder(CRM_BACKUP_FOLDER_NAME);
+  props.setProperty('CRM_BACKUP_FOLDER_ID', folder.getId());
+  Logger.log('bootstrapCrmBackupFolder: stored ID ' + folder.getId());
+}
+
+// Copy the live spreadsheet into the backup folder, then prune to the newest
+// CRM_BACKUP_KEEP. Safe to run manually or from the daily trigger.
+function backupCrmSheet() {
+  const props = PropertiesService.getScriptProperties();
+  let folderId = props.getProperty('CRM_BACKUP_FOLDER_ID');
+  if (!folderId) { bootstrapCrmBackupFolder(); folderId = props.getProperty('CRM_BACKUP_FOLDER_ID'); }
+  const folder = DriveApp.getFolderById(folderId);
+
+  const name = 'LG CRM Backup ' + _mytDateStr();
+  const copy = SpreadsheetApp.openById(LIVE_SHEET_ID).copy(name);
+  DriveApp.getFileById(copy.getId()).moveTo(folder); // copy lands in My Drive root; relocate it
+
+  // prune: keep newest CRM_BACKUP_KEEP by creation date, trash the rest
+  const files = [];
+  const it = folder.getFiles();
+  while (it.hasNext()) files.push(it.next());
+  files.sort(function(a, b) { return b.getDateCreated().getTime() - a.getDateCreated().getTime(); });
+  let trashed = 0;
+  for (let i = CRM_BACKUP_KEEP; i < files.length; i++) {
+    try { files[i].setTrashed(true); trashed++; } catch (_e) {}
+  }
+  Logger.log('backupCrmSheet: saved "' + name + '"; kept ' +
+    Math.min(files.length, CRM_BACKUP_KEEP) + ', trashed ' + trashed);
+}
+
+// Run ONCE — install a daily (~2 AM) trigger for backupCrmSheet. Idempotent.
+function installCrmBackupTrigger() {
+  const exists = ScriptApp.getProjectTriggers().some(function(t) {
+    return t.getHandlerFunction() === 'backupCrmSheet';
+  });
+  if (exists) { Logger.log('installCrmBackupTrigger: already installed'); return; }
+  ScriptApp.newTrigger('backupCrmSheet').timeBased().everyDays(1).atHour(2).create();
+  Logger.log('installCrmBackupTrigger: daily ~2 AM trigger created');
+}
+
 // Round 71 — one-time creation of the Counters tab + seeding the SE row.
 // Idempotent: skips if tab exists, only seeds SE row if missing.
 function bootstrapCountersSheet() {
