@@ -3058,7 +3058,8 @@ function handleSalesReport(body) {
         cMsg = col('Last Admin Msg'), cMsgAt = col('Last Admin Msg At'),
         cCust = col('Last Customer Msg (AM)'), cLink = col('Group Invite Link (AJ)'),
         cPdf = col('Quotation PDF URL'), cApptDate = col('Date Appt Confirmed'),
-        cQuoteRm = col('Quotation (RM)'), cTotSqft = col('Total Sqft');
+        cQuoteRm = col('Quotation (RM)'), cTotSqft = col('Total Sqft'),
+        cQtIssued = col('Date QT Issued');
   const leadByPhone = {};
   for (let i = 1; i < data.length; i++) {
     const k = _last8(data[i][cPhone]);
@@ -3068,6 +3069,7 @@ function handleSalesReport(body) {
   // ── Estimations in range, latest SE per unique lead ──
   const est = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName('Estimations');
   const people = {};   // key -> aggregate
+  const estPhones = {}; // Round 104 — last8 of every estimation (any date) for hybrid de-dupe
   let dataSinceMs = 0;
   if (est) {
     const eh = getHeaders(est);
@@ -3078,6 +3080,8 @@ function handleSalesReport(body) {
     // latest SE per (person, lead)
     const latest = {};  // personKey|last8 -> {ts, row}
     for (let i = 1; i < ed.length; i++) {
+      const ephk = _last8(ed[i][ePhone]);
+      if (ephk) estPhones[ephk] = 1;  // Round 104 — any-date estimation phones
       const ts = _scanToMs(ed[i][eTs]);
       if (!ts) continue;
       if (!dataSinceMs || ts < dataSinceMs) dataSinceMs = ts;
@@ -3116,6 +3120,45 @@ function handleSalesReport(body) {
       });
     });
   }
+  // Round 104 — Hybrid credit: quoted/won leads with NO estimation row (quotes
+  // made directly in AutoCount, bypassing the Estimation Builder) are credited
+  // to their Assigned To (team->person via SALES_ALIASES), using the lead's
+  // Quotation (RM). Range-filtered by Date QT Issued (fallback Status Changed
+  // At). 'visits' is left untouched (it means estimations submitted).
+  {
+    const qsI = SALES_FUNNEL.indexOf('Quotation Sent');
+    const dpI = SALES_FUNNEL.indexOf('Pending Downpayment');
+    for (let i = 1; i < data.length; i++) {
+      const status = String(data[i][cStatus] || '').trim();
+      const fi = SALES_FUNNEL.indexOf(status);
+      if (fi < qsI) continue;                       // not yet quoted (skips lost/pre-quote)
+      const ph = _last8(data[i][cPhone]);
+      if (!ph || estPhones[ph]) continue;           // has an estimation -> already credited
+      let saleMs = cQtIssued >= 0 ? _scanToMs(data[i][cQtIssued]) : 0;
+      if (!saleMs && cChangedAt >= 0) saleMs = _scanToMs(data[i][cChangedAt]);
+      if (!saleMs || saleMs < fromMs || saleMs > toMs) continue;
+      const pk = _personKey(data[i][cAssign]) || 'unassigned';
+      if (!people[pk]) people[pk] = { person: _normPerson(data[i][cAssign]) || 'Unassigned', visits: 0, leadKeys: {}, quotedRm: 0, won: 0, wonRm: 0, lost: 0, open: 0, drill: [] };
+      const p = people[pk];
+      if (p.leadKeys[ph]) continue;                 // de-dupe
+      p.leadKeys[ph] = 1;
+      const rm = cQuoteRm >= 0 ? (Number(data[i][cQuoteRm]) || 0) : 0;
+      p.quotedRm += rm;
+      const won = fi >= dpI;
+      if (won) { p.won++; p.wonRm += rm; } else { p.open++; }
+      p.drill.push({
+        name: String(data[i][cName] || '').trim(),
+        phone: String(data[i][cPhone] || '').trim(),
+        seNo: '(AutoCount QT)',
+        rm: rm,
+        sqft: cTotSqft >= 0 ? (Number(data[i][cTotSqft]) || 0) : 0,
+        status: status,
+        bucket: won ? 'won' : 'open',
+        daysAgo: Math.floor((Date.now() - saleMs) / 86400000),
+      });
+    }
+  }
+
   const peopleOut = Object.keys(people).map(function(pk) {
     const p = people[pk];
     p.leads = Object.keys(p.leadKeys).length;
