@@ -89,11 +89,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
       <select id="fProblem">
         <option value="" disabled selected>Select your problem</option>
         <option>Roof / slab leaking</option>
-        <option>Toilet leaking</option>
+        <option class="opt-toilet">Toilet leaking</option>
         <option>Car porch slab</option>
         <option>Balcony slab</option>
         <option>Wall crack / seepage</option>
-        <option>E-Gel injection</option>
+        <option class="opt-toilet">E-Gel injection</option>
         <option>Other</option>
       </select>
     </div>
@@ -186,6 +186,21 @@ async function submitExpress(){
     showError('Network error. Please check your connection and try again.');
   }
 }
+
+// Toilet services (Toilet leaking, E-Gel injection) aren't offered in Johor yet —
+// hide those Problem options when Johor is selected, and clear the choice if one
+// was already picked.
+function syncProblems(){
+  var johor = document.getElementById('fState').value === 'Johor';
+  var sel = document.getElementById('fProblem');
+  Array.prototype.forEach.call(sel.querySelectorAll('option.opt-toilet'), function(o){
+    o.hidden = johor;
+    o.disabled = johor;
+    if (johor && o.selected) sel.value = '';
+  });
+}
+document.getElementById('fState').addEventListener('change', syncProblems);
+syncProblems();
 
 document.getElementById('btnContinue').onclick = submitExpress;
 </script>
