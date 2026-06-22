@@ -60,7 +60,29 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
     </div>
     <div class="fld">
       <label>Full Address <span class="req">*</span></label>
-      <textarea id="fAddress" autocomplete="street-address" placeholder="Unit / street / area / postcode / state"></textarea>
+      <textarea id="fAddress" autocomplete="street-address" placeholder="Unit / street / area / postcode"></textarea>
+    </div>
+    <div class="fld">
+      <label>State <span class="req">*</span></label>
+      <select id="fState">
+        <option value="" disabled selected>Select your state</option>
+        <option>Kuala Lumpur</option>
+        <option>Selangor</option>
+        <option>Putrajaya</option>
+        <option>Negeri Sembilan</option>
+        <option>Johor</option>
+        <option>Melaka</option>
+        <option>Perak</option>
+        <option>Pulau Pinang</option>
+        <option>Kedah</option>
+        <option>Perlis</option>
+        <option>Kelantan</option>
+        <option>Terengganu</option>
+        <option>Pahang</option>
+        <option>Sabah</option>
+        <option>Sarawak</option>
+        <option>Labuan</option>
+      </select>
     </div>
     <div class="fld">
       <label>Problem <span class="req">*</span></label>
@@ -87,6 +109,19 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
     </div>
   </div>
 
+  <!-- Thank-you (out-of-coverage states) -->
+  <div id="thankStep" style="display:none;text-align:center;padding:36px 24px">
+    <div style="width:64px;height:64px;border-radius:50%;background:#e1f5ee;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div style="font-size:20px;font-weight:600;margin-bottom:8px">Thank you<span id="thankName"></span>!</div>
+    <div style="color:var(--muted);font-size:13px;line-height:1.7">
+      We've received your details. Our team will <b>contact you directly</b> to arrange your
+      site-visit appointment.
+    </div>
+    <div style="margin-top:18px;font-size:12px;color:var(--muted)">You may close this page.</div>
+  </div>
+
 </div>
 
 <script>
@@ -109,6 +144,7 @@ async function submitExpress(){
   var name = document.getElementById('fName').value.trim();
   var phone = document.getElementById('fPhone').value.trim();
   var address = document.getElementById('fAddress').value.trim();
+  var state = document.getElementById('fState').value;
   var problem = document.getElementById('fProblem').value;
 
   if (!name) return showError('Please enter your name.');
@@ -116,6 +152,7 @@ async function submitExpress(){
   var digits = phone.replace(/\D/g, '');
   if (digits.length < 9) return showError('Please enter a valid WhatsApp contact number.');
   if (!address) return showError('Please enter your full address.');
+  if (!state) return showError('Please select your state.');
   if (!problem) return showError('Please select your problem.');
 
   setLoading(true);
@@ -124,13 +161,22 @@ async function submitExpress(){
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' }, // text/plain avoids CORS preflight
       body: JSON.stringify({ action: 'expressLead', secret: SHARED_SECRET,
-        name: name, phone: digits, address: address, problemType: problem })
+        name: name, phone: digits, address: address, state: state, problemType: problem })
     });
     var data = await r.json();
     if (data && data.status === 'ok') {
-      // Straight to the booking page to pick a slot (prefilled by phone + name).
-      window.location.href = '../appointment/?p=' + encodeURIComponent(data.phone || digits) +
-        '&name=' + encodeURIComponent(name);
+      if (data.serviceable) {
+        // Serviceable state → straight to booking (prefilled by phone + name; state for team routing).
+        window.location.href = '../appointment/?p=' + encodeURIComponent(data.phone || digits) +
+          '&name=' + encodeURIComponent(name) + '&state=' + encodeURIComponent(state);
+      } else {
+        // Out-of-coverage → thank-you; team contacts them directly.
+        var fn = (name.split(/\s+/)[0] || '');
+        document.getElementById('thankName').textContent = fn ? (', ' + fn) : '';
+        document.getElementById('formStep').style.display = 'none';
+        document.getElementById('thankStep').style.display = 'block';
+        window.scrollTo(0, 0);
+      }
       return;
     }
     setLoading(false);

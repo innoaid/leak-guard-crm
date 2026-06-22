@@ -1177,11 +1177,19 @@ function handleCreateLead(body) {
 // the row to Site Visit Confirmed. No WA group is created yet — admin links one
 // later (see the Pending Group Creation flow). Status is only set on CREATE so
 // we never downgrade an existing active lead.
+// Round 106.1 — states the teams cover (others get manual follow-up, not a
+// direct booking). Johor → JB team; the rest → KL team.
+const EXPRESS_SERVICEABLE_STATES = ['kuala lumpur', 'selangor', 'johor', 'putrajaya', 'negeri sembilan'];
+
 function handleExpressLead(body) {
-  // body: {action, name, phone, address, problemType, secret}
+  // body: {action, name, phone, address, problemType, state, secret}
   if (!body.name || !body.phone) {
     return jsonResponse({status: 'error', message: 'name and phone required'});
   }
+  const state = String(body.state || '').trim();
+  const serviceable = EXPRESS_SERVICEABLE_STATES.indexOf(state.toLowerCase()) !== -1;
+  const team = state.toLowerCase() === 'johor' ? 'JB' : 'KL';
+
   const sheet = getSheet();
   const nowIso = new Date().toISOString();
   let rowNum = findRowByPhone(sheet, body.phone);
@@ -1199,23 +1207,30 @@ function handleExpressLead(body) {
   setCellByHeader(sheet, rowNum, 'Changed By', 'Express_Form');
   if (body.address)     setCellByHeader(sheet, rowNum, 'Full Address', body.address);
   if (body.problemType) setCellByHeader(sheet, rowNum, 'Problem Type', body.problemType);
+  if (state)            setCellByHeader(sheet, rowNum, 'Location', state);
 
-  // Append 'pending_group_creation' (merge, don't clobber) — but only if the
-  // lead doesn't already have a WA group linked.
+  // Append the right tag (merge, don't clobber): serviceable leads go on to
+  // booking → 'pending_group_creation'; out-of-coverage leads need manual
+  // contact → 'manual_booking'. Skip 'pending_group_creation' if a WA group
+  // is already linked.
   try {
     const h = getHeaders(sheet);
     const tagsCol = h.colByName['Tags'];
     const gidCol = h.colByName['Group ID (AB)'];
     const hasGroup = gidCol ? String(sheet.getRange(rowNum, gidCol).getValue() || '').trim() : '';
-    if (tagsCol && !hasGroup) {
-      const cur = String(sheet.getRange(rowNum, tagsCol).getValue() || '').trim();
-      const list = cur.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t; });
-      if (list.indexOf('pending_group_creation') === -1) list.push('pending_group_creation');
-      sheet.getRange(rowNum, tagsCol).setValue(list.join(','));
+    if (tagsCol) {
+      const wantTag = serviceable ? (hasGroup ? '' : 'pending_group_creation') : 'manual_booking';
+      if (wantTag) {
+        const cur = String(sheet.getRange(rowNum, tagsCol).getValue() || '').trim();
+        const list = cur.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t; });
+        if (list.indexOf(wantTag) === -1) list.push(wantTag);
+        sheet.getRange(rowNum, tagsCol).setValue(list.join(','));
+      }
     }
   } catch (_e) {}
 
-  return jsonResponse({status: 'ok', rowNum: rowNum, phone: String(body.phone), created: created});
+  return jsonResponse({status: 'ok', rowNum: rowNum, phone: String(body.phone),
+    created: created, serviceable: serviceable, team: team});
 }
 
 // ================================================================
