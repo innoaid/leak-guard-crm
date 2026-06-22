@@ -531,6 +531,9 @@ function uuid(){ return Math.random().toString(36).slice(2,9); }
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function rm(n){ return 'RM ' + (Number(n)||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function sqft(n){ return ((Number(n)||0).toFixed(1)) + ' sqft'; }
+// Round 105 — whole-sqft label for BILLED membrane lines (AutoCount bills qty
+// at 0 decimals, so the billed area is rounded to a whole number).
+function sqftInt(n){ return (Math.round(Number(n)||0)) + ' sqft'; }
 
 function toast(msg,type){
   type=type||'info';
@@ -656,7 +659,11 @@ function upturnSqft(u){ return (Number(u.runFt)||0)*(Number(u.upturnFt)||0); }
 function slabUpturnTotal(s){ return s.upturns.reduce(function(sum,u){ return sum + ((u.include === false) ? 0 : upturnSqft(u)); },0); }
 function slabFloorContribution(s){ return s.mode==='flashing' ? 0 : (Number(s.floorSqft)||0); }
 function slabSqft(s){ return slabFloorContribution(s)+slabUpturnTotal(s); }
-function slabMembraneRm(s){ return slabSqft(s)*membraneRate(); }
+// Round 105 — billed membrane area is rounded to a whole sqft so the line
+// matches AutoCount (which stores qty at 0 decimals, round-half-up). slabSqft
+// stays raw for the measurement breakdown; slabBillSqft drives all pricing.
+function slabBillSqft(s){ return Math.round(slabSqft(s)); }
+function slabMembraneRm(s){ return slabBillSqft(s)*membraneRate(); }
 function extraTotal(e){ return (Number(e.qty)||0)*(Number(e.price)||0); }
 function slabExtrasRm(s){ return s.extras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
 function slabTotal(s){ return slabMembraneRm(s)+slabExtrasRm(s); }
@@ -667,7 +674,9 @@ function slabIsActive(s){ return slabSqft(s) > 0 || slabExtrasRm(s) > 0; }
 // even if not yet measured/priced. Billing/breakdown loops keep using slabIsActive.
 function slabHasContent(s){ return slabIsActive(s) || (s.photos && s.photos.length > 0); }
 function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return sum+extraTotal(e); },0); }
-function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabSqft(s); },0); }
+// Round 105 — sum per-slab BILLED (whole) sqft, mirroring AutoCount's per-line
+// rounding, so the MOQ check + saved Total Sqft match the AutoCount QT.
+function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabBillSqft(s); },0); }
 // Round 75 — MOQ adjustment: if total membrane area < MOQ_SQFT, bill the shortfall × rate.
 function moqAdjustment(){
   const total = grandMembraneSqft();
@@ -735,11 +744,11 @@ function buildAutocountLineItems(){
   } else {
     state.slabs.forEach(function(s){
       if (!slabIsActive(s)) return;  // Round 95.2 — skip empty slabs
-      const sq = slabSqft(s);
+      const sq = slabBillSqft(s);  // Round 105 — whole sqft, matches AutoCount
       if (sq > 0) {
         items.push({
           desc: (s.name || 'Slab') + (s.mode === 'flashing' ? ' — flashing (torch-on membrane)' : ' — torch-on membrane'),
-          qty: round2(sq), unit: 'sqft', price: membraneRate(), furtherDescription: ''
+          qty: sq, unit: 'sqft', price: membraneRate(), furtherDescription: ''
         });
       }
       s.extras.forEach(function(e){
@@ -1407,7 +1416,7 @@ function renderSlabExpanded(s){
     '</div>'+
 
     '<div class="slab-subtotal">'+
-      '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × '+rm(membraneRate())+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
+      '<div class="line"><span>Membrane: '+sqftInt(slabBillSqft(s))+' × '+rm(membraneRate())+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
       '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
       '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>'+
     '</div>';
@@ -1503,7 +1512,7 @@ function renderGrand(){
       if (!slabIsActive(s)) return;  // Round 95.2 — skip empty slabs
       const lines = [];
       if (slabSqft(s) > 0) {
-        lines.push('<div class="grand-line"><span class="l-label">Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(slabMembraneRm(s))+'</span></div>');
+        lines.push('<div class="grand-line"><span class="l-label">Membrane ('+sqftInt(slabBillSqft(s))+' × '+rm(membraneRate())+')</span><span class="l-val">'+rm(slabMembraneRm(s))+'</span></div>');
       } else {
         lines.push('<div class="grand-line"><span class="l-label">Membrane (no measurements yet)</span><span class="l-val">RM 0.00</span></div>');
       }
@@ -1822,7 +1831,7 @@ function updateSlabSubtotal(s){
   const sub = wrap.querySelector('.slab-subtotal');
   if (!sub) return;
   sub.innerHTML =
-    '<div class="line"><span>Membrane: '+sqft(slabSqft(s))+' × '+rm(membraneRate())+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
+    '<div class="line"><span>Membrane: '+sqftInt(slabBillSqft(s))+' × '+rm(membraneRate())+'</span><span>'+rm(slabMembraneRm(s))+'</span></div>'+
     '<div class="line"><span>Slab services</span><span>'+rm(slabExtrasRm(s))+'</span></div>'+
     '<div class="line total"><span>'+escapeHtml(s.name)+' subtotal</span><span>'+rm(slabTotal(s))+'</span></div>';
 }
@@ -2320,7 +2329,7 @@ function buildPrintView(overrideRef) {
       let slabBlk = '<div class="pv-grand-block">';
       slabBlk += '<div class="pv-grand-block-h">'+escapeHtml(s.name)+'</div>';
       if (slabSqft(s) > 0) {
-        slabBlk += '<div class="pv-grand-line"><span>Membrane ('+sqft(slabSqft(s))+' × '+rm(membraneRate())+')</span><span>'+rm(slabMembraneRm(s))+'</span></div>';
+        slabBlk += '<div class="pv-grand-line"><span>Membrane ('+sqftInt(slabBillSqft(s))+' × '+rm(membraneRate())+')</span><span>'+rm(slabMembraneRm(s))+'</span></div>';
       }
       s.extras.forEach(function(e){
         const lbl = e.label && e.label.trim() ? e.label : '(unnamed service)';
