@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leak Guard — Express Booking</title>
+<!-- Open Graph tags for WhatsApp/social link preview -->
+<meta property="og:title" content="Leak Guard — Express Site Visit Booking">
+<meta property="og:description" content="Fill in your details and book your free waterproofing site inspection instantly.">
+<meta property="og:url" content="https://leakguard.my/express/">
+<meta property="og:image" content="https://leakguard.my/appointment/logo.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="800">
+<meta property="og:image:height" content="800">
+<meta property="og:type" content="website">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--pri:#2D2A6E;--acc:#1D9E75;--bg:#f7f6f2;--card:#fff;--bdr:#e5e3dc;--ink:#1a1a1a;--muted:#6b6960}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:5px}
+.fld label .req{color:#dc2626}
+.fld input,.fld textarea,.fld select{width:100%;font-family:inherit;font-size:15px;color:var(--ink);background:#fff;border:1.5px solid var(--bdr);border-radius:10px;padding:12px 13px;outline:none}
+.fld input:focus,.fld textarea:focus,.fld select:focus{border-color:var(--acc)}
+.fld textarea{resize:vertical;min-height:70px}
+.btn-loading{opacity:0.6;pointer-events:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app" style="max-width:420px;margin:0 auto;padding-bottom:2rem">
+
+  <!-- Header -->
+  <div style="background:var(--pri);padding:18px 20px 20px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:50px;height:50px;border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+        <img src="../appointment/logo.png" alt="Leak Guard" style="width:100%;height:100%;object-fit:contain;padding:5px;box-sizing:border-box">
+      </div>
+      <div>
+        <div style="color:rgba(255,255,255,0.6);font-size:11px;letter-spacing:0.5px;text-transform:uppercase">Leak Guard</div>
+        <div style="color:#fff;font-size:15px;font-weight:500">Express Site Visit Booking</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div id="formStep" style="padding:18px 20px 0">
+    <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px">
+      Fill in your details below, then pick a time for your <b>free site inspection</b>. Takes under a minute.
+    </div>
+
+    <div class="fld">
+      <label>Name <span class="req">*</span></label>
+      <input id="fName" type="text" autocomplete="name" placeholder="Your full name">
+    </div>
+    <div class="fld">
+      <label>WhatsApp Contact No. <span class="req">*</span></label>
+      <input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="e.g. 0123456789">
+    </div>
+    <div class="fld">
+      <label>Full Address <span class="req">*</span></label>
+      <textarea id="fAddress" autocomplete="street-address" placeholder="Unit / street / area / postcode / state"></textarea>
+    </div>
+    <div class="fld">
+      <label>Problem <span class="req">*</span></label>
+      <select id="fProblem">
+        <option value="" disabled selected>Select your problem</option>
+        <option>Roof / slab leaking</option>
+        <option>Toilet leaking</option>
+        <option>Car porch slab</option>
+        <option>Balcony slab</option>
+        <option>Wall crack / seepage</option>
+        <option>E-Gel injection</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div id="formError" style="display:none;background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+
+    <button id="btnContinue" style="width:100%;background:var(--acc);color:#fff;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:500;font-family:inherit;cursor:pointer;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:8px">
+      <span id="btnLabel">Continue to pick a time</span>
+      <span id="btnSpin" style="display:none;width:16px;height:16px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite"></span>
+    </button>
+    <div style="margin-top:12px;font-size:11px;color:var(--muted);text-align:center;line-height:1.5">
+      Next: choose your preferred site-visit date &amp; time.
+    </div>
+  </div>
+
+</div>
+
+<script>
+var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+var SHARED_SECRET = 'ABC';
+
+function showError(msg){
+  var e = document.getElementById('formError');
+  e.textContent = msg; e.style.display = 'block';
+}
+function setLoading(on){
+  var btn = document.getElementById('btnContinue');
+  document.getElementById('btnSpin').style.display = on ? 'inline-block' : 'none';
+  document.getElementById('btnLabel').textContent = on ? 'Saving…' : 'Continue to pick a time';
+  if (on) btn.classList.add('btn-loading'); else btn.classList.remove('btn-loading');
+}
+
+async function submitExpress(){
+  document.getElementById('formError').style.display = 'none';
+  var name = document.getElementById('fName').value.trim();
+  var phone = document.getElementById('fPhone').value.trim();
+  var address = document.getElementById('fAddress').value.trim();
+  var problem = document.getElementById('fProblem').value;
+
+  if (!name) return showError('Please enter your name.');
+  // keep digits only for matching; require a plausible Malaysian number length
+  var digits = phone.replace(/\D/g, '');
+  if (digits.length < 9) return showError('Please enter a valid WhatsApp contact number.');
+  if (!address) return showError('Please enter your full address.');
+  if (!problem) return showError('Please select your problem.');
+
+  setLoading(true);
+  try {
+    var r = await fetch(WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // text/plain avoids CORS preflight
+      body: JSON.stringify({ action: 'expressLead', secret: SHARED_SECRET,
+        name: name, phone: digits, address: address, problemType: problem })
+    });
+    var data = await r.json();
+    if (data && data.status === 'ok') {
+      // Straight to the booking page to pick a slot (prefilled by phone + name).
+      window.location.href = '../appointment/?p=' + encodeURIComponent(data.phone || digits) +
+        '&name=' + encodeURIComponent(name);
+      return;
+    }
+    setLoading(false);
+    showError((data && data.message) ? data.message : 'Something went wrong. Please try again.');
+  } catch (e) {
+    setLoading(false);
+    showError('Network error. Please check your connection and try again.');
+  }
+}
+
+document.getElementById('btnContinue').onclick = submitExpress;
+</script>
+</body>
+</html>

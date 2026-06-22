@@ -50,6 +50,7 @@ function doPost(e) {
       case 'restoreLead':        return handleRestore(body);
       case 'sendRescheduleLink': return handleSendReschedule(body);
       case 'createLead':         return handleCreateLead(body);
+      case 'expressLead':        return handleExpressLead(body);  // round 106 — express pre-booking intake (upsert by phone)
       case 'resetTestLead':      return handleResetTestLead(body);
       case 'setPending':         return handleSetPending(body);  // round 12 — v2 agent pending-confirmation slot
       case 'bulkMoveStatus':     return handleBulkMoveStatus(body);  // round 32 — kanban bulk move-to-phase
@@ -1164,6 +1165,57 @@ function handleCreateLead(body) {
   if (body.assignedTo)  setCellByHeader(sheet, newRow, 'Assigned To', body.assignedTo);
 
   return jsonResponse({status: 'ok', rowNum: newRow});
+}
+
+// ================================================================
+// Round 106 — Express pre-booking intake
+// ================================================================
+// The express form (express/index.html) collects Name / Full Address / Contact
+// / Problem and posts here BEFORE the booking page. Upsert by phone (fill an
+// existing row if the lead already exists, else create), tag it
+// 'pending_group_creation', set Source=Express. The booking page then promotes
+// the row to Site Visit Confirmed. No WA group is created yet — admin links one
+// later (see the Pending Group Creation flow). Status is only set on CREATE so
+// we never downgrade an existing active lead.
+function handleExpressLead(body) {
+  // body: {action, name, phone, address, problemType, secret}
+  if (!body.name || !body.phone) {
+    return jsonResponse({status: 'error', message: 'name and phone required'});
+  }
+  const sheet = getSheet();
+  const nowIso = new Date().toISOString();
+  let rowNum = findRowByPhone(sheet, body.phone);
+  const created = !rowNum;
+  if (created) {
+    rowNum = sheet.getLastRow() + 1;
+    setCellByHeader(sheet, rowNum, 'Timestamp', nowIso);
+    setCellByHeader(sheet, rowNum, 'Phone', body.phone);
+    setCellByHeader(sheet, rowNum, 'Status', 'New Lead');
+    setCellByHeader(sheet, rowNum, 'Status Changed At', nowIso);
+    setCellByHeader(sheet, rowNum, 'Date Lead In', nowIso.slice(0, 10));
+  }
+  setCellByHeader(sheet, rowNum, 'Name', body.name);
+  setCellByHeader(sheet, rowNum, 'Source', 'Express');
+  setCellByHeader(sheet, rowNum, 'Changed By', 'Express_Form');
+  if (body.address)     setCellByHeader(sheet, rowNum, 'Full Address', body.address);
+  if (body.problemType) setCellByHeader(sheet, rowNum, 'Problem Type', body.problemType);
+
+  // Append 'pending_group_creation' (merge, don't clobber) — but only if the
+  // lead doesn't already have a WA group linked.
+  try {
+    const h = getHeaders(sheet);
+    const tagsCol = h.colByName['Tags'];
+    const gidCol = h.colByName['Group ID (AB)'];
+    const hasGroup = gidCol ? String(sheet.getRange(rowNum, gidCol).getValue() || '').trim() : '';
+    if (tagsCol && !hasGroup) {
+      const cur = String(sheet.getRange(rowNum, tagsCol).getValue() || '').trim();
+      const list = cur.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t; });
+      if (list.indexOf('pending_group_creation') === -1) list.push('pending_group_creation');
+      sheet.getRange(rowNum, tagsCol).setValue(list.join(','));
+    }
+  } catch (_e) {}
+
+  return jsonResponse({status: 'ok', rowNum: rowNum, phone: String(body.phone), created: created});
 }
 
 // ================================================================
