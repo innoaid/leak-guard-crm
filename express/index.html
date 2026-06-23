@@ -188,21 +188,9 @@ async function submitExpress(){
   }
 }
 
-// Toilet services (Toilet leaking, E-Gel injection) aren't offered in Johor yet —
-// hide those Problem options when Johor is selected, and clear the choice if one
-// was already picked.
-function syncProblems(){
-  var johor = document.getElementById('fState').value === 'Johor';
-  var sel = document.getElementById('fProblem');
-  Array.prototype.forEach.call(sel.querySelectorAll('option.opt-toilet'), function(o){
-    o.hidden = johor;
-    o.disabled = johor;
-    if (johor && o.selected) sel.value = '';
-  });
-}
-document.getElementById('fState').addEventListener('change', syncProblems);
-syncProblems();
-
+// Round 107.2 — toilet options stay visible for all states; a Johor lead who
+// picks a toilet service is routed to the thank-you page by the server
+// (serviceable:false), not hidden here.
 document.getElementById('btnContinue').onclick = submitExpress;
 </script>
 </body>

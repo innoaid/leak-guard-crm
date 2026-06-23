@@ -1187,8 +1187,14 @@ function handleExpressLead(body) {
     return jsonResponse({status: 'error', message: 'name and phone required'});
   }
   const state = String(body.state || '').trim();
-  const serviceable = EXPRESS_SERVICEABLE_STATES.indexOf(state.toLowerCase()) !== -1;
-  const team = state.toLowerCase() === 'johor' ? 'JB' : 'KL';
+  const stateLc = state.toLowerCase();
+  // Round 107.2 — Johor has no toilet service yet: a Johor lead who picks a
+  // toilet service is NOT auto-bookable (→ thank-you / manual follow-up).
+  const TOILET_PROBLEMS = ['toilet leaking', 'e-gel injection'];
+  const isJohorToilet = stateLc === 'johor' &&
+    TOILET_PROBLEMS.indexOf(String(body.problemType || '').trim().toLowerCase()) !== -1;
+  const serviceable = EXPRESS_SERVICEABLE_STATES.indexOf(stateLc) !== -1 && !isJohorToilet;
+  const team = stateLc === 'johor' ? 'JB' : 'KL';
 
   const sheet = getSheet();
   const nowIso = new Date().toISOString();
