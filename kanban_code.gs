@@ -1535,6 +1535,7 @@ function handleBulkLinkGroups(body) {
   const headers = getHeaders(sheet);
   const gidCol = headers.colByName['Group ID (AB)'];
   if (!gidCol) return jsonResponse({status: 'error', message: 'Group ID (AB) column not found'});
+  const tagsColBL = headers.colByName['Tags'];  // round 107 — to drop pending_group_creation on link
 
   // Pre-fetch existing Group IDs once for idempotent skip.
   const allData = sheet.getDataRange().getValues();
@@ -1579,6 +1580,17 @@ function handleBulkLinkGroups(body) {
           setCellByHeader(sheet, row, 'Status Changed At', ts);
         }
         setCellByHeader(sheet, row, 'Changed By', changedBy);
+        // Round 107 — express lead now has a WA group; drop the pending-group flag.
+        if (tagsColBL) {
+          try {
+            const _cur = String(sheet.getRange(row, tagsColBL).getValue() || '').trim();
+            if (_cur) {
+              const _kept = _cur.split(',').map(function(t){ return t.trim(); })
+                .filter(function(t){ return t && t !== 'pending_group_creation'; });
+              if (_kept.join(',') !== _cur) sheet.getRange(row, tagsColBL).setValue(_kept.join(','));
+            }
+          } catch (_e) {}
+        }
         result.linked++;
         existingGids.add(g.groupId);
 
