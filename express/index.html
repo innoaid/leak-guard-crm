@@ -166,9 +166,10 @@ async function submitExpress(){
     var data = await r.json();
     if (data && data.status === 'ok') {
       if (data.serviceable) {
-        // Serviceable state → straight to booking (prefilled by phone + name; state for team routing).
+        // Serviceable state → straight to booking (prefilled by phone + name; team for JB/KL routing).
         window.location.href = '../appointment/?p=' + encodeURIComponent(data.phone || digits) +
-          '&name=' + encodeURIComponent(name) + '&state=' + encodeURIComponent(state);
+          '&name=' + encodeURIComponent(name) + '&state=' + encodeURIComponent(state) +
+          '&team=' + encodeURIComponent(data.team || 'KL');
       } else {
         // Out-of-coverage → thank-you; team contacts them directly.
         var fn = (name.split(/\s+/)[0] || '');

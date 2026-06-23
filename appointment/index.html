@@ -215,6 +215,9 @@ var GROUP = params.get('group') || '';
 var resolvedName = NAME;
 var resolvedGroup = GROUP;
 var ACTION = params.get('action') || 'new';
+// Round 107 — explicit team hint (e.g. express Johor leads have no group prefix yet,
+// so pass ?team=JB so availability + booking use the JB calendar/slots).
+var URL_TEAM = (params.get('team') || '').toUpperCase();
 var OLD_DATE = params.get('oldDate') || '';
 var OLD_SLOT = parseInt(params.get('oldSlot')) || 0;
 var OLD_EVENT_ID = params.get('oldEventId') || '';
@@ -277,6 +280,7 @@ function showExistingAppt(appt) {
 function loadAvailability() {
   show('loading');
   var url = AVAILABILITY_URL + '?phone=' + encodeURIComponent(PHONE) + '&group=' + encodeURIComponent(GROUP);
+  if (URL_TEAM) url += '&team=' + encodeURIComponent(URL_TEAM); // round 107 — group-less team hint
   if (OLD_EVENT_ID) url += '&oldEventId=' + encodeURIComponent(OLD_EVENT_ID);
   fetch(url)
     .then(function(r){ return r.json(); })
@@ -449,7 +453,8 @@ function confirmBooking() {
     name:  resolvedName  || NAME  || '',
     date: selDate,
     slot: selSlot,
-    action: ACTION
+    action: ACTION,
+    team: TEAM   // round 107 — resolved team (honored by LG-Booking body.team for group-less leads)
   };
   if (ACTION === 'reschedule') {
     body.oldDate = OLD_DATE;
