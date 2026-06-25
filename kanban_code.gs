@@ -1181,11 +1181,24 @@ function handleCreateLead(body) {
 // direct booking). Johor → JB team; the rest → KL team.
 const EXPRESS_SERVICEABLE_STATES = ['kuala lumpur', 'selangor', 'johor', 'putrajaya', 'negeri sembilan'];
 
+// Round 108 — canonical Malaysian phone (60XXXXXXXXX): strip non-digits, drop a
+// leading 0, ensure the 60 prefix. Avoids the Sheet dropping a leading 0 (number
+// coercion) and keeps WA-matching consistent. Foreign numbers pass through.
+function _normMyPhone(raw) {
+  var d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.indexOf('60') === 0) return d;        // already 60...
+  if (d.charAt(0) === '0') return '60' + d.slice(1); // 0xx -> 60xx
+  if (d.charAt(0) === '1') return '60' + d;   // bare mobile (1x...) -> 60 1x...
+  return d;
+}
+
 function handleExpressLead(body) {
   // body: {action, name, phone, address, problemType, state, secret}
   if (!body.name || !body.phone) {
     return jsonResponse({status: 'error', message: 'name and phone required'});
   }
+  const phone = _normMyPhone(body.phone);  // round 108 — store/return canonical 60-format
   const state = String(body.state || '').trim();
   const stateLc = state.toLowerCase();
   // Round 107.2 — Johor has no toilet service yet: a Johor lead who picks a
@@ -1198,12 +1211,12 @@ function handleExpressLead(body) {
 
   const sheet = getSheet();
   const nowIso = new Date().toISOString();
-  let rowNum = findRowByPhone(sheet, body.phone);
+  let rowNum = findRowByPhone(sheet, phone);
   const created = !rowNum;
   if (created) {
     rowNum = sheet.getLastRow() + 1;
     setCellByHeader(sheet, rowNum, 'Timestamp', nowIso);
-    setCellByHeader(sheet, rowNum, 'Phone', body.phone);
+    setCellByHeader(sheet, rowNum, 'Phone', phone);
     setCellByHeader(sheet, rowNum, 'Status', 'New Lead');
     setCellByHeader(sheet, rowNum, 'Status Changed At', nowIso);
     setCellByHeader(sheet, rowNum, 'Date Lead In', nowIso.slice(0, 10));
@@ -1235,7 +1248,7 @@ function handleExpressLead(body) {
     }
   } catch (_e) {}
 
-  return jsonResponse({status: 'ok', rowNum: rowNum, phone: String(body.phone),
+  return jsonResponse({status: 'ok', rowNum: rowNum, phone: phone,
     created: created, serviceable: serviceable, team: team});
 }
 
