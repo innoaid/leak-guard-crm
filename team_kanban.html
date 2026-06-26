@@ -326,6 +326,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <button class="hdr-btn" id="btnManageStaff" title="Add / view staff logins" style="display:none">👥 Manage Staff</button>
     <button class="hdr-btn" id="btnPhaseScan" title="Stuck cards + follow-up compliance across phases" style="display:none">📋 Phase Scan</button>
     <button class="hdr-btn" id="btnSalesReport" title="Salesperson scoreboard + weekly meeting agenda" style="display:none">📊 Sales Report</button>
+  <button class="hdr-btn" id="btnAdReport" title="Job cards per Ad ID by funnel phase" style="display:none">📈 Ad Report</button>
     <button class="hdr-btn" id="btnCallerReport" title="Caller calls + closing rate" style="display:none">📞 Caller Report</button>
     <button class="hdr-btn" id="btnArchive">📦 Archive <span class="badge" id="archCount">0</span></button>
     <button class="hdr-btn logout" id="btnLogout" title="Sign out" style="display:none">Sign out</button>
@@ -530,6 +531,37 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 </div>
 
 <!-- Sales Report modal (Round 86) -->
+<div class="modal-overlay" id="adReportModal">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-h">
+      <div>
+        <div class="modal-title">📈 Ad Analysis Report</div>
+        <div class="modal-sub">Job cards per Ad ID, bucketed by funnel phase (filtered by Date Lead In)</div>
+      </div>
+      <button class="modal-close" id="btnAdReportClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <select id="arPreset" class="modal-select" style="width:auto">
+          <option value="all" selected>All time</option>
+          <option value="30">Last 30 days</option>
+          <option value="month">This month</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <span id="arCustomRange" style="display:none">
+          <input type="date" id="arFrom" class="modal-select" style="width:auto"> –
+          <input type="date" id="arTo" class="modal-select" style="width:auto">
+        </span>
+        <button class="modal-btn modal-btn-primary" id="btnArGenerate" style="margin-left:auto">Generate</button>
+      </div>
+      <div id="arBody"><div style="text-align:center;padding:30px;color:#6B7280">Pick a range and hit Generate</div></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-secondary" id="btnAdReportCloseFooter">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="salesReportModal">
   <div class="modal" style="max-width:860px">
     <div class="modal-h">
@@ -4006,6 +4038,60 @@ document.getElementById('salesReportModal').addEventListener('click', function(e
   if (e.target.id === 'salesReportModal') closeSalesReportModal();
 });
 
+// Round 110 — Ad Analysis Report
+function arRange() {
+  const p = document.getElementById('arPreset').value;
+  if (p === 'all') return { from: '', to: '' };
+  if (p === 'custom') return { from: document.getElementById('arFrom').value || '', to: document.getElementById('arTo').value || '' };
+  const today = new Date();
+  const toStr = today.toISOString().slice(0, 10);
+  if (p === 'month') { const f = new Date(today.getFullYear(), today.getMonth(), 1); return { from: f.toISOString().slice(0, 10), to: toStr }; }
+  const d = new Date(today.getTime() - 30 * 86400000);
+  return { from: d.toISOString().slice(0, 10), to: toStr };
+}
+async function arGenerate() {
+  const body = document.getElementById('arBody');
+  body.innerHTML = '<div style="text-align:center;padding:30px;color:#6B7280">⏳ Generating…</div>';
+  const range = arRange();
+  const res = await apiCall('adReport', { from: range.from, to: range.to });
+  if (!res || res.status !== 'ok') { body.innerHTML = '<div style="color:#991B1B;padding:14px">' + escapeHtml((res && res.message) || 'Failed to load') + '</div>'; return; }
+  body.innerHTML = renderAdReportHtml(res);
+}
+function renderAdReportHtml(res) {
+  const ads = res.ads || [];
+  if (!ads.length) return '<div style="text-align:center;padding:30px;color:#6B7280">No ads in this range.</div>';
+  const cell = function(v, extra) { return '<td style="padding:6px;text-align:right;' + (extra || '') + '">' + v + '</td>'; };
+  let h = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+  h += '<thead><tr style="text-align:left;border-bottom:2px solid #E5E7EB;color:#374151">'
+    + '<th style="padding:6px">Ad ID</th><th style="padding:6px;text-align:right">Leads</th>'
+    + '<th style="padding:6px;text-align:right">PSV</th><th style="padding:6px;text-align:right">SVC</th>'
+    + '<th style="padding:6px;text-align:right">QT Sent</th><th style="padding:6px;text-align:right;color:#065F46">Won</th>'
+    + '<th style="padding:6px;text-align:right;color:#991B1B">Lost</th><th style="padding:6px;text-align:right">Conv%</th></tr></thead><tbody>';
+  ads.forEach(function(a) {
+    h += '<tr style="border-bottom:1px solid #F3F4F6">'
+      + '<td style="padding:6px;font-family:monospace;font-size:11px">' + escapeHtml(a.adId) + '</td>'
+      + cell(a.total, 'font-weight:700') + cell(a.psv) + cell(a.svc) + cell(a.qt)
+      + cell(a.won, 'color:#065F46;font-weight:600') + cell(a.lost, 'color:#991B1B') + cell(a.conv + '%') + '</tr>';
+  });
+  const t = res.totals || {};
+  h += '</tbody><tfoot><tr style="border-top:2px solid #E5E7EB;font-weight:700">'
+    + '<td style="padding:6px">TOTAL (' + ads.length + ' ads)</td>'
+    + cell(t.total || 0) + cell(t.psv || 0) + cell(t.svc || 0) + cell(t.qt || 0)
+    + cell(t.won || 0, 'color:#065F46') + cell(t.lost || 0, 'color:#991B1B') + cell((t.conv || 0) + '%')
+    + '</tr></tfoot></table></div>';
+  h += '<div style="font-size:11px;color:#6B7280;margin-top:8px">' + (res.noAdCount || 0) + ' leads have no Ad ID (excluded).</div>';
+  return h;
+}
+document.getElementById('btnAdReport').onclick = function() { document.getElementById('adReportModal').classList.add('open'); };
+document.getElementById('arPreset').onchange = function() { document.getElementById('arCustomRange').style.display = this.value === 'custom' ? '' : 'none'; };
+document.getElementById('btnArGenerate').onclick = arGenerate;
+function closeAdReportModal() { document.getElementById('adReportModal').classList.remove('open'); }
+document.getElementById('btnAdReportClose').onclick = closeAdReportModal;
+document.getElementById('btnAdReportCloseFooter').onclick = closeAdReportModal;
+document.getElementById('adReportModal').addEventListener('click', function(e){
+  if (e.target.id === 'adReportModal') closeAdReportModal();
+});
+
 // ================================================================
 // Round 87 — shared report → real .pdf export (html2canvas + jsPDF,
 // same pipeline as the estimation builder). Clones the report DOM,
@@ -4509,6 +4595,9 @@ function applySession(sess) {
   // Round 86 — Sales Report is admin-only.
   const srBtn = document.getElementById('btnSalesReport');
   if (srBtn) srBtn.style.display = (sess.role === 'admin') ? '' : 'none';
+  // Round 110 — Ad Report is admin-only.
+  const adBtn = document.getElementById('btnAdReport');
+  if (adBtn) adBtn.style.display = (sess.role === 'admin') ? '' : 'none';
   // Round 90 — Caller Report is admin-only.
   const crBtn = document.getElementById('btnCallerReport');
   if (crBtn) crBtn.style.display = (sess.role === 'admin') ? '' : 'none';

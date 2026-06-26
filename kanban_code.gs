@@ -81,6 +81,7 @@ function doPost(e) {
       case 'linkQt':             return handleLinkQt(body);  // round 93 — link an existing AutoCount QT to a card (autocount.gs)
       case 'adminScan':          return handleAdminScan(body);  // round 85 — phase-scan violation board
       case 'salesReport':        return handleSalesReport(body);  // round 86 — sales scoreboard + weekly meeting agenda
+      case 'adReport':           return handleAdReport(body);  // round 110 — job cards per Ad ID by funnel phase
       case 'ping':               return jsonResponse({status: 'ok', pong: new Date().toISOString()});
       default:
         return jsonResponse({status: 'error', message: 'unknown action: ' + body.action});
@@ -3110,6 +3111,64 @@ const SALES_FUNNEL = ['New Lead','Pending Invitation','Pending Site Visit',
   'I.Date Confirmed','Pending Downpayment','Job In Progress','Pending Balance',
   'Job Complete','Receipt Sent','Completed'];
 const SALES_LOST = ['Rejected', 'Lost', 'Cold Lead', 'Out of Area'];
+
+// ================================================================
+// Round 110 — Ad Analysis Report: job cards accumulated per Ad ID,
+// bucketed by funnel phase. Read-only aggregate (mirrors salesReport).
+// body: {from?, to?, secret} — optional Date-Lead-In range; default all-time.
+// ================================================================
+function handleAdReport(body) {
+  const sheet = getSheet();
+  const h = getHeaders(sheet);
+  const data = sheet.getDataRange().getValues();
+  const col = function(n) { return h.colByName[n] ? h.colByName[n] - 1 : -1; };
+  const cAd = col('Ad ID'), cStatus = col('Status'), cLeadIn = col('Date Lead In');
+
+  const from = String(body.from || '').trim();
+  const to = String(body.to || '').trim();
+  const wonIdx = SALES_FUNNEL.indexOf('Pending Downpayment');
+
+  const ads = {};   // adId -> aggregate
+  let noAdCount = 0, scanned = 0;
+  for (let i = 1; i < data.length; i++) {
+    // Optional date filter by Date Lead In (YYYY-MM-DD).
+    if ((from || to) && cLeadIn >= 0) {
+      const d = _normalizeDateStr(data[i][cLeadIn]);
+      if (!d) continue;
+      if (from && d < from) continue;
+      if (to && d > to) continue;
+    }
+    const adRaw = cAd >= 0 ? String(data[i][cAd] || '').trim() : '';
+    const adId = adRaw.replace(/\.0+$/, '');  // strip Sheets number artifact
+    if (!adId) { noAdCount++; continue; }
+    scanned++;
+    const status = cStatus >= 0 ? String(data[i][cStatus] || '').trim() : '';
+    if (!ads[adId]) ads[adId] = { adId: adId, total: 0, psv: 0, svc: 0, qt: 0, won: 0, lost: 0 };
+    const a = ads[adId];
+    a.total++;
+    const fi = SALES_FUNNEL.indexOf(status);
+    if (status === 'Pending Site Visit') a.psv++;
+    else if (status === 'Site Visit Confirmed') a.svc++;
+    else if (status === 'Quotation Sent') a.qt++;
+    if (fi >= wonIdx && wonIdx >= 0) a.won++;
+    else if (SALES_LOST.indexOf(status) !== -1) a.lost++;
+  }
+
+  const list = Object.keys(ads).map(function(k) {
+    const a = ads[k];
+    a.conv = a.total ? Math.round(100 * a.won / a.total) : 0;
+    return a;
+  }).sort(function(x, y) { return y.total - x.total || y.won - x.won; });
+
+  const totals = list.reduce(function(t, a) {
+    t.total += a.total; t.psv += a.psv; t.svc += a.svc; t.qt += a.qt; t.won += a.won; t.lost += a.lost;
+    return t;
+  }, { total: 0, psv: 0, svc: 0, qt: 0, won: 0, lost: 0 });
+  totals.conv = totals.total ? Math.round(100 * totals.won / totals.total) : 0;
+
+  return jsonResponse({ status: 'ok', ads: list, totals: totals, noAdCount: noAdCount,
+    adCount: list.length, from: from, to: to });
+}
 
 // Round 87.1 — team labels and person names that are the SAME person merge
 // in all reports (scoreboard, appointments, meeting agenda attribution).
