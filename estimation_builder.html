@@ -726,6 +726,25 @@ function totalPhotos(){ return state.slabs.reduce(function(sum,s){ return sum+s.
 // the AutoCount quotation total always equals grandTotal(); a final
 // rounding-adjustment line covers the (rare) sub-sen drift from rounding
 // sqft to 2dp.
+// Round 111 — POST to Apps Script with retry. Returns the parsed JSON when
+// status==='ok', else retries (transient blips otherwise silently lose the
+// estimation record + break the AutoCount sync). Returns the last result on
+// give-up so the caller can detect failure.
+async function postAppsScript(payload, tries){
+  tries = tries || 3;
+  let last = null;
+  for (let i = 0; i < tries; i++){
+    try {
+      const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
+      const j = await r.json();
+      if (j && j.status === 'ok') return j;
+      last = j || { status:'error', message:'empty response' };
+    } catch(e){ last = { status:'error', message: (e && e.message) || String(e) }; }
+    if (i < tries - 1) await new Promise(function(res){ setTimeout(res, 800); });
+  }
+  return last || { status:'error', message:'no response' };
+}
+
 function buildAutocountLineItems(){
   const items = [];
   const round2 = function(n){ return Math.round(n * 100) / 100; };
@@ -2010,30 +2029,30 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     // membrane rate only exists in this device's localStorage). Non-fatal:
     // the estimation is already with the customer at this point.
     ut.textContent = 'Saving estimation record…';
-    try {
-      await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'saveEstimation', secret: SHARED_SECRET,
-          seNo: docNo,
-          phone: String(currentLead['Phone'] || '').trim(),
-          name: currentLead['Name'] || '',
-          submittedBy: state.submittedBy,
-          lineItems: buildAutocountLineItems(),
-          subtotal: grandSubtotal(),
-          discountType: state.discountType,
-          discountValue: Number(state.discountValue) || 0,
-          discountAmount: discountAmount(),
-          moqAdjustment: moqAdjustment(),
-          grandTotal: grandTotal(),
-          totalSqft: grandMembraneSqft(),
-          membraneRate: membraneRate()
-        })
-      });
-    } catch (saveErr) {
-      console.warn('saveEstimation failed (non-fatal)', saveErr);
-      toast('Estimation record save failed — AutoCount sync from kanban won’t work for this SE', 'warn');
+    // Round 111 — retry; the AutoCount QT + the kanban retry both depend on this
+    // row, so a silent loss here breaks the whole pipeline.
+    const saveRes = await postAppsScript({
+      action: 'saveEstimation', secret: SHARED_SECRET,
+      seNo: docNo,
+      phone: String(currentLead['Phone'] || '').trim(),
+      name: currentLead['Name'] || '',
+      submittedBy: state.submittedBy,
+      lineItems: buildAutocountLineItems(),
+      subtotal: grandSubtotal(),
+      discountType: state.discountType,
+      discountValue: Number(state.discountValue) || 0,
+      discountAmount: discountAmount(),
+      moqAdjustment: moqAdjustment(),
+      grandTotal: grandTotal(),
+      totalSqft: grandMembraneSqft(),
+      membraneRate: membraneRate()
+    }, 4);
+    const saveOk = !!(saveRes && saveRes.status === 'ok');
+    if (!saveOk) {
+      console.warn('saveEstimation failed after retries', saveRes);
+      alert('⚠️ IMPORTANT — ' + docNo + ' was SENT to the customer, but its estimation record FAILED to save (' +
+        ((saveRes && saveRes.message) || 'network error') + ').\n\nThe AutoCount quotation was NOT created. ' +
+        'Please create the QT manually in AutoCount for ' + docNo + ', or re-send this estimation so the record saves.');
     }
 
     // Round 83.3 — archive the PDF to Drive (link lands in the Estimations
@@ -2059,27 +2078,21 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     }
 
     // Round 83 — Trigger A: create the AutoCount quotation now (checkbox ON).
-    if (_acOn) {
+    // Round 111 — only when the estimation record actually saved (syncAutocount
+    // reads that row); retry the sync on transient failure.
+    if (_acOn && saveOk) {
       ut.textContent = 'Creating AutoCount quotation…';
-      try {
-        const acRes = await fetch(APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          // Round 83.5 — phone included so the server can verify the SE row
-          // belongs to this lead (guards against SE-counter collisions).
-          body: JSON.stringify({ action: 'syncAutocount', secret: SHARED_SECRET, seNo: docNo, phone: String(currentLead['Phone'] || '').trim() })
-        });
-        const acData = await acRes.json();
-        if (acData.status === 'ok' && acData.qtNo) {
-          toast('AutoCount QT created: ' + acData.qtNo, 'success');
-          if (acData.agentWarning) toast(acData.agentWarning, 'warn');
-        } else {
-          toast('AutoCount sync failed: ' + (acData.message || 'unknown') + ' — retry from the kanban card', 'warn');
-        }
-      } catch (acErr) {
-        console.warn('syncAutocount failed (non-fatal)', acErr);
-        toast('AutoCount sync error — retry from the kanban card', 'warn');
+      // Round 83.5 — phone included so the server can verify the SE row belongs
+      // to this lead (guards against SE-counter collisions).
+      const acData = await postAppsScript({ action: 'syncAutocount', secret: SHARED_SECRET, seNo: docNo, phone: String(currentLead['Phone'] || '').trim() }, 3);
+      if (acData && acData.status === 'ok' && acData.qtNo) {
+        toast('AutoCount QT created: ' + acData.qtNo, 'success');
+        if (acData.agentWarning) toast(acData.agentWarning, 'warn');
+      } else {
+        toast('AutoCount sync failed: ' + ((acData && acData.message) || 'unknown') + ' — retry from the kanban card', 'warn');
       }
+    } else if (_acOn && !saveOk) {
+      console.warn('Skipping AutoCount sync — estimation record did not save for ' + docNo);
     }
   } catch (e) {
     console.error(e);
