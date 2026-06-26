@@ -3032,6 +3032,12 @@ async function fetchBulkLinkPreview() {
     (data.matched || []).forEach(function(m){
       bulkLinkState.perRow[m.groupId] = { kind: 'link_existing', newStatus: '', skip: false };
     });
+    // Round 109 — ambiguous now actionable: seed link_existing + chosenPhone (first candidate),
+    // admin can repick the member.
+    (data.ambiguous || []).forEach(function(a){
+      const firstCand = (a.candidates && a.candidates[0] && a.candidates[0].phone) || '';
+      bulkLinkState.perRow[a.groupId] = { kind: 'link_existing', chosenPhone: firstCand, skip: false };
+    });
     // Default per-row state for orphan: editable name, status=Pending Site Visit
     (data.orphan || []).forEach(function(o){
       bulkLinkState.perRow[o.groupId] = { kind: 'create_orphan', name: o.defaultName || '', status: 'Pending Site Visit', skip: false };
@@ -3086,14 +3092,11 @@ function renderBulkLinkReport() {
     });
   }
 
-  // Ambiguous section (read-only — admin handles via -admin <digits>)
+  // Ambiguous section — now actionable: pick the lead contact among the members.
   if ((bulkLinkState.ambiguous||[]).length) {
-    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#92400E;letter-spacing:.5px;margin:20px 0 8px">⚠️ Ambiguous (' + bulkLinkState.ambiguous.length + ') — multiple CRM candidates; resolve manually with -admin &lt;digits&gt; command</div>';
+    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#92400E;letter-spacing:.5px;margin:20px 0 8px">⚠️ Pick contact (' + bulkLinkState.ambiguous.length + ') — multiple CRM matches; choose which member is the lead</div>';
     bulkLinkState.ambiguous.forEach(function(a){
-      const cands = (a.candidates||[]).map(function(c){ return escapeHtml(c.name||'') + ' (' + escapeHtml(c.phone||'') + ', ' + escapeHtml(c.status||'') + ')'; }).join(' · ');
-      html += '<div style="border:1px solid #FDE68A;border-left:4px solid #F59E0B;background:#FFFBEB;border-radius:6px;padding:10px 12px;margin-bottom:8px">'
-            + '<div style="font-weight:600;font-size:13px">' + escapeHtml(a.groupName||'(no name)') + '</div>'
-            + '<div style="font-size:11px;color:#92400E;margin-top:4px">' + cands + '</div></div>';
+      html += renderAmbiguousCard(a);
     });
   }
 
@@ -3138,6 +3141,43 @@ function toggleBucketSkip(kind) {
   renderBulkLinkReport();
 }
 
+// Round 109 — participant picker: let the admin choose which group member is the
+// lead contact. Options come from the n8n preview's `participants` [{phone,leadName}].
+function participantOptsHtml(participants, currentPhone) {
+  let list = (participants && participants.length) ? participants.slice() : [];
+  if (currentPhone && !list.some(function(p){ return String(p.phone) === String(currentPhone); })) {
+    list.unshift({ phone: currentPhone, leadName: '' });
+  }
+  return list.map(function(p){
+    const sel = (String(p.phone) === String(currentPhone)) ? ' selected' : '';
+    const label = escapeHtml(String(p.phone)) + (p.leadName ? ' — ' + escapeHtml(p.leadName) + ' ✅' : '');
+    return '<option value="' + escapeHtml(String(p.phone)) + '"' + sel + '>' + label + '</option>';
+  }).join('');
+}
+function leadContactRowHtml(gid, participants, currentPhone) {
+  return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+    + '<label style="font-size:11px;font-weight:600;color:#6B7280;white-space:nowrap">Lead contact:</label>'
+    + '<select data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="chosenPhone" style="flex:1;padding:5px 8px;border:1px solid #E5E7EB;border-radius:4px;font-size:12px">'
+    + participantOptsHtml(participants, currentPhone) + '</select></div>';
+}
+
+function renderAmbiguousCard(a) {
+  const gid = a.groupId;
+  const firstCand = (a.candidates && a.candidates[0] && a.candidates[0].phone) || '';
+  const cands = (a.candidates||[]).map(function(c){ return escapeHtml(c.name||'') + ' (' + escapeHtml(c.phone||'') + ')'; }).join(' · ');
+  return '<div style="border:1px solid #FDE68A;border-left:4px solid #F59E0B;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#FFFBEB">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+    + '<div style="font-weight:600;font-size:13px">' + escapeHtml(a.groupName||'(no name)') + '</div>'
+    + '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#FEF3C7;color:#92400E">⚠️ PICK CONTACT</span>'
+    + '</div>'
+    + '<div style="font-size:11px;color:#92400E;margin-bottom:8px">Multiple CRM matches: ' + cands + '</div>'
+    + leadContactRowHtml(gid, a.participants, firstCand)
+    + '<div style="display:flex;justify-content:flex-end;padding-top:6px;border-top:1px dashed #FDE68A">'
+    + '<label style="font-size:11px;color:#6B7280;display:flex;align-items:center;gap:4px;cursor:pointer">'
+    + '<input type="checkbox" data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="skip"> Skip</label>'
+    + '</div></div>';
+}
+
 function renderMatchedCard(m) {
   const gid = m.groupId;
   const cur = m.currentStatus || '';
@@ -3152,6 +3192,7 @@ function renderMatchedCard(m) {
     + '<div style="font-size:11px;color:#6B7280;margin-bottom:8px">'
     + 'Lead: <b style="color:#111827">' + escapeHtml(m.leadName||'') + '</b> · ' + escapeHtml(m.phone||'')
     + ' · current status: <span style="padding:2px 6px;background:#F3F4F6;border-radius:4px;font-size:10px">' + escapeHtml(cur) + '</span></div>'
+    + leadContactRowHtml(gid, m.participants, m.phone)
     + '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding-top:6px;border-top:1px dashed #E5E7EB">'
     + '<label style="font-size:11px;font-weight:600;color:#6B7280">New status:</label>'
     + '<select data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="newStatus" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:4px;font-size:12px">' + opts + '</select>'
@@ -3174,6 +3215,7 @@ function renderOrphanCard(o) {
     + '<div style="font-size:11px;color:#6B7280;margin-bottom:8px">'
     + 'Customer: ' + escapeHtml(o.candidatePhone||'') + ' · ' + (o.participantsCount||1) + ' participant(s) · no matching CRM row — will create new'
     + '</div>'
+    + leadContactRowHtml(gid, o.participants, o.candidatePhone)
     + '<div style="display:grid;grid-template-columns:auto 1fr 1fr auto;gap:8px;align-items:center;padding-top:6px;border-top:1px dashed #E5E7EB">'
     + '<label style="font-size:11px;font-weight:600;color:#6B7280">Name:</label>'
     + '<input type="text" data-bl-input data-bl-gid="' + escapeHtml(gid) + '" data-bl-field="name" value="' + escapeHtml(o.defaultName||'') + '" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:4px;font-size:12px">'
@@ -3246,9 +3288,12 @@ async function runBulkLinkApply() {
     if (c.kind === 'link_existing') {
       const entry = { groupId: gid, kind: 'link_existing' };
       if (c.newStatus) entry.newStatus = c.newStatus;
+      if (c.chosenPhone) entry.chosenPhone = c.chosenPhone;  // round 109 — admin-picked member
       groupsConfig.push(entry);
     } else if (c.kind === 'create_orphan') {
-      groupsConfig.push({ groupId: gid, kind: 'create_orphan', name: c.name || '', status: c.status || 'Pending Site Visit' });
+      const e2 = { groupId: gid, kind: 'create_orphan', name: c.name || '', status: c.status || 'Pending Site Visit' };
+      if (c.chosenPhone) e2.chosenPhone = c.chosenPhone;  // round 109 — admin-picked member
+      groupsConfig.push(e2);
     }
   });
 
