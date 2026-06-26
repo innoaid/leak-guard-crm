@@ -6,7 +6,8 @@ A Kanban-style CRM. The **database is a Google Sheet**. The `.gs` server code ru
 **static GitHub Pages site** at `leakguard.my`. WhatsApp/automation runs in **n8n cloud**.
 
 **GitHub is the source of truth for all code.** New here / onboarding a fresh machine? See
-**`README.md`** (quick start) and **`docs/ARCHITECTURE.md`** (system map).
+**`README.md`** (quick start) and **`docs/ARCHITECTURE.md`** (system map). Latest session state &
+open items → **`docs/SESSION_HANDOFF.md`**.
 
 ---
 
