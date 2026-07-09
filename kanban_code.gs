@@ -1764,6 +1764,12 @@ function handleUpdateLeadDetails(body) {
 // network errors. Never throws.
 
 function fetchInviteLinkForGroup(groupId) {
+  // Round 114 (Whapi footprint reduction): NEVER call /groups/{id}/invite.
+  // WhatsApp group-API calls accelerate bans — the bot is now send-only
+  // (text + PDF). Invite links are shared manually. Returns '' so all
+  // callers (handleBulkLinkGroups / handleBulkInviteLinks / link forward-fill)
+  // simply skip writing an invite link.
+  return '';
   if (!groupId) return '';
   let resp, code = 0, text = '';
   let retried = false;
