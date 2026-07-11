@@ -223,7 +223,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .pv-slab-h .pv-slab-mode{font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}
 .pv-photos{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:11px}
 .pv-photo{border:.5px solid #e5e7eb;border-radius:6px;overflow:hidden;background:#fff}
-.pv-photo img{width:100%;height:auto;max-height:150px;object-fit:cover;display:block}
+.pv-photo img{width:100%;height:auto;max-height:110px;object-fit:cover;display:block}
 .pv-section{margin-bottom:9px}
 .pv-section-h{font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
 .pv-tbl{width:100%;border-collapse:collapse;font-size:11px}
@@ -250,6 +250,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .pv-tnc-h{font-size:11px;font-weight:800;color:#111;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px}
 .pv-tnc ul{padding-left:18px;margin:0}
 .pv-tnc li{margin-bottom:2px}
+    .pv-tnc-s{font-weight:800;color:#111;margin:8px 0 2px}
 .pv-sig{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:32px;font-size:11px}
 .pv-sig-block .lbl{font-size:9px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.3px;margin-bottom:32px}
 .pv-sig-block .line{border-top:1px solid #111;padding-top:5px}
@@ -359,14 +360,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 </div>
 
 <div class="submit-bar">
-  <!-- Round 83 — Trigger A: create the AutoCount quotation right after the SE send. -->
-  <label for="chkAutocount" style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:#374151;padding:2px 0 6px;cursor:pointer">
-    <input type="checkbox" id="chkAutocount" checked> Also create AutoCount quotation (QT)
-  </label>
   <div class="submit-bar-inner">
     <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
     <button class="btn-clear" id="btnPdf" type="button" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E">📄 Estimate PDF</button>
-    <button class="btn-submit" id="btnSubmit" type="button" disabled>Send Estimation</button>
+  </div>
+  <!-- Round 116 — two actions: save+sync (no send) vs save+sync+send. Both create the AutoCount QT. -->
+  <div class="submit-bar-inner" style="margin-top:6px">
+    <button class="btn-submit" id="btnSaveSync" type="button" disabled style="background:#0E7C86">💾 Save + Sync AC</button>
+    <button class="btn-submit" id="btnSaveSyncSend" type="button" disabled>📤 Save, Sync &amp; Send</button>
   </div>
 </div>
 
@@ -1857,15 +1858,13 @@ function updateSlabSubtotal(s){
 function updateSlabSubtotalLabel(s){ updateSlabSubtotal(s); }
 
 function updateSubmitState(){
-  const btn = document.getElementById('btnSubmit');
-  // Round 95.2 — photos optional; any service type counts. Empty slabs are
-  // ignored (not a blocker), so E-Gel/wall-crack-only estimates can send.
+  // Round 116 — two submit buttons; both need a submitter + a billable item.
   const ok = !!state.submittedBy && hasBillableItem();
-  btn.disabled = !ok;
-  // Round 95.4 — tell the user WHY it's disabled instead of a dead button.
-  btn.textContent = ok ? ('Send Estimation — ' + rm(grandTotal()))
-    : (!state.submittedBy ? '⚠ Pick "Submitted by" first'
-       : '⚠ Add a service to send');
+  const why = !state.submittedBy ? '⚠ Pick "Submitted by" first' : '⚠ Add a service first';
+  const bA = document.getElementById('btnSaveSync');
+  const bB = document.getElementById('btnSaveSyncSend');
+  if (bA) { bA.disabled = !ok; bA.textContent = ok ? '💾 Save + Sync AC' : why; }
+  if (bB) { bB.disabled = !ok; bB.textContent = ok ? ('📤 Save, Sync & Send — ' + rm(grandTotal())) : why; }
 }
 
 document.getElementById('fSubmittedBy').addEventListener('change', function(e){ state.submittedBy=e.target.value; saveState(); renderStepSummaries(); updateSubmitState(); });
@@ -1892,23 +1891,26 @@ document.getElementById('btnAddOpenSvc').addEventListener('click', function(){ s
 document.getElementById('btnAddRoofTile').addEventListener('click', function(){ state.roofTiles.push(newRoofTile()); saveState(); renderAll(); });
 
 // Round 72 — real submit flow: SE counter → render PDF → merge boilerplate → send to WA group.
-document.getElementById('btnSubmit').addEventListener('click', async function(){
+async function runSubmit(doSend, clickedBtn){
   if (!currentLead || !currentLead['Phone']) { toast('Customer not loaded yet','error'); return; }
   if (!state.submittedBy) { toast('Pick the inspector first','warn'); return; }
   // Round 95 — any service type qualifies (membrane slab, E-Gel, or wall crack).
   if (!hasBillableItem()) { toast('Add at least one service (slab, E-Gel, or wall crack)','warn'); return; }
-  // Round 74.2 — confirm before sending so a misclick can be cancelled.
+  // Round 116 — Save+Sync (doSend=false) vs Save+Sync+Send (doSend=true). Both create the AutoCount QT.
   const _custName = String(currentLead['Name'] || 'customer').trim();
   const _totalStr = rm(grandTotal());
-  // Round 83 — surface the AutoCount checkbox state in the confirm text.
-  const _acOn = document.getElementById('chkAutocount').checked;
-  if (!confirm('Send the estimation PDF to ' + _custName + '?\n\nTotal: ' + _totalStr + '\nAutoCount quotation: ' + (_acOn ? 'ON' : 'OFF') + '\n\nThis will issue a new SE number, generate the PDF, and post it to the customer’s WA group.')) {
+  if (!confirm(doSend
+      ? ('Save, sync to AutoCount, and SEND the estimation PDF to ' + _custName + '?\n\nTotal: ' + _totalStr + '\n\nIssues a new SE number, creates the AutoCount quotation, and posts the PDF to the customer’s WA group.')
+      : ('Save and sync to AutoCount for ' + _custName + '?\n\nTotal: ' + _totalStr + '\n\nIssues a new SE number and creates the AutoCount quotation. The PDF is NOT sent to the customer.'))) {
     return;
   }
-  const btn = document.getElementById('btnSubmit');
+  const btn = clickedBtn;
+  const _btnA = document.getElementById('btnSaveSync');
+  const _btnB = document.getElementById('btnSaveSyncSend');
   const ov = document.getElementById('uploadOverlay');
   const ut = document.getElementById('uploadText');
-  btn.disabled = true;
+  if (_btnA) _btnA.disabled = true;
+  if (_btnB) _btnB.disabled = true;
   ov.classList.add('on');
   try {
     // 1/5 — Issue SE-MMYY-NNN from Apps Script Counters sheet.
@@ -2005,24 +2007,26 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     }
     const pdfBase64 = btoa(binary);
     console.log('SE submit payload —', estBytes.length, 'bytes PDF,', pdfBase64.length, 'bytes base64');
-    // 4/4 — POST to lg-quotation-send (relays to WA group).
-    ut.textContent = '4/4 Sending to customer…';
-    const sendRes = await fetch(QT_SEND_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        // Round 72.4: gviz can return numeric phone — coerce to string.
-        phone:    String(currentLead['Phone'] || '').trim(),
-        name:     currentLead['Name'] || '',
-        docNo:    docNo,
-        total:    grandTotal(),
-        filename: docNo + '.pdf',
-        pdfBase64: pdfBase64
-      })
-    });
-    if (!sendRes.ok) throw new Error('Send HTTP ' + sendRes.status);
-    toast(docNo + ' sent to ' + (currentLead['Name'] || 'customer'), 'success');
-    btn.textContent = '✅ Sent — ' + docNo;
+    // 4/4 — POST to lg-quotation-send (relays PDF to WA group). Only when sending.
+    if (doSend) {
+      ut.textContent = '4/4 Sending to customer…';
+      const sendRes = await fetch(QT_SEND_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // Round 72.4: gviz can return numeric phone — coerce to string.
+          phone:    String(currentLead['Phone'] || '').trim(),
+          name:     currentLead['Name'] || '',
+          docNo:    docNo,
+          total:    grandTotal(),
+          filename: docNo + '.pdf',
+          pdfBase64: pdfBase64
+        })
+      });
+      if (!sendRes.ok) throw new Error('Send HTTP ' + sendRes.status);
+      toast(docNo + ' sent to ' + (currentLead['Name'] || 'customer'), 'success');
+    }
+    if (btn) btn.textContent = (doSend ? '✅ Sent — ' : '✅ Saved — ') + docNo;
 
     // Round 83 — persist the estimation summary server-side on EVERY send
     // (the kanban "Sync to AutoCount" button needs it later, and the
@@ -2050,9 +2054,9 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     const saveOk = !!(saveRes && saveRes.status === 'ok');
     if (!saveOk) {
       console.warn('saveEstimation failed after retries', saveRes);
-      alert('⚠️ IMPORTANT — ' + docNo + ' was SENT to the customer, but its estimation record FAILED to save (' +
+      alert('⚠️ IMPORTANT — ' + docNo + (doSend ? ' was SENT to the customer, but' : ':') + ' its estimation record FAILED to save (' +
         ((saveRes && saveRes.message) || 'network error') + ').\n\nThe AutoCount quotation was NOT created. ' +
-        'Please create the QT manually in AutoCount for ' + docNo + ', or re-send this estimation so the record saves.');
+        'Please re-run this so the record saves (and create the QT manually in AutoCount for ' + docNo + ' if needed).');
     }
 
     // Round 83.3 — archive the PDF to Drive (link lands in the Estimations
@@ -2080,7 +2084,7 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
     // Round 83 — Trigger A: create the AutoCount quotation now (checkbox ON).
     // Round 111 — only when the estimation record actually saved (syncAutocount
     // reads that row); retry the sync on transient failure.
-    if (_acOn && saveOk) {
+    if (saveOk) {
       ut.textContent = 'Creating AutoCount quotation…';
       // Round 83.5 — phone included so the server can verify the SE row belongs
       // to this lead (guards against SE-counter collisions).
@@ -2091,17 +2095,20 @@ document.getElementById('btnSubmit').addEventListener('click', async function(){
       } else {
         toast('AutoCount sync failed: ' + ((acData && acData.message) || 'unknown') + ' — retry from the kanban card', 'warn');
       }
-    } else if (_acOn && !saveOk) {
+    } else {
       console.warn('Skipping AutoCount sync — estimation record did not save for ' + docNo);
     }
   } catch (e) {
     console.error(e);
     toast('Failed: ' + (e.message || e), 'error');
-    btn.disabled = false;
+    if (_btnA) _btnA.disabled = false;
+    if (_btnB) _btnB.disabled = false;
   } finally {
     ov.classList.remove('on');
   }
-});
+}
+document.getElementById('btnSaveSync').addEventListener('click', function(){ runSubmit(false, this); });
+document.getElementById('btnSaveSyncSend').addEventListener('click', function(){ runSubmit(true, this); });
 
 document.getElementById('btnClear').addEventListener('click', function(){
   if (!confirm('Clear all slabs, services, and photos?')) return;
@@ -2197,7 +2204,7 @@ function buildPrintView(overrideRef) {
 
     // Round v3.4: cap photos at 2 per slab to keep canvas area below iPad's
     // 2^24 px² limit (was 4 in v3.3, hit blank-PDF on iPad).
-    const photoSubset = (s.photos || []).slice(0, 4);
+    const photoSubset = (s.photos || []).slice(0, 6);
     if (photoSubset.length) {
       slabHtml += '<div class="pv-photos">' + photoSubset.map(function(p){
         return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';
@@ -2282,10 +2289,11 @@ function buildPrintView(overrideRef) {
     if ((Number(g.qty)||0) <= 0) return;
     html += '<div class="pv-slab">'+
       '<div class="pv-slab-h"><span>Toilet E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</span><span class="pv-slab-mode">Per toilet</span></div>'+
-      ((g.photos&&g.photos.length) ? '<div class="pv-photos">'+g.photos.slice(0,4).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
+      ((g.photos&&g.photos.length) ? '<div class="pv-photos">'+g.photos.slice(0,6).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
       '<div class="pv-section">'+
         '<div class="pv-line"><span>E-Gel injection · '+(Number(g.qty)||0)+' toilet(s) @ '+rm(g.price)+'</span><span>'+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span></div>'+
         '<div class="pv-line" style="font-size:10px;color:#6b7280">3-year warranty · non-hacking · non-dusty · resume use 1 hour after application</div>'+
+        '<div class="pv-line" style="font-size:10px;color:#b45309;font-weight:700">⚠ Please stop using the toilet for 24 hours before work commences.</div>'+
       '</div></div>';
   });
 
@@ -2294,7 +2302,7 @@ function buildPrintView(overrideRef) {
     if ((Number(w.price)||0) <= 0) return;
     html += '<div class="pv-slab">'+
       '<div class="pv-slab-h"><span>External Wall Crack Service'+((state.wallCracks.length>1)?(' #'+(wi+1)):'')+'</span><span class="pv-slab-mode">Subject to condition</span></div>'+
-      ((w.photos&&w.photos.length) ? '<div class="pv-photos">'+w.photos.slice(0,4).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
+      ((w.photos&&w.photos.length) ? '<div class="pv-photos">'+w.photos.slice(0,6).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
       '<div class="pv-section">'+
         (w.desc ? '<div class="pv-line" style="font-size:10.5px;color:#374151;display:block">'+escapeHtml(w.desc)+'</div>' : '')+
         '<div class="pv-line sub"><span>Wall crack service</span><span>'+rm(Number(w.price)||0)+'</span></div>'+
@@ -2306,7 +2314,7 @@ function buildPrintView(overrideRef) {
     if ((Number(o.qty)||0) <= 0 || (Number(o.price)||0) <= 0) return;
     html += '<div class="pv-slab">'+
       '<div class="pv-slab-h"><span>'+escapeHtml(o.desc||'Service')+'</span><span class="pv-slab-mode">Service</span></div>'+
-      ((o.photos&&o.photos.length) ? '<div class="pv-photos">'+o.photos.slice(0,4).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
+      ((o.photos&&o.photos.length) ? '<div class="pv-photos">'+o.photos.slice(0,6).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
       '<div class="pv-section"><div class="pv-line sub"><span>'+(Number(o.qty)||0)+' × '+rm(o.price)+'</span><span>'+rm((Number(o.qty)||0)*(Number(o.price)||0))+'</span></div></div></div>';
   });
 
@@ -2315,7 +2323,7 @@ function buildPrintView(overrideRef) {
     if ((Number(r.qty)||0) <= 0 || (Number(r.price)||0) <= 0) return;
     html += '<div class="pv-slab">'+
       '<div class="pv-slab-h"><span>'+escapeHtml(r.desc||ROOFTILE_TITLE)+((state.roofTiles.length>1)?(' #'+(ri+1)):'')+'</span><span class="pv-slab-mode">Roof tile</span></div>'+
-      ((r.photos&&r.photos.length) ? '<div class="pv-photos">'+r.photos.slice(0,4).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
+      ((r.photos&&r.photos.length) ? '<div class="pv-photos">'+r.photos.slice(0,6).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
       '<div class="pv-section"><div class="pv-line sub"><span>'+(Number(r.qty)||0)+' × '+rm(r.price)+'</span><span>'+rm((Number(r.qty)||0)*(Number(r.price)||0))+'</span></div></div></div>';
   });
 
@@ -2447,16 +2455,54 @@ function buildPrintView(overrideRef) {
   html +=
     '<div class="pv-tnc">'+
       '<div class="pv-tnc-h">Terms &amp; Conditions</div>'+
+      '<div class="pv-tnc-s">Definitions</div>'+
       '<ul>'+
-        '<li>This estimate is valid for <b>14 days</b> from date of issue.</li>'+
-        '<li>A final formal quotation will be issued upon project confirmation.</li>'+
-        '<li>Estimate is subject to actual site conditions on installation day; minor adjustments may apply.</li>'+
-        '<li>Waterproofing installation carries a <b>5-year workmanship warranty</b> from project completion.</li>'+
-        '<li>Membrane material is covered by a <b>10-year manufacturer warranty</b>.</li>'+
-        '<li>A minimum order of <b>300 sqft</b> applies; jobs under this threshold are billed at the 300 sqft floor.</li>'+
-        '<li>All payments must be made via official Innovation AID Sdn Bhd channels only.</li>'+
-        '<li>Customer to ensure site access on the agreed installation date.</li>'+
+        '<li>"Company" means the party (Innovation AID Sdn. Bhd.) who provides the services.</li>'+
+        '<li>"Client" means the party who receives the services from the Company.</li>'+
+        '<li>"Quotation" means this written scope of works and fees by the Company to the Client.</li>'+
       '</ul>'+
+      '<div class="pv-tnc-s">Acceptance</div>'+
+      '<ul>'+
+        '<li>The Client appoints the Company, which accepts such appointment to provide the Services and Deliverables upon these terms and conditions. Only changes agreed by both parties in writing are valid.</li>'+
+        '<li>A Quotation for the services given by the Company shall not constitute an offer. The Quotation is only valid for <b>fourteen (14) working days</b> from date of issue.</li>'+
+      '</ul>'+
+      '<div class="pv-tnc-s">Payment</div>'+
+      '<ul>'+
+        '<li><b>50% downpayment</b> before work commencement; the balance is collected upon work completion.</li>'+
+        '<li>For payment via bank transfer: <b>United Overseas Bank (Malaysia) Berhad</b> · Account Name: <b>Innovation Aid Sdn Bhd</b> · Account Number: <b>231-308-197-6</b>.</li>'+
+        '<li>Payment to be transacted in Ringgit Malaysia only.</li>'+
+        '<li>The Company reserves the right to momentarily halt the project if payment is late.</li>'+
+        '<li>Should the Client fail to fulfil the payment set out in the Contract, the Client shall pay interest at <b>10% per annum</b> (chargeable monthly) on the total outstanding amount until fully paid.</li>'+
+      '</ul>'+
+      '<div class="pv-tnc-s">Warranty</div>'+
+      '<ul>'+
+        '<li>Labour Warranty: <b>3-year</b> (e-gel) / <b>5-year</b> (membrane) warranty on labour performed by our team, covering workmanship defects related to the installation of waterproofing systems.</li>'+
+        '<li>Material Warranty: our supplier provides a <b>10-year</b> warranty on waterproofing materials, subject to their terms and proper usage (only applicable for exposed membrane installation).</li>'+
+        '<li>The warranty covers only defects directly related to the waterproofing system, such as leaks or material failure, verified by our inspection.</li>'+
+      '</ul>'+
+      '<div class="pv-tnc-s">Warranty Exclusion</div>'+
+      '<ul>'+
+        '<li>The warranty is voided if our waterproofing materials are found damaged due to improper handling, modifications, or external factors (e.g. structural alterations, physical damage, or misuse by third parties).</li>'+
+        '<li>We are not responsible for consequential damages, including but not limited to structural damage, mould growth, interior damage, or business losses resulting from waterproofing issues or other causes.</li>'+
+        '<li>The warranty does not cover defects caused by natural disasters, unauthorised repairs, or failure to adhere to maintenance.</li>'+
+      '</ul>'+
+      '<div class="pv-tnc-s">Material Price Fluctuation</div>'+
+      '<ul>'+
+        '<li>Due to global volatility affecting petroleum-based raw materials (bitumen, polymers, resins), the prices quoted herein are valid for <b>7 days</b> from the date of this quotation. Should documented supplier material costs increase by more than 5% prior to commencement of works, the Company reserves the right to adjust the contract sum accordingly.</li>'+
+      '</ul>'+
+      '<div class="pv-tnc-s">Adjustment for Actual Site Measurements</div>'+
+      '<ul>'+
+        '<li>Should the actual total floor area exceed the size stated in the original quotation — whether due to human error, estimation oversight, or inaccurate site plans — the Company reserves the right to adjust the contract sum proportionally.</li>'+
+        '<li>Any additional area shall be charged based on the prevailing pro-rata rate per square foot/meter as established in the original quotation.</li>'+
+        '<li>The Client shall be notified of any measurement discrepancy prior to application of materials to the additional area, and the additional cost shall be added to the final claim.</li>'+
+      '</ul>'+
+      '<div class="pv-tnc-s">Termination</div>'+
+      '<ul>'+
+        '<li>If any Company claim for work done is not processed/certified and payment is not made within the agreed time frame, the Company may halt or stop the balance of works and shall not be held responsible for any resulting delay.</li>'+
+        '<li>All downpayment, advance payment or deposit paid by the Client is non-refundable; upon the Client\'s default or unilateral termination, such sums shall be forfeited absolutely as part of the damages, and the Company may claim against the Client for expenses, costs and losses incurred.</li>'+
+        '<li>If the Contract Sum or any part is recovered through legal process, the Client shall be liable for the Company\'s solicitor fees (on a solicitor-and-client basis) and other fees and expenses incurred.</li>'+
+      '</ul>'+
+      '<div style="margin-top:10px;font-style:italic;color:#111">By signing below, I acknowledge that I have thoroughly read and fully understood the terms &amp; conditions above.</div>'+
     '</div>';
 
   // 9. Signatures

@@ -2270,6 +2270,12 @@ async function preMoveSvcGate(lead, newStatus) {
   if (currentStatus !== 'Site Visit Confirmed') return { ok: true };
   if (newStatus === 'Site Visit Confirmed') return { ok: true };
 
+  // Round 115: forward progression (SVC → Pending QT / Quotation Sent / …) means
+  // the site visit already happened — KEEP the calendar event. Only delete on a
+  // backward move (rebook) or a terminal/cancel state, which frees up the slot.
+  const _FUNNEL = ['New Lead','Pending Invitation','Pending Site Visit','Site Visit Confirmed','Pending QT','Quotation Sent','Pending I.Date','I.Date Confirmed','Pending Downpayment','Job In Progress','Pending Balance','Job Complete','Receipt Sent','Completed'];
+  if (_FUNNEL.indexOf(newStatus) > _FUNNEL.indexOf('Site Visit Confirmed')) return { ok: true };
+
   const calEventId = String(lead['Cal Event ID (AH)'] || '').trim();
   if (!calEventId) return { ok: true }; // nothing to delete
 
