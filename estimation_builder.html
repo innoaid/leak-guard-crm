@@ -1351,9 +1351,8 @@ function renderSlabExpanded(s){
             '</div>'+
           '</div>';
         }).join('')+
-        '<div style="display:flex;gap:6px;margin-top:5px">'+
-          '<button class="add-row" type="button" data-add-mfloor="'+s.id+'" style="flex:1;margin-top:0">+ Add section</button>'+
-          ((s.manualFloor||[]).length ? '<button class="add-row" type="button" data-apply-mfloor="'+s.id+'" data-mf-applybtn="'+s.id+'" style="flex:1;margin-top:0;border-color:var(--acc);background:#F0FDF4;color:var(--acc);font-weight:700">↑ Apply '+sqft(slabManualFloorTotal(s))+' to floor area</button>' : '')+
+        '<div style="margin-top:5px">'+
+          '<button class="add-row" type="button" data-add-mfloor="'+s.id+'" style="width:100%;margin-top:0">+ Add section</button>'+
         '</div>'+
       '</div>'+
       '<div style="margin-top:11px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt)">Upturns ('+s.upturns.length+')</div>';
@@ -1754,6 +1753,8 @@ function wireSlabHandlers(list){
       const s = state.slabs.find(function(x){ return x.id===parts[0]; });
       if (!s) return;
       s.manualFloor = (s.manualFloor||[]).filter(function(r){ return r.id!==parts[1]; });
+      // Round 118: keep the billed floor area in sync with the remaining manual L×W total.
+      if ((s.manualFloor||[]).length) s.floorSqft = slabManualFloorTotal(s);
       saveState(); renderAll();
     };
   });
@@ -1772,24 +1773,16 @@ function wireSlabHandlers(list){
       const tot = slabManualFloorTotal(s);
       const sumEl = list.querySelector('[data-mf-sum="'+s.id+'"]');
       if (sumEl) sumEl.textContent = 'Sum: ' + sqft(tot);
-      const btnEl = list.querySelector('[data-mf-applybtn="'+s.id+'"]');
-      if (btnEl) btnEl.textContent = '↑ Apply ' + sqft(tot) + ' to floor area';
+      // Round 118: manual L×W total auto-applies to the billed floor area (no button).
+      s.floorSqft = tot;
       saveState();
     };
     el.addEventListener('input', update);
-    el.addEventListener('change', update);
+    // On blur, re-render so the slab subtotal + grand total reflect the new floor area.
+    el.addEventListener('change', function(){ update(); renderAll(); });
   });
-  list.querySelectorAll('[data-apply-mfloor]').forEach(function(b){
-    b.onclick = function(){
-      const s = state.slabs.find(function(x){ return x.id===b.dataset.applyMfloor; });
-      if (!s) return;
-      const total = slabManualFloorTotal(s);
-      if (total <= 0) { toast('Manual rows are empty', 'info'); return; }
-      s.floorSqft = total;
-      saveState(); renderAll();
-      toast('Floor area set to ' + sqft(total), 'success');
-    };
-  });
+  // Round 118: the manual "Apply to floor area" button was removed — the manual
+  // L×W total now auto-applies to s.floorSqft in the input/delete handlers above.
   list.querySelectorAll('[data-add-extra]').forEach(function(b){
     b.onclick = function(){ const s = state.slabs.find(function(x){ return x.id===b.dataset.addExtra; }); if (s){ s.extras.push(newExtra()); saveState(); renderAll(); } };
   });
