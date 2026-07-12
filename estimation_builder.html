@@ -362,7 +362,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 <div class="submit-bar">
   <div class="submit-bar-inner">
     <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
-    <button class="btn-clear" id="btnPdf" type="button" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E">📄 Estimate PDF</button>
   </div>
   <!-- Round 116 — two actions: save+sync (no send) vs save+sync+send. Both create the AutoCount QT. -->
   <div class="submit-bar-inner" style="margin-top:6px">
@@ -1946,7 +1945,7 @@ async function runSubmit(doSend, clickedBtn){
       // Round 72.9: record Y-positions of section boundaries BEFORE capture
       // so we can slice the canvas at logical breaks instead of fixed page heights.
       const _pvRectTop = pv.getBoundingClientRect().top;
-      const breakYs = Array.from(pv.querySelectorAll('.pv-slab, .pv-grand, .pv-tnc, .pv-sig'))
+      const breakYs = Array.from(pv.querySelectorAll('.pv-slab, .pv-grand, .pv-grand-block, .pv-grand-total, .pv-tnc, .pv-tnc-s, .pv-sig'))
         .map(function(el){ return (el.getBoundingClientRect().top - _pvRectTop) * SCALE; });
       const canvas = await html2canvas(pv, { scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: true });
       let pixelSample = 'N/A';
@@ -2091,6 +2090,16 @@ async function runSubmit(doSend, clickedBtn){
     } else {
       console.warn('Skipping AutoCount sync — estimation record did not save for ' + docNo);
     }
+
+    // Round 119: hand the inspector a local copy of the PDF (replaces the removed
+    // "Estimate PDF" button). Done LAST so it can never interrupt the save/send flow.
+    try {
+      const _blob = new Blob([estBytes], { type: 'application/pdf' });
+      const _url = URL.createObjectURL(_blob);
+      const _a = document.createElement('a'); _a.href = _url; _a.download = docNo + '.pdf';
+      document.body.appendChild(_a); _a.click(); _a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(_url); }, 5000);
+    } catch (_e) { console.warn('local PDF download failed (non-fatal)', _e); }
   } catch (e) {
     console.error(e);
     toast('Failed: ' + (e.message || e), 'error');
@@ -2454,46 +2463,40 @@ function buildPrintView(overrideRef) {
         '<li>"Client" means the party who receives the services from the Company.</li>'+
         '<li>"Quotation" means this written scope of works and fees by the Company to the Client.</li>'+
       '</ul>'+
+      '<div class="pv-tnc-s">Payment</div>'+
+      '<ul>'+
+        '<li><b>50% downpayment</b> before work commencement; the balance will be collected upon work completion.</li>'+
+        '<li>For payment via bank transaction, please use: <b>United Overseas Bank (Malaysia) Berhad</b> · Account Name: <b>Innovation Aid Sdn Bhd</b> · Account Number: <b>231-308-197-6</b>.</li>'+
+        '<li>Payment to be transacted in Ringgit Malaysia only.</li>'+
+        '<li>The Company reserves the right to momentarily halt the project if payment is late.</li>'+
+        '<li>In case the Customer fails to fulfil the payment set out in the Contract, the Customer shall pay to the Company interest at <b>10% (ten per cent) per annum</b> (chargeable monthly) of the total outstanding amount until the account is fully paid by the Customer.</li>'+
+      '</ul>'+
       '<div class="pv-tnc-s">Acceptance</div>'+
       '<ul>'+
         '<li>The Client appoints the Company, which accepts such appointment to provide the Services and Deliverables upon these terms and conditions. Only changes agreed by both parties in writing are valid.</li>'+
         '<li>A Quotation for the services given by the Company shall not constitute an offer. The Quotation is only valid for <b>fourteen (14) working days</b> from date of issue.</li>'+
       '</ul>'+
-      '<div class="pv-tnc-s">Payment</div>'+
+      '<div class="pv-tnc-s">Material Price Fluctuation Clause</div>'+
       '<ul>'+
-        '<li><b>50% downpayment</b> before work commencement; the balance is collected upon work completion.</li>'+
-        '<li>For payment via bank transfer: <b>United Overseas Bank (Malaysia) Berhad</b> · Account Name: <b>Innovation Aid Sdn Bhd</b> · Account Number: <b>231-308-197-6</b>.</li>'+
-        '<li>Payment to be transacted in Ringgit Malaysia only.</li>'+
-        '<li>The Company reserves the right to momentarily halt the project if payment is late.</li>'+
-        '<li>Should the Client fail to fulfil the payment set out in the Contract, the Client shall pay interest at <b>10% per annum</b> (chargeable monthly) on the total outstanding amount until fully paid.</li>'+
-      '</ul>'+
-      '<div class="pv-tnc-s">Warranty</div>'+
-      '<ul>'+
-        '<li>Labour Warranty: <b>3-year</b> (e-gel) / <b>5-year</b> (membrane) warranty on labour performed by our team, covering workmanship defects related to the installation of waterproofing systems.</li>'+
-        '<li>Material Warranty: our supplier provides a <b>10-year</b> warranty on waterproofing materials, subject to their terms and proper usage (only applicable for exposed membrane installation).</li>'+
-        '<li>The warranty covers only defects directly related to the waterproofing system, such as leaks or material failure, verified by our inspection.</li>'+
-      '</ul>'+
-      '<div class="pv-tnc-s">Warranty Exclusion</div>'+
-      '<ul>'+
-        '<li>The warranty is voided if our waterproofing materials are found damaged due to improper handling, modifications, or external factors (e.g. structural alterations, physical damage, or misuse by third parties).</li>'+
-        '<li>We are not responsible for consequential damages, including but not limited to structural damage, mould growth, interior damage, or business losses resulting from waterproofing issues or other causes.</li>'+
-        '<li>The warranty does not cover defects caused by natural disasters, unauthorised repairs, or failure to adhere to maintenance.</li>'+
-      '</ul>'+
-      '<div class="pv-tnc-s">Material Price Fluctuation</div>'+
-      '<ul>'+
-        '<li>Due to global volatility affecting petroleum-based raw materials (bitumen, polymers, resins), the prices quoted herein are valid for <b>7 days</b> from the date of this quotation. Should documented supplier material costs increase by more than 5% prior to commencement of works, the Company reserves the right to adjust the contract sum accordingly.</li>'+
+        '<li>Due to current global volatility affecting petroleum-based raw materials (bitumen, polymers, and resins), the prices quoted herein are valid for <b>7 days</b> from the date of this quotation. In the event of a documented increase in material costs from suppliers exceeding 5% prior to the commencement of works, the Company reserves the right to adjust the contract sum accordingly.</li>'+
       '</ul>'+
       '<div class="pv-tnc-s">Adjustment for Actual Site Measurements</div>'+
       '<ul>'+
-        '<li>Should the actual total floor area exceed the size stated in the original quotation — whether due to human error, estimation oversight, or inaccurate site plans — the Company reserves the right to adjust the contract sum proportionally.</li>'+
-        '<li>Any additional area shall be charged based on the prevailing pro-rata rate per square foot/meter as established in the original quotation.</li>'+
-        '<li>The Client shall be notified of any measurement discrepancy prior to application of materials to the additional area, and the additional cost shall be added to the final claim.</li>'+
+        '<li><b>Adjustment of Contract Sum:</b> In the event the actual total floor area exceeds the size stated in the original quotation — regardless of whether the discrepancy is due to human error, estimation oversight, or inaccurate site plans — the Company reserves the absolute right to adjust the contract sum proportionally.</li>'+
+        '<li><b>Calculation of Additional Cost:</b> Any additional area found shall be charged based on the prevailing pro-rata rate per square foot/meter as established in the original quotation.</li>'+
+        '<li><b>Notification:</b> The Client shall be notified of any such measurement discrepancy prior to the application of materials to the additional area, and the additional cost shall be added to the final claim.</li>'+
+      '</ul>'+
+      '<div class="pv-tnc-s">Warranty</div>'+
+      '<ul>'+
+        '<li><b>E-Gel Injection:</b> this warranty is valid for <b>three (3) years</b> from the date of completion of the E-Gel waterproofing works.</li>'+
+        '<li><b>Membrane — Labour Warranty:</b> we provide a <b>5-year</b> warranty on labour performed by our team, covering workmanship defects related to the installation of waterproofing systems.</li>'+
+        '<li><b>Membrane — Material Warranty:</b> our supplier provides a <b>10-year</b> warranty on waterproofing materials, subject to their terms and proper usage (only applicable for exposed membrane installation).</li>'+
       '</ul>'+
       '<div class="pv-tnc-s">Termination</div>'+
       '<ul>'+
-        '<li>If any Company claim for work done is not processed/certified and payment is not made within the agreed time frame, the Company may halt or stop the balance of works and shall not be held responsible for any resulting delay.</li>'+
-        '<li>All downpayment, advance payment or deposit paid by the Client is non-refundable; upon the Client\'s default or unilateral termination, such sums shall be forfeited absolutely as part of the damages, and the Company may claim against the Client for expenses, costs and losses incurred.</li>'+
-        '<li>If the Contract Sum or any part is recovered through legal process, the Client shall be liable for the Company\'s solicitor fees (on a solicitor-and-client basis) and other fees and expenses incurred.</li>'+
+        '<li>In the event any of the Company\'s claims for work done (including but not limited to this contract) is not processed or certified and payment is not made within the agreed time frame, the Company shall have the absolute right to halt or stop the balance of the work (if any), and the Company shall not be held responsible or accountable for any delay in any form whatsoever.</li>'+
+        '<li>All down payment, advance payment or deposit paid by the Client shall be non-refundable; in the event of default on the part of the Client which results in the determination of this contract, or in the event the Client unilaterally terminates the contract, all such sums shall be forfeited by the Company absolutely as part of the damages, and the Company shall have the right to claim against the Client for the expenses, costs and losses incurred in respect of the Project.</li>'+
+        '<li>If the Contract Sum or any part thereof is required to be recovered through the process of law, the Client shall be liable to pay to the Company (in addition to the moneys then due and payable) the solicitors\' fees (on a solicitor-and-client basis) and any other fees and expenses incurred in respect of such action.</li>'+
       '</ul>'+
       '<div style="margin-top:10px;font-style:italic;color:#111">By signing below, I acknowledge that I have thoroughly read and fully understood the terms &amp; conditions above.</div>'+
     '</div>';
@@ -2576,7 +2579,7 @@ async function generateEstimatePdf() {
       const SCALE = 1.5;
       // Round 72.9: section-aware page slicing — see submit flow for rationale.
       const _pvRectTop = pv.getBoundingClientRect().top;
-      const breakYs = Array.from(pv.querySelectorAll('.pv-slab, .pv-grand, .pv-tnc, .pv-sig'))
+      const breakYs = Array.from(pv.querySelectorAll('.pv-slab, .pv-grand, .pv-grand-block, .pv-grand-total, .pv-tnc, .pv-tnc-s, .pv-sig'))
         .map(function(el){ return (el.getBoundingClientRect().top - _pvRectTop) * SCALE; });
       const canvas = await html2canvas(pv, { scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: true });
       let pixelSample = 'N/A';
@@ -2625,7 +2628,9 @@ async function generateEstimatePdf() {
   }
 }
 
-document.getElementById('btnPdf').addEventListener('click', generateEstimatePdf);
+// Round 119: the standalone "Estimate PDF" button was removed — both Save buttons
+// now hand the inspector a local PDF copy at the end of runSubmit (see below).
+// generateEstimatePdf() is kept for reference but no longer wired to a button.
 
 // ========= SETTINGS MODAL (Round v3.4) =========
 let _settingsDraft = null;
