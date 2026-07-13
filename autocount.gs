@@ -32,6 +32,7 @@
 // ================================================================
 
 const QT_CREATE_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-create'; // debtor find-or-create + QT create in AutoCount
+const QT_UPDATE_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-quotation-update'; // Round 124 — amend: PUT-update an existing QT in place
 
 const ESTIMATIONS_SHEET = 'Estimations';
 const ESTIMATIONS_HEADERS = [
@@ -293,6 +294,26 @@ function handleSyncAutocount(body) {
       if (h.colByName['AutoCount Debtor Code'])  sheet.getRange(rowNum, h.colByName['AutoCount Debtor Code']).setValue(debtorCode);
       if (h.colByName['Synced At'])              sheet.getRange(rowNum, h.colByName['Synced At']).setValue(new Date().toISOString());
       if (h.colByName['Sync Status'])            sheet.getRange(rowNum, h.colByName['Sync Status']).setValue('synced');
+    } else if (body.amend) {
+      // Round 124 (P2) — amend: PUT-update the EXISTING AutoCount QT in place
+      // (same QT No, new lines/totals) via the LG - Quotation Update workflow.
+      let lineItems;
+      try { lineItems = JSON.parse(String(get('Line Items JSON') || '[]')); }
+      catch (e) { return jsonResponse({status: 'error', message: 'corrupt Line Items JSON for ' + seNo}); }
+      if (!lineItems.length) return jsonResponse({status: 'error', message: 'estimation ' + seNo + ' has no line items'});
+      const upResp = UrlFetchApp.fetch(QT_UPDATE_URL, {
+        method: 'post', contentType: 'application/json',
+        payload: JSON.stringify({ secret: 'ABC', docNo: qtNo, lineItems: lineItems, serviceHeader: 'Torch-On Membrane Waterproofing Services' }),
+        muteHttpExceptions: true
+      });
+      const upCode = upResp.getResponseCode();
+      let upData; try { upData = JSON.parse(upResp.getContentText()); } catch (_e) { upData = null; }
+      if (upCode !== 200 || !upData || upData.success !== true) {
+        const msg = (upData && upData.error) ? upData.error : ('HTTP ' + upCode + ': ' + String(upResp.getContentText()).slice(0, 200));
+        return jsonResponse({status: 'error', message: 'AutoCount QT update failed: ' + msg});
+      }
+      if (h.colByName['Synced At'])   sheet.getRange(rowNum, h.colByName['Synced At']).setValue(new Date().toISOString());
+      if (h.colByName['Sync Status']) sheet.getRange(rowNum, h.colByName['Sync Status']).setValue('updated');
     }
 
     // ── Side-effects (idempotent; safe to re-run) ──

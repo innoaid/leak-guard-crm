@@ -2086,9 +2086,16 @@ async function runSubmit(doSend, clickedBtn){
     // Round 111 — only when the estimation record actually saved (syncAutocount
     // reads that row); retry the sync on transient failure.
     if (saveOk && amendSe) {
-      // Round 120 (P1): amending saves the record + regenerates the PDF, but does
-      // NOT auto-update the AutoCount quotation yet (that's P2). Flag it clearly.
-      toast('Amended ' + docNo + ' — record + PDF updated. (AutoCount QT not auto-updated yet.)', 'warn');
+      // Round 124 (P2) — amend updates the SAME AutoCount QT in place (or creates
+      // one if this estimation was never synced). Same SE, same QT number.
+      ut.textContent = 'Updating AutoCount quotation…';
+      const acData = await postAppsScript({ action: 'syncAutocount', secret: SHARED_SECRET, seNo: docNo, phone: String(currentLead['Phone'] || '').trim(), amend: true }, 3);
+      if (acData && acData.status === 'ok' && acData.qtNo) {
+        toast('Amended ' + docNo + ' — AutoCount QT ' + acData.qtNo + (acData.alreadySynced ? ' updated.' : ' created.'), 'success');
+        if (acData.agentWarning) toast(acData.agentWarning, 'warn');
+      } else {
+        toast('Amended ' + docNo + ', but AutoCount update failed: ' + ((acData && acData.message) || 'unknown') + ' — retry from the kanban card.', 'warn');
+      }
     } else if (saveOk) {
       ut.textContent = 'Creating AutoCount quotation…';
       // Round 83.5 — phone included so the server can verify the SE row belongs
