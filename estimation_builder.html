@@ -2856,8 +2856,15 @@ function showAmendBanner(se){
   b.textContent='✏️ Amending '+se+' — edit and regenerate to update the same estimation.';
   document.body.insertBefore(b, document.body.firstChild);
 }
+// Round 123 — blank estimation in-memory (not persisted); used in amend mode so a
+// stale device draft never shows when an estimation can't be loaded.
+function clearStateBlank(){
+  state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0 };
+  renderAll();
+}
 async function loadAmend(phone, se){
   await loadLead(phone);   // populate currentLead + customer grid first
+  clearStateBlank();       // don't show the leftover device draft while (or if we fail) loading
   const ov=document.getElementById('uploadOverlay'), ut=document.getElementById('uploadText');
   ut.textContent='Loading estimation…';
   // ?amend=latest (from kanban, which doesn't know the SE) → server resolves the lead's latest.
@@ -2883,6 +2890,7 @@ async function loadAmend(phone, se){
 // Round 121 — pick WHICH of the lead's estimations to amend.
 async function loadAmendPicker(phone){
   await loadLead(phone);
+  clearStateBlank();       // Round 123 — show blank, not the leftover draft, until an estimation is picked/loaded
   const ov=document.getElementById('uploadOverlay'), ut=document.getElementById('uploadText');
   ov.classList.add('on'); ut.textContent='Loading estimations…';
   let res;
