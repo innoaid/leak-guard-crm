@@ -1953,7 +1953,14 @@ async function runSubmit(doSend, clickedBtn){
       // Round 72.9: record Y-positions of section boundaries BEFORE capture
       // so we can slice the canvas at logical breaks instead of fixed page heights.
       const _pvRectTop = pv.getBoundingClientRect().top;
+      // Round 125: never break on the FIRST block inside the green "Estimated
+      // Total — Breakdown" box — that orphans the box header on the previous page.
+      // Excluding each .pv-grand's first .pv-grand-block leaves the box top as the
+      // only in-box break, so the whole box moves to the next page together.
+      const _grandFirst = new Set();
+      pv.querySelectorAll('.pv-grand').forEach(function(g){ var fb = g.querySelector('.pv-grand-block'); if (fb) _grandFirst.add(fb); });
       const breakYs = Array.from(pv.querySelectorAll('.pv-slab, .pv-grand, .pv-grand-block, .pv-grand-total, .pv-tnc, .pv-tnc-s, .pv-sig'))
+        .filter(function(el){ return !_grandFirst.has(el); })
         .map(function(el){ return (el.getBoundingClientRect().top - _pvRectTop) * SCALE; });
       const canvas = await html2canvas(pv, { scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: true });
       let pixelSample = 'N/A';
@@ -2207,9 +2214,9 @@ function buildPrintView(overrideRef) {
     '<div class="pv-cust">'+
       '<div class="pv-cust-row"><span class="lbl">Customer</span><span class="val">'+escapeHtml(cust.name)+'</span></div>'+
       '<div class="pv-cust-row"><span class="lbl">Phone</span><span class="val">'+escapeHtml(cust.phone)+'</span></div>'+
-      '<div class="pv-cust-row"><span class="lbl">Group</span><span class="val">'+escapeHtml(cust.group)+'</span></div>'+
-      '<div class="pv-cust-row"><span class="lbl">Address</span><span class="val">'+escapeHtml(cust.address)+'</span></div>'+
-      '<div class="pv-cust-row"><span class="lbl">Problem</span><span class="val">'+escapeHtml(cust.problem)+'</span></div>'+
+      (cust.group   ? '<div class="pv-cust-row"><span class="lbl">Group</span><span class="val">'+escapeHtml(cust.group)+'</span></div>' : '')+
+      (cust.address ? '<div class="pv-cust-row"><span class="lbl">Address</span><span class="val">'+escapeHtml(cust.address)+'</span></div>' : '')+
+      (cust.problem ? '<div class="pv-cust-row"><span class="lbl">Problem</span><span class="val">'+escapeHtml(cust.problem)+'</span></div>' : '')+
       '<div class="pv-cust-row"><span class="lbl">Inspected by</span><span class="val">'+escapeHtml(state.submittedBy || '—')+'</span></div>'+
     '</div>';
 
@@ -2599,7 +2606,14 @@ async function generateEstimatePdf() {
       const SCALE = 1.5;
       // Round 72.9: section-aware page slicing — see submit flow for rationale.
       const _pvRectTop = pv.getBoundingClientRect().top;
+      // Round 125: never break on the FIRST block inside the green "Estimated
+      // Total — Breakdown" box — that orphans the box header on the previous page.
+      // Excluding each .pv-grand's first .pv-grand-block leaves the box top as the
+      // only in-box break, so the whole box moves to the next page together.
+      const _grandFirst = new Set();
+      pv.querySelectorAll('.pv-grand').forEach(function(g){ var fb = g.querySelector('.pv-grand-block'); if (fb) _grandFirst.add(fb); });
       const breakYs = Array.from(pv.querySelectorAll('.pv-slab, .pv-grand, .pv-grand-block, .pv-grand-total, .pv-tnc, .pv-tnc-s, .pv-sig'))
+        .filter(function(el){ return !_grandFirst.has(el); })
         .map(function(el){ return (el.getBoundingClientRect().top - _pvRectTop) * SCALE; });
       const canvas = await html2canvas(pv, { scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: true });
       let pixelSample = 'N/A';
