@@ -160,6 +160,38 @@ function handleFetchEstimationPhoto(body) {
 }
 
 // ================================================================
+// Round 121 — listEstimations: all estimations for a lead (for the amend picker)
+// ================================================================
+// body: {action, secret, phone}
+function handleListEstimations(body) {
+  if (!body.phone) return jsonResponse({status: 'error', message: 'phone required'});
+  const sheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(ESTIMATIONS_SHEET);
+  if (!sheet) return jsonResponse({status: 'error', message: 'Estimations sheet missing'});
+  const h = getHeaders(sheet);
+  const data = sheet.getDataRange().getValues();
+  const idx = function(name) { return h.colByName[name] ? h.colByName[name] - 1 : -1; };
+  const iSe = idx('SE No'), iPh = idx('Phone'), iTs = idx('Timestamp'), iGt = idx('Grand Total'),
+        iSt = idx('Sync Status'), iQt = idx('AutoCount QT No'), iBy = idx('Submitted By'), iState = idx('Builder State JSON');
+  const rows = [];
+  for (let r = 1; r < data.length; r++) {
+    if (iPh < 0 || !_samePhone(data[r][iPh], body.phone)) continue;
+    const se = String(data[r][iSe] || '').trim();
+    if (!se) continue;
+    rows.push({
+      seNo:        se,
+      timestamp:   String(data[r][iTs] || ''),
+      grandTotal:  Number(data[r][iGt]) || 0,
+      syncStatus:  String(data[r][iSt] || ''),
+      qtNo:        String(data[r][iQt] || ''),
+      submittedBy: String(data[r][iBy] || ''),
+      amendable:   !!(iState >= 0 && String(data[r][iState] || '').trim()),
+    });
+  }
+  rows.sort(function(a, b) { return String(b.timestamp).localeCompare(String(a.timestamp)); });  // newest first
+  return jsonResponse({status: 'ok', estimations: rows});
+}
+
+// ================================================================
 // syncAutocount — create the AutoCount QT + apply CRM side-effects
 // ================================================================
 // body: {action, secret, seNo}            (Trigger A — estimation builder)

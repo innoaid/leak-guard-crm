@@ -80,6 +80,7 @@ function doPost(e) {
       case 'uploadEstimationPdf': return handleUploadEstimationPdf(body);  // round 83.3 — archive SE PDF to Drive (autocount.gs)
       case 'loadEstimation':     return handleLoadEstimation(body);  // round 120 — reload full editable state to amend an SE (autocount.gs)
       case 'fetchEstimationPhoto': return handleFetchEstimationPhoto(body);  // round 120 — re-hydrate a Drive photo as base64 (autocount.gs)
+      case 'listEstimations':    return handleListEstimations(body);  // round 121 — lead's estimations for the amend picker (autocount.gs)
       case 'linkQt':             return handleLinkQt(body);  // round 93 — link an existing AutoCount QT to a card (autocount.gs)
       case 'adminScan':          return handleAdminScan(body);  // round 85 — phase-scan violation board
       case 'salesReport':        return handleSalesReport(body);  // round 86 — sales scoreboard + weekly meeting agenda

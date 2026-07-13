@@ -2880,11 +2880,55 @@ async function loadAmend(phone, se){
   renderAll();
   toast('Loaded ' + amendSe + ' — edit, then Save to update it', 'success');
 }
+// Round 121 — pick WHICH of the lead's estimations to amend.
+async function loadAmendPicker(phone){
+  await loadLead(phone);
+  const ov=document.getElementById('uploadOverlay'), ut=document.getElementById('uploadText');
+  ov.classList.add('on'); ut.textContent='Loading estimations…';
+  let res;
+  try { res = await postAppsScript({ action:'listEstimations', secret:SHARED_SECRET, phone:phone }, 3); }
+  catch(e){ res = null; }
+  ov.classList.remove('on');
+  const list = (res && res.status==='ok' && res.estimations) ? res.estimations : [];
+  const amendable = list.filter(function(e){ return e.amendable; });
+  if (!amendable.length){
+    toast('No amendable estimation for this lead yet — generate one first (older ones must be regenerated once to become amendable).', 'warn');
+    return;
+  }
+  if (amendable.length === 1){ return loadAmend(phone, amendable[0].seNo); }
+  showEstimationPicker(amendable, function(se){ loadAmend(phone, se); });
+}
+function showEstimationPicker(list, onPick){
+  if (document.getElementById('estPicker')) return;
+  const wrap=document.createElement('div');
+  wrap.id='estPicker';
+  wrap.style.cssText='position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  const items = list.map(function(e){
+    const date=(e.timestamp||'').slice(0,10);
+    const total='RM '+(Number(e.grandTotal)||0).toFixed(2);
+    const meta=[date, e.submittedBy||'', e.qtNo?('QT '+e.qtNo):(e.syncStatus||'')].filter(Boolean).join(' · ');
+    return '<button class="est-pick-item" data-se="'+escapeHtml(e.seNo)+'" style="display:block;width:100%;text-align:left;padding:12px 14px;margin:0 0 8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer">'+
+      '<div style="font-weight:700;color:#111">'+escapeHtml(e.seNo)+' <span style="color:#0E7C86">'+total+'</span></div>'+
+      '<div style="font-size:12px;color:#6b7280">'+escapeHtml(meta)+'</div>'+
+    '</button>';
+  }).join('');
+  wrap.innerHTML='<div style="background:#fff;border-radius:12px;max-width:440px;width:100%;max-height:80vh;overflow:auto;padding:16px">'+
+    '<div style="font-weight:800;font-size:15px;margin-bottom:12px;color:#111">Pick an estimation to amend</div>'+
+    items+
+    '<button id="estPickCancel" style="width:100%;padding:10px;margin-top:4px;border:none;border-radius:8px;background:#F3F4F6;color:#374151;cursor:pointer">Cancel</button>'+
+  '</div>';
+  document.body.appendChild(wrap);
+  wrap.querySelectorAll('.est-pick-item').forEach(function(b){ b.onclick=function(){ const se=b.dataset.se; wrap.remove(); onPick(se); }; });
+  document.getElementById('estPickCancel').onclick=function(){ wrap.remove(); };
+  wrap.addEventListener('click', function(e){ if (e.target===wrap) wrap.remove(); });
+}
 
 loadState();
 const _phone = getParam('phone');
 const _amend = getParam('amend');
-if (_phone && _amend) {
+if (_phone && _amend === 'pick') {
+  loadAmendPicker(_phone);
+} else if (_phone && _amend) {
   loadAmend(_phone, _amend);
 } else if (_phone) {
   loadLead(_phone);

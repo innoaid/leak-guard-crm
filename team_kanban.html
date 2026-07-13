@@ -4461,11 +4461,11 @@ document.getElementById('btnGenQt').onclick = function() {
   const phone = currentModalLead['Phone'];
   window.open('estimation_builder.html?phone=' + encodeURIComponent(phone), '_blank');
 };
-// Round 120 — open the builder pre-loaded with the lead's latest estimation, to amend it.
+// Round 121 — open the builder and pick which of the lead's estimations to amend.
 document.getElementById('btnAmendEst').onclick = function() {
   if (!currentModalLead) return;
   const phone = currentModalLead['Phone'];
-  window.open('estimation_builder.html?phone=' + encodeURIComponent(phone) + '&amend=latest', '_blank');
+  window.open('estimation_builder.html?phone=' + encodeURIComponent(phone) + '&amend=pick', '_blank');
 };
 // Round 83 — Trigger B: AutoCount sync from the kanban card. The server
 // picks the newest saved estimation for this phone; if a QT already
