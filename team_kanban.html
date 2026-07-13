@@ -2845,13 +2845,15 @@ function openLeadDetail(lead) {
   // issues estimations right after the site visit, before formal QT).
   const showGenQt = (status === 'Pending QT' || status === 'Site Visit Confirmed');
   document.getElementById('btnGenQt').style.display = showGenQt ? '' : 'none';
-  { const _am = document.getElementById('btnAmendEst'); if (_am) _am.style.display = showGenQt ? '' : 'none'; }  // Round 120
 
   // Round 83 — "Sync to AutoCount" (Trigger B): visible wherever an
   // estimation may exist, or whenever a QT was already created (so the
   // synced state stays visible in later phases).
   const acQt = String(lead['AutoCount QT No'] || '').trim();
   const showAcSync = !!acQt || showGenQt || status === 'Quotation Sent';
+  // Round 122 — Amend Estimation shows wherever an estimation/QT may exist
+  // (SVC, Pending QT, Quotation Sent, or any later phase once a QT exists).
+  { const _am = document.getElementById('btnAmendEst'); if (_am) _am.style.display = showAcSync ? '' : 'none'; }
   const btnAcSync = document.getElementById('btnSyncAutocount');
   btnAcSync.style.display = showAcSync ? '' : 'none';
   btnAcSync.textContent = acQt ? ('✅ AutoCount: ' + acQt) : '🔗 Sync to AutoCount';
