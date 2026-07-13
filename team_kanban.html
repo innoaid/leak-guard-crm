@@ -498,6 +498,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
     <div class="modal-actions">
       <button class="modal-btn modal-btn-info" id="btnEditAppt" style="display:none">Edit appointment</button>
       <button class="modal-btn modal-btn-info" id="btnGenQt" style="display:none">📋 Generate Estimation</button>
+      <button class="modal-btn modal-btn-info" id="btnAmendEst" style="display:none">✏️ Amend Estimation</button>
       <button class="modal-btn modal-btn-info" id="btnSyncAutocount" style="display:none">🔗 Sync to AutoCount</button>
       <button class="modal-btn modal-btn-info" id="btnLinkQt">🔗 Link QT</button>
       <button class="modal-btn modal-btn-info" id="btnEditDetails">✏️ Edit details</button>
@@ -2844,6 +2845,7 @@ function openLeadDetail(lead) {
   // issues estimations right after the site visit, before formal QT).
   const showGenQt = (status === 'Pending QT' || status === 'Site Visit Confirmed');
   document.getElementById('btnGenQt').style.display = showGenQt ? '' : 'none';
+  { const _am = document.getElementById('btnAmendEst'); if (_am) _am.style.display = showGenQt ? '' : 'none'; }  // Round 120
 
   // Round 83 — "Sync to AutoCount" (Trigger B): visible wherever an
   // estimation may exist, or whenever a QT was already created (so the
@@ -4458,6 +4460,12 @@ document.getElementById('btnGenQt').onclick = function() {
   if (!currentModalLead) return;
   const phone = currentModalLead['Phone'];
   window.open('estimation_builder.html?phone=' + encodeURIComponent(phone), '_blank');
+};
+// Round 120 — open the builder pre-loaded with the lead's latest estimation, to amend it.
+document.getElementById('btnAmendEst').onclick = function() {
+  if (!currentModalLead) return;
+  const phone = currentModalLead['Phone'];
+  window.open('estimation_builder.html?phone=' + encodeURIComponent(phone) + '&amend=latest', '_blank');
 };
 // Round 83 — Trigger B: AutoCount sync from the kanban card. The server
 // picks the newest saved estimation for this phone; if a QT already

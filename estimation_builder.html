@@ -519,6 +519,9 @@ let settings = loadSettings();
 // Round 95 — egel (toilet E-Gel) + wallCracks are top-level service types
 // alongside membrane slabs.
 let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0 };
+// Round 120 — amend mode: when set (?amend=SE-…), regenerate re-uses this SE
+// instead of issuing a new one, and overwrites the same estimation record.
+let amendSe = '', amendQtNo = '';
 
 // Ephemeral UI collapse state per slab — not persisted (re-derived on render)
 const uiCollapse = new Map(); // slabId -> { measurements: bool, services: bool }
@@ -874,7 +877,7 @@ async function handlePhotoFiles(slabId, files){
             dataUrl: dataUrl
           })
         }).then(function(r){ return r.ok ? r.json() : null; })
-          .then(function(j){ if (j && j.url) photo.driveUrl = j.url; })
+          .then(function(j){ if (j && j.url) { photo.driveUrl = j.url; photo.driveId = j.id || ''; } })
           .catch(function(){});
       }
     } catch(_){ toast('Failed to read one photo','error'); }
@@ -916,7 +919,7 @@ async function handleServicePhotoFiles(arrName, id, files){
           method: 'POST', headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({ action:'uploadEstimationPhoto', secret:SHARED_SECRET, phone:currentLead['Phone'], slabName:label, photoLabel:'', dataUrl:dataUrl })
         }).then(function(r){ return r.ok ? r.json() : null; })
-          .then(function(j){ if (j && j.url) photo.driveUrl = j.url; })
+          .then(function(j){ if (j && j.url) { photo.driveUrl = j.url; photo.driveId = j.id || ''; } })
           .catch(function(){});
       }
     } catch(_){ toast('Failed to read one photo','error'); }
@@ -1905,21 +1908,26 @@ async function runSubmit(doSend, clickedBtn){
   if (_btnB) _btnB.disabled = true;
   ov.classList.add('on');
   try {
-    // 1/5 — Issue SE-MMYY-NNN from Apps Script Counters sheet.
-    ut.textContent = '1/4 Issuing SE number…';
-    const seRes = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      // Round 72.3: text/plain avoids CORS preflight (Apps Script Web Apps
-      // reject preflight). Same pattern as team_kanban.html.
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'nextSeNumber', secret: SHARED_SECRET })
-    });
-    if (!seRes.ok) throw new Error('SE counter HTTP ' + seRes.status);
-    const seData = await seRes.json();
-    if (seData.status !== 'ok' || !seData.docNo) {
-      throw new Error('SE number failed: ' + (seData.message || JSON.stringify(seData).slice(0, 200)));
+    // 1 — Issue a NEW SE-MMYY-NNN, or (amend mode) RE-USE the existing one.
+    let docNo;
+    if (amendSe) {
+      docNo = amendSe;
+      ut.textContent = 'Re-using ' + docNo + '…';
+    } else {
+      ut.textContent = '1/4 Issuing SE number…';
+      const seRes = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        // Round 72.3: text/plain avoids CORS preflight (Apps Script Web Apps reject it).
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'nextSeNumber', secret: SHARED_SECRET })
+      });
+      if (!seRes.ok) throw new Error('SE counter HTTP ' + seRes.status);
+      const seData = await seRes.json();
+      if (seData.status !== 'ok' || !seData.docNo) {
+        throw new Error('SE number failed: ' + (seData.message || JSON.stringify(seData).slice(0, 200)));
+      }
+      docNo = seData.docNo;
     }
-    const docNo = seData.docNo;
     // 2/5 — Render the estimate PDF preview into #printView.
     ut.textContent = '2/4 Rendering estimate…';
     buildPrintView(docNo);
@@ -2041,7 +2049,8 @@ async function runSubmit(doSend, clickedBtn){
       moqAdjustment: moqAdjustment(),
       grandTotal: grandTotal(),
       totalSqft: grandMembraneSqft(),
-      membraneRate: membraneRate()
+      membraneRate: membraneRate(),
+      stateJson: buildStateJson()   // Round 120 — full editable state, so it can be amended later
     }, 4);
     const saveOk = !!(saveRes && saveRes.status === 'ok');
     if (!saveOk) {
@@ -2076,7 +2085,11 @@ async function runSubmit(doSend, clickedBtn){
     // Round 83 — Trigger A: create the AutoCount quotation now (checkbox ON).
     // Round 111 — only when the estimation record actually saved (syncAutocount
     // reads that row); retry the sync on transient failure.
-    if (saveOk) {
+    if (saveOk && amendSe) {
+      // Round 120 (P1): amending saves the record + regenerates the PDF, but does
+      // NOT auto-update the AutoCount quotation yet (that's P2). Flag it clearly.
+      toast('Amended ' + docNo + ' — record + PDF updated. (AutoCount QT not auto-updated yet.)', 'warn');
+    } else if (saveOk) {
       ut.textContent = 'Creating AutoCount quotation…';
       // Round 83.5 — phone included so the server can verify the SE row belongs
       // to this lead (guards against SE-counter collisions).
@@ -2775,9 +2788,105 @@ async function loadLead(phone) {
   }
 }
 
+// ── Round 120 — Amend an existing estimation (reload → edit → regenerate) ──
+// Serialize the full editable state; photos become Drive refs (no base64 — too big for the sheet cell).
+function buildStateJson(){
+  function photoRefs(arr){
+    return (arr||[]).filter(function(p){ return p && (p.driveUrl || p.driveId); })
+      .map(function(p){ return { id:p.id, driveUrl:p.driveUrl||'', driveId:p.driveId||'', ocr:p.ocr||null }; });
+  }
+  return JSON.stringify({
+    v: 1,
+    submittedBy: state.submittedBy, notes: state.notes,
+    discountType: state.discountType, discountValue: state.discountValue,
+    slabs: (state.slabs||[]).map(function(s){ return {
+      id:s.id, name:s.name, mode:s.mode, floorSqft:s.floorSqft,
+      upturns:s.upturns, extras:s.extras, manualFloor:s.manualFloor,
+      collapsed:s.collapsed, iscannerXMarks:s.iscannerXMarks, photos: photoRefs(s.photos) }; }),
+    siteExtras: state.siteExtras,
+    egel: (state.egel||[]).map(function(g){ return { id:g.id, qty:g.qty, price:g.price, photos: photoRefs(g.photos) }; }),
+    wallCracks: (state.wallCracks||[]).map(function(w){ return { id:w.id, desc:w.desc, price:w.price, photos: photoRefs(w.photos) }; }),
+    openSvc: (state.openSvc||[]).map(function(o){ return { id:o.id, desc:o.desc, qty:o.qty, price:o.price, photos: photoRefs(o.photos) }; }),
+    roofTiles: (state.roofTiles||[]).map(function(r){ return { id:r.id, desc:r.desc, qty:r.qty, price:r.price, photos: photoRefs(r.photos) }; })
+  });
+}
+// Rebuild the editable state from a saved stateJson (photos start with empty dataUrl → hydrated from Drive).
+function applyStateJson(jsonStr){
+  const d = JSON.parse(jsonStr);
+  function photos(arr){ return (arr||[]).map(function(p){ return { id:p.id||uuid(), dataUrl:'', driveUrl:p.driveUrl||'', driveId:p.driveId||'', ocr:p.ocr||null, originalKB:0, compressedKB:0 }; }); }
+  state = {
+    submittedBy: d.submittedBy||'', notes: d.notes||'',
+    discountType: d.discountType||'percent', discountValue: Number(d.discountValue)||0,
+    slabs: (d.slabs||[]).map(function(s){ return {
+      id:s.id||uuid(), name:s.name||'', mode:s.mode||'slab', floorSqft:Number(s.floorSqft)||0,
+      upturns:s.upturns||[], extras:s.extras||[], manualFloor:s.manualFloor||[],
+      collapsed:!!s.collapsed, iscannerXMarks:s.iscannerXMarks||null, photos: photos(s.photos) }; }),
+    siteExtras: d.siteExtras||[],
+    egel: (d.egel||[]).map(function(g){ return { id:g.id||uuid(), qty:Number(g.qty)||0, price:Number(g.price)||0, photos: photos(g.photos) }; }),
+    wallCracks: (d.wallCracks||[]).map(function(w){ return { id:w.id||uuid(), desc:w.desc||'', price:Number(w.price)||0, photos: photos(w.photos) }; }),
+    openSvc: (d.openSvc||[]).map(function(o){ return { id:o.id||uuid(), desc:o.desc||'', qty:Number(o.qty)||0, price:Number(o.price)||0, photos: photos(o.photos) }; }),
+    roofTiles: (d.roofTiles||[]).map(function(r){ return { id:r.id||uuid(), desc:r.desc||'', qty:Number(r.qty)||0, price:Number(r.price)||0, photos: photos(r.photos) }; })
+  };
+  saveState();
+}
+// Re-fetch each Drive photo as base64 so the amended PDF keeps its original site photos.
+async function hydratePhotos(){
+  const all = [];
+  function collect(arr){ (arr||[]).forEach(function(it){ (it.photos||[]).forEach(function(p){ if (!p.dataUrl && (p.driveId||p.driveUrl)) all.push(p); }); }); }
+  collect(state.slabs); collect(state.egel); collect(state.wallCracks); collect(state.openSvc); collect(state.roofTiles);
+  if (!all.length) return;
+  const ov=document.getElementById('uploadOverlay'), ut=document.getElementById('uploadText');
+  ov.classList.add('on'); let done=0;
+  await Promise.all(all.map(async function(p){
+    try {
+      const res = await postAppsScript({ action:'fetchEstimationPhoto', secret:SHARED_SECRET, driveId:p.driveId||'', driveUrl:p.driveUrl||'' }, 2);
+      if (res && res.status==='ok' && res.dataUrl) p.dataUrl = res.dataUrl;
+    } catch(_e){}
+    done++; ut.textContent = 'Loading photos… ('+done+'/'+all.length+')';
+  }));
+  ov.classList.remove('on');
+  const missing = all.filter(function(p){ return !p.dataUrl; }).length;
+  if (missing) toast(missing+' photo(s) could not be reloaded — re-add if needed', 'warn');
+}
+function showAmendBanner(se){
+  if (document.getElementById('amendBanner')) return;
+  const b=document.createElement('div');
+  b.id='amendBanner';
+  b.style.cssText='position:sticky;top:0;z-index:60;background:#FEF3C7;color:#92400E;border-bottom:1px solid #FDE68A;padding:8px 12px;font-size:13px;font-weight:700;text-align:center';
+  b.textContent='✏️ Amending '+se+' — edit and regenerate to update the same estimation.';
+  document.body.insertBefore(b, document.body.firstChild);
+}
+async function loadAmend(phone, se){
+  await loadLead(phone);   // populate currentLead + customer grid first
+  const ov=document.getElementById('uploadOverlay'), ut=document.getElementById('uploadText');
+  ut.textContent='Loading estimation…';
+  // ?amend=latest (from kanban, which doesn't know the SE) → server resolves the lead's latest.
+  const seParam = (se && String(se).toLowerCase() !== 'latest') ? se : '';
+  let res;
+  try { res = await postAppsScript({ action:'loadEstimation', secret:SHARED_SECRET, seNo: seParam, phone: phone }, 3); }
+  catch(e){ res = null; }
+  ov.classList.remove('on');
+  if (!res || res.status !== 'ok' || !res.stateJson) {
+    toast('Could not load estimation to amend: ' + ((res && res.message) || 'error') + ' — starting blank', 'error');
+    return;
+  }
+  try { applyStateJson(res.stateJson); } catch(e){ toast('Saved estimation is corrupt — starting blank', 'error'); return; }
+  amendSe = res.seNo || se; amendQtNo = res.qtNo || '';
+  const _sb=document.getElementById('fSubmittedBy'); if (_sb) _sb.value = state.submittedBy||'';
+  const _nt=document.getElementById('fNotes'); if (_nt) _nt.value = state.notes||'';
+  showAmendBanner(amendSe);
+  renderAll(); updateSubmitState();
+  await hydratePhotos();
+  renderAll();
+  toast('Loaded ' + amendSe + ' — edit, then Save to update it', 'success');
+}
+
 loadState();
 const _phone = getParam('phone');
-if (_phone) {
+const _amend = getParam('amend');
+if (_phone && _amend) {
+  loadAmend(_phone, _amend);
+} else if (_phone) {
   loadLead(_phone);
 } else {
   const grid = document.getElementById('custGrid');

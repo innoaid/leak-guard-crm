@@ -39,7 +39,7 @@ const ESTIMATIONS_HEADERS = [
   'Subtotal', 'Discount Type', 'Discount Value', 'Discount Amount',
   'MOQ Adjustment', 'Grand Total', 'Total Sqft', 'Membrane Rate',
   'AutoCount QT No', 'AutoCount Debtor Code', 'Synced At', 'Sync Status',
-  'PDF URL',
+  'PDF URL', 'Builder State JSON',
 ];
 
 // ================================================================
@@ -62,6 +62,13 @@ function handleSaveEstimation(body) {
   lock.waitLock(5000);
   try {
     const h = getHeaders(sheet);
+    // Round 120 — self-heal: add the Builder State JSON column on sheets created
+    // before the amend feature, so the full editable state can be persisted.
+    if (!h.colByName['Builder State JSON']) {
+      const newCol = sheet.getLastColumn() + 1;
+      sheet.getRange(1, newCol).setValue('Builder State JSON');
+      h.colByName['Builder State JSON'] = newCol;
+    }
     let rowNum = _findEstimationRowBySe(sheet, h, body.seNo);
     // Round 83.5 — collision guard: an existing row for this SE No must belong
     // to the SAME lead. A different phone means the SE counter issued a
@@ -90,12 +97,65 @@ function handleSaveEstimation(body) {
       // AutoCount QT No / Debtor Code / Synced At / Sync Status are
       // deliberately NOT in this map — re-saves must not clear them.
     };
+    // Round 120 — store the full editable builder state (for amend/reload).
+    // Only when the builder sends it, so an old client can't wipe it.
+    if (body.stateJson != null) rowObj['Builder State JSON'] = String(body.stateJson);
     Object.keys(rowObj).forEach(function(k) {
       if (h.colByName[k]) sheet.getRange(rowNum, h.colByName[k]).setValue(rowObj[k]);
     });
     return jsonResponse({status: 'ok', seNo: body.seNo, rowNum: rowNum});
   } finally {
     lock.releaseLock();
+  }
+}
+
+// ================================================================
+// Round 120 — loadEstimation: return the full editable state to AMEND an SE
+// ================================================================
+// body: {action, secret, seNo?, phone?}  — seNo preferred; else latest SE for phone
+function handleLoadEstimation(body) {
+  const sheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(ESTIMATIONS_SHEET);
+  if (!sheet) return jsonResponse({status: 'error', message: 'Estimations sheet missing'});
+  const h = getHeaders(sheet);
+  let seNo = String(body.seNo || '').trim();
+  if (!seNo && body.phone) seNo = _latestSeForPhone(sheet, h, body.phone);
+  if (!seNo) return jsonResponse({status: 'error', message: 'no estimation on file for this lead'});
+  const rowNum = _findEstimationRowBySe(sheet, h, seNo);
+  if (!rowNum) return jsonResponse({status: 'error', message: 'estimation not found: ' + seNo});
+  const get = function(name) { return h.colByName[name] ? sheet.getRange(rowNum, h.colByName[name]).getValue() : ''; };
+  const stateJson = String(get('Builder State JSON') || '');
+  if (!stateJson) return jsonResponse({status: 'error', message: 'estimation ' + seNo + ' has no saved editable state (it was generated before the amend feature) — regenerate it once, then it becomes amendable'});
+  return jsonResponse({
+    status:      'ok',
+    seNo:        seNo,
+    phone:       String(get('Phone') || ''),
+    name:        String(get('Name') || ''),
+    submittedBy: String(get('Submitted By') || ''),
+    qtNo:        String(get('AutoCount QT No') || ''),
+    syncStatus:  String(get('Sync Status') || ''),
+    stateJson:   stateJson,
+  });
+}
+
+// ================================================================
+// Round 120 — fetchEstimationPhoto: re-hydrate a Drive photo as base64
+// so an amended estimation's PDF keeps its original site photos.
+// ================================================================
+// body: {action, secret, driveId?, driveUrl?}
+function handleFetchEstimationPhoto(body) {
+  let id = String(body.driveId || '').trim();
+  if (!id && body.driveUrl) {
+    const m = String(body.driveUrl).match(/[-\w]{25,}/);  // Drive file IDs are 25+ chars
+    id = m ? m[0] : '';
+  }
+  if (!id) return jsonResponse({status: 'error', message: 'driveId or driveUrl required'});
+  try {
+    const blob = DriveApp.getFileById(id).getBlob();
+    const mime = blob.getContentType() || 'image/jpeg';
+    const b64 = Utilities.base64Encode(blob.getBytes());
+    return jsonResponse({status: 'ok', dataUrl: 'data:' + mime + ';base64,' + b64});
+  } catch (e) {
+    return jsonResponse({status: 'error', message: String(e && e.message || e)});
   }
 }
 
