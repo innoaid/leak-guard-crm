@@ -728,11 +728,18 @@ function syncQualifiedLeads() {
           skipCount++;
           continue;
         }
-        // Update ChatHero-sourced cols only — never touch Status, Assigned To, Quotation, Job Outcome, Notes
-        dest.getRange(phoneRow, 2, 1, 7).setValues([[phone, name, problemType, location, fullAddress, slabSize, slotChosen]]);
+        // Update ChatHero-sourced cols only — never touch Status, Assigned To, Quotation, Job Outcome, Notes.
+        // Round 129 FIX: guard each field so an EMPTY ChatHero value never clobbers data the
+        // lead already has from another source. This is the bug that wiped the Full Address a
+        // customer entered on the express form (ChatHero has no address for that lead, so the
+        // old unconditional range-write blanked it). Mirrors the guarded Conv-ID path below.
+        [[1, phone], [2, name], [3, problemType], [4, location],
+         [5, fullAddress], [6, slabSize], [7, slotChosen]].forEach(function(pair) {
+          if (pair[1] !== '' && pair[1] !== null && pair[1] !== undefined) {
+            dest.getRange(phoneRow, pair[0] + 1).setValue(pair[1]);
+          }
+        });
         dest.getRange(phoneRow, 14, 1, 5).setValues([[chConvId, chStatus, chChatUrl, 'ChatHero', now]]);
-        // Fill name only if blank
-        if (!dest.getRange(phoneRow, 3).getValue() && name) dest.getRange(phoneRow, 3).setValue(name);
         updateCount++;
         continue;
       }
