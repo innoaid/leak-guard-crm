@@ -1777,6 +1777,9 @@ function wireSlabHandlers(list){
       if (sumEl) sumEl.textContent = 'Sum: ' + sqft(tot);
       // Round 118: manual L×W total auto-applies to the billed floor area (no button).
       s.floorSqft = tot;
+      // Round 126: refresh the Measurements header + slab subtotal live too, so the
+      // "X sqft total" figure tracks manual L×W typing (not just on blur).
+      updateSlabSubtotal(s);
       saveState();
     };
     el.addEventListener('input', update);
@@ -1843,6 +1846,12 @@ function updateSlabSubtotal(s){
   if (!slabEl) return;
   const wrap = slabEl.closest('.slab');
   if (!wrap) return;
+  // Round 126: keep the Measurements header total live. The upturn/floor input
+  // handlers do targeted DOM updates (no renderAll, to preserve typing focus), so
+  // without this the header stays frozen and undercounts upturns added later
+  // (e.g. 74.35 floor + 6 + 30 upturns showed "80.3" instead of "110.4").
+  const measSum = wrap.querySelector('[data-subzone-toggle="'+s.id+'|measurements"] .subzone-h-summary');
+  if (measSum) measSum.textContent = sqft(slabSqft(s)) + ' total';
   const sub = wrap.querySelector('.slab-subtotal');
   if (!sub) return;
   sub.innerHTML =
