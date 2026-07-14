@@ -1258,11 +1258,19 @@ function handleExpressLead(body) {
     }
   } catch (_e) {}
 
-  // Round 127: out-of-coverage leads keep Status "New Lead" (no auto-booking), so
-  // on the board they look identical to an untouched lead and get missed. Stamp a
-  // loud Note the team can see on the card. (The manual_booking tag above is the
-  // filterable signal; this is the human-readable nudge.)
+  // Round 128: out-of-coverage express leads get their own 'Other State' status (a
+  // dedicated kanban column) instead of hiding among 'New Lead', plus a loud Note.
+  // Guard: never downgrade a lead already progressing in the funnel — only stamp it
+  // when the lead is brand new or still 'New Lead'/'Other State'.
   if (!serviceable) {
+    try {
+      const stCol = getHeaders(sheet).colByName['Status'];
+      const curStatus = stCol ? String(sheet.getRange(rowNum, stCol).getValue() || '').trim() : '';
+      if (!curStatus || curStatus === 'New Lead' || curStatus === 'Other State') {
+        setCellByHeader(sheet, rowNum, 'Status', 'Other State');
+        setCellByHeader(sheet, rowNum, 'Status Changed At', nowIso);
+      }
+    } catch (_e) {}
     try {
       const notesCol = getHeaders(sheet).colByName['Notes'];
       if (notesCol) {

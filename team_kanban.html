@@ -849,8 +849,9 @@ function slotTimesFor(team) { return team === 'JB' ? SLOT_TIMES_JB : SLOT_TIMES_
 // Backward-compat alias — defaults to KL. Most callers should switch to slotTimesFor(team).
 const SLOT_TIMES = SLOT_TIMES_KL;
 
-// 9 active columns (left → right)
+// active columns (left → right)
 const ACTIVE_STATUSES = [
+  'Other State',             // Round 128 — out-of-coverage express leads (manual follow-up)
   'Pending Invitation',
   'Pending Site Visit',
   'Site Visit Confirmed',
@@ -876,6 +877,7 @@ const ARCHIVED_STATUSES = [
 
 // Per-stage days-in-stage thresholds (yellow / red) in days
 const DAYS_THRESHOLDS = {
+  'Other State':                {yellow: 3, red: 7},   // Round 128 — nudge manual follow-up
   'Pending Invitation':         {yellow: 1, red: 3},
   'Pending Site Visit':         {yellow: 2, red: 5},
   'Site Visit Confirmed':       {yellow: 999, red: 999}, // green
