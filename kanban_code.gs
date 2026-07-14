@@ -1225,8 +1225,14 @@ function handleExpressLead(body) {
     setCellByHeader(sheet, rowNum, 'Status Changed At', nowIso);
     setCellByHeader(sheet, rowNum, 'Date Lead In', nowIso.slice(0, 10));
   }
-  setCellByHeader(sheet, rowNum, 'Name', body.name);
-  setCellByHeader(sheet, rowNum, 'Source', 'Express');
+  // Round 127: never clobber existing data with blanks (an old cached form can POST
+  // empty name/address/problem). Only write a field when the form actually sent it,
+  // and preserve an existing acquisition Source (e.g. a CTWA/ChatsHero lead that
+  // later used the express link) instead of overwriting it with 'Express'.
+  if (body.name)        setCellByHeader(sheet, rowNum, 'Name', body.name);
+  const _srcCol = getHeaders(sheet).colByName['Source'];
+  const _curSrc = _srcCol ? String(sheet.getRange(rowNum, _srcCol).getValue() || '').trim() : '';
+  if (!_curSrc)         setCellByHeader(sheet, rowNum, 'Source', 'Express');
   setCellByHeader(sheet, rowNum, 'Changed By', 'Express_Form');
   if (body.address)     setCellByHeader(sheet, rowNum, 'Full Address', body.address);
   if (body.problemType) setCellByHeader(sheet, rowNum, 'Problem Type', body.problemType);
@@ -1251,6 +1257,24 @@ function handleExpressLead(body) {
       }
     }
   } catch (_e) {}
+
+  // Round 127: out-of-coverage leads keep Status "New Lead" (no auto-booking), so
+  // on the board they look identical to an untouched lead and get missed. Stamp a
+  // loud Note the team can see on the card. (The manual_booking tag above is the
+  // filterable signal; this is the human-readable nudge.)
+  if (!serviceable) {
+    try {
+      const notesCol = getHeaders(sheet).colByName['Notes'];
+      if (notesCol) {
+        const note = '⚠ Out-of-coverage: ' + (state || 'unknown state') +
+          ' — manual WhatsApp follow-up (express ' + nowIso.slice(0, 10) + ')';
+        const cur = String(sheet.getRange(rowNum, notesCol).getValue() || '').trim();
+        if (cur.indexOf('Out-of-coverage') === -1) {
+          sheet.getRange(rowNum, notesCol).setValue(cur ? (cur + '\n' + note) : note);
+        }
+      }
+    } catch (_e) {}
+  }
 
   return jsonResponse({status: 'ok', rowNum: rowNum, phone: phone,
     created: created, serviceable: serviceable, team: team});

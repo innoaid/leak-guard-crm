@@ -3,6 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Round 127: discourage aggressive HTML caching. WhatsApp/Chrome in-app browsers
+     were serving a stale copy of this form that dropped name/address/problem on
+     submit and offered outdated state options ("Other States"). -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<script>
+// Cache self-heal: even if a stale cached copy was served, fetch the TRUE current
+// page (no-store) and hard-reload ONCE if a newer version is deployed — so customers
+// never submit an out-of-date form. Bump APP_VERSION on every meaningful change.
+var APP_VERSION = '2026-07-14';
+(function(){
+  try {
+    if (sessionStorage.getItem('lg_express_ver') === APP_VERSION) return;
+    fetch(location.pathname + '?_vc=' + Date.now(), { cache: 'no-store' })
+      .then(function(r){ return r.text(); })
+      .then(function(html){
+        var m = html.match(/APP_VERSION\s*=\s*'([^']+)'/);
+        if (m && m[1] !== APP_VERSION) {
+          sessionStorage.setItem('lg_express_ver', m[1]);
+          location.reload();
+        }
+      })
+      .catch(function(){});
+  } catch (e) {}
+})();
+</script>
 <title>Leak Guard — Express Booking</title>
 <!-- Open Graph tags for WhatsApp/social link preview -->
 <meta property="og:title" content="Leak Guard — Express Site Visit Booking">
