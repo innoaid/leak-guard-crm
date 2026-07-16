@@ -907,7 +907,22 @@ function isMobile() { return window.innerWidth < 768; }
 
 function isVisitExpired(lead) {
   if (String(lead['Status']||'') !== 'Site Visit Confirmed') return false;
-  const da = String(lead['Date Appt Confirmed']||'').slice(0,10);
+  let da = String(lead['Date Appt Confirmed']||'').slice(0,10);
+  if (!da) {
+    // Round 130 fallback: some leads reach SVC via a manual move or a ChatHero-set
+    // slot and never get Date Appt Confirmed. Derive the date from the human-readable
+    // "Slot Chosen" (e.g. "Thursday, 9 July 2026, 2:00 PM - 3:00 PM") so the card can
+    // still be flagged as expired instead of sitting in SVC indefinitely.
+    const m = String(lead['Slot Chosen']||'').match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+    if (m) {
+      const MO = {january:0,february:1,march:2,april:3,may:4,june:5,july:6,august:7,september:8,october:9,november:10,december:11};
+      const mo = MO[m[2].toLowerCase()];
+      if (mo !== undefined) {
+        const dt = new Date(Date.UTC(+m[3], mo, +m[1]));
+        if (!isNaN(dt.getTime())) da = dt.toISOString().slice(0,10);
+      }
+    }
+  }
   if (!da) return false;
   // Expired if appointment date end (23:59 MYT) is before now
   const apptEnd = new Date(da + 'T23:59:59+08:00');
