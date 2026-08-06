@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Phase Scan (Expired / Stuck)</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 48px}
+.hdr{background:#2D2A6E;color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:5}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .sub{font-size:12px;opacity:.85;margin-top:2px}
+.hdr .tools{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.hdr .tools button{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
+.hdr .tools button.on{background:#fff;color:#2D2A6E}
+.wrap{max-width:560px;margin:0 auto;padding:14px}
+.tabs{margin-top:10px;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{flex:1 1 0;min-width:70px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:9px;padding:7px 4px;font-size:11.5px;font-weight:700;color:#fff;cursor:pointer;text-align:center;white-space:nowrap}
+.tab.on{background:#fff;color:#2D2A6E;border-color:#fff}
+.tab .tcnt{display:inline-block;margin-left:3px;background:rgba(255,255,255,.25);border-radius:7px;padding:0 5px;font-size:10.5px;font-weight:800}
+.tab.on .tcnt{background:#EEF2FF;color:#2D2A6E}
+.sect-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#374151;padding:4px 2px 10px}
+.card{background:#fff;border:1px solid #e5e7eb;border-left:4px solid #9ca3af;border-radius:12px;padding:13px;margin-bottom:11px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card.warn{border-left-color:#F59E0B}
+.card.hot{border-left-color:#EF4444}
+.card.gone{opacity:.4;pointer-events:none}
+.cname{font-size:16px;font-weight:800}
+.badges{margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px}
+.b-phase{background:#EEF2FF;color:#2D2A6E}
+.b-team{background:#F3F4F6;color:#374151}
+.b-age{background:#FEF3C7;color:#92400E}
+.b-age.hot{background:#FEE2E2;color:#991B1B}
+.meta{font-size:12.5px;color:#6b7280;margin-top:6px;line-height:1.5}
+.meta b{color:#374151}
+.links{margin-top:9px;display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:13px;color:#2563EB;text-decoration:none;border:1px solid #BFDBFE;border-radius:8px;padding:6px 12px;background:#EFF6FF}
+.mv{margin-top:11px;display:flex;gap:8px}
+.mv select{flex:1;border:1px solid #D1D5DB;border-radius:9px;padding:9px;font-size:13.5px;background:#fff;font-family:inherit}
+.mv button{border:none;border-radius:9px;padding:9px 14px;font-size:13.5px;font-weight:700;color:#fff;background:#10B981;cursor:pointer}
+.empty{text-align:center;color:#6b7280;padding:16px;font-size:14px}
+.allclear{text-align:center;color:#059669;padding:60px 20px;font-size:16px;font-weight:700}
+.spin{text-align:center;color:#6b7280;padding:60px 20px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+.toast.on{opacity:1}
+.toast.err{background:#DC2626}.toast.ok{background:#059669}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>📋 Phase Scan — Expired / Stuck</h1>
+  <div class="sub" id="hSub">Loading…</div>
+  <div class="tools">
+    <button data-team="all" class="on" onclick="setTeam('all')">All</button>
+    <button data-team="kl" onclick="setTeam('kl')">KL</button>
+    <button data-team="jb" onclick="setTeam('jb')">JB</button>
+    <button onclick="load()">↻ Re-scan</button>
+  </div>
+  <div class="tabs" id="tabs"></div>
+</div>
+<div class="wrap" id="list"><div class="spin">Scanning…</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// Reuses the LIVE Apps Script web app (same deployment as caller.html) for the
+// scan + the phase-move action, and the public gviz read for the WIP group.
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SECRET = 'ABC';
+const SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+const SHEET_NAME = 'Leak Guard Leads';
+
+// Phases offered in the "Move →" dropdown (post-SVC funnel + terminals).
+const MOVE_PHASES = ['Pending QT','Quotation Sent','Pending I.Date','I.Date Confirmed',
+  'Pending Downpayment','Job In Progress','Pending Balance','Job Complete','Completed',
+  'Receipt Sent','Lost','Rejected'];
+
+// The four sections, in order. `keys` map to adminScan rule keys; `wip` is
+// built client-side from gviz.
+const SECTIONS = [
+  { id:'g1', icon:'🚩', short:'SVC / QT',  title:'Site Visit Expired + Pending QT', keys:['svcExpired','pendingQt'] },
+  { id:'g2', icon:'📅', short:'Install',   title:'Pending Installation Date',       keys:['pendingIdate'] },
+  { id:'g3', icon:'💰', short:'Payment',   title:'Pending Downpayment / Balance',   keys:['payment'] },
+  { id:'g4', icon:'🛠', short:'WIP',       title:'Work In Progress',                wip:true },
+];
+
+let TEAM = 'all';
+let TAB = 'g1';
+let DATA = { g1:[], g2:[], g3:[], g4:[] };
+
+function toast(msg, kind){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast on ' + (kind||'');
+  setTimeout(function(){ t.className = 'toast ' + (kind||''); }, 2600);
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
+function todayStr(){ return new Date(Date.now()+8*3600*1000).toISOString().slice(0,10); }
+function isJb(s){ return /(?:^|[^A-Z])(JB|JOHOR)(?:[^A-Z]|$)/i.test(String(s||'')); }
+function ageLabel(h){ if(h==null||h<0) return ''; if(h>=48) return Math.floor(h/24)+'d'; if(h>=24) return '1d '+(h-24)+'h'; return Math.round(h)+'h'; }
+
+async function api(action, payload){
+  const r = await fetch(APPS_SCRIPT_URL, {
+    method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify(Object.assign({action:action, secret:SECRET}, payload))
+  });
+  return r.json();
+}
+
+// gviz read (public, read-only) → array of row objects keyed by header label.
+async function gvizRows(){
+  const url = 'https://docs.google.com/spreadsheets/d/'+SHEET_ID+'/gviz/tq?tqx=out:json&sheet='+encodeURIComponent(SHEET_NAME)+'&nocache='+Date.now();
+  const txt = await (await fetch(url)).text();
+  const m = txt.match(/setResponse\(([\s\S]*)\)/); if(!m) return [];
+  const j = JSON.parse(m[1]);
+  const cols = j.table.cols.map(function(c){ return (c.label||'').trim(); });
+  return (j.table.rows||[]).map(function(r){
+    const o = {};
+    cols.forEach(function(lbl, i){
+      if(!lbl) return;
+      const c = r.c[i];
+      o[lbl] = c ? (c.v!=null ? c.v : (c.f!=null ? c.f : '')) : '';
+    });
+    return o;
+  });
+}
+
+// Normalize an adminScan violation into the common card shape.
+function fromViolation(v){
+  const isSvc = v.phase === 'Site Visit Confirmed';
+  return {
+    name: v.name || '(no name)',
+    phone: String(v.phone||''),
+    phase: v.phase,
+    team: v.assignedTo || '',
+    groupLink: v.groupLink || '',
+    ageHours: v.ageHours,
+    detail: isSvc
+      ? (v.apptDate ? 'Appt was ' + v.apptDate + ' — visit done? move it forward or rebook'
+                    : 'No appointment date recorded')
+      : (ageLabel(v.ageHours) + ' in phase') + (v.lastAdminMsgAgoH!=null ? ' · last admin msg '+ageLabel(v.lastAdminMsgAgoH)+' ago' : ''),
+    extra: ''
+  };
+}
+
+async function load(){
+  const list = document.getElementById('list');
+  list.innerHTML = '<div class="spin">Scanning…</div>';
+  document.getElementById('hSub').textContent = 'Scanning…';
+  try {
+    const [scan, rows] = await Promise.all([ api('adminScan', {}), gvizRows() ]);
+    if (!scan || scan.status !== 'ok') throw new Error((scan && scan.message) || 'adminScan failed');
+    const byKey = {};
+    (scan.rules||[]).forEach(function(r){ byKey[r.key] = r.violations||[]; });
+
+    DATA.g1 = (byKey.svcExpired||[]).concat(byKey.pendingQt||[]).map(fromViolation);
+    DATA.g2 = (byKey.pendingIdate||[]).map(fromViolation);
+    DATA.g3 = (byKey.payment||[]).map(fromViolation);
+
+    // Group 4 — WIP from gviz (adminScan has no WIP rule). All Job In Progress.
+    const now = Date.now();
+    DATA.g4 = rows.filter(function(r){ return String(r['Status']||'').trim() === 'Job In Progress'; })
+      .map(function(r){
+        const chg = Date.parse(String(r['Status Changed At']||'')) || 0;
+        const ageH = chg ? Math.round((now-chg)/3600000) : -1;
+        const sqft = Number(r['Total Sqft'])||0, rm = Number(r['Quotation (RM)'])||0;
+        return {
+          name: String(r['Name']||'').trim() || '(no name)',
+          phone: String(r['Phone']||''),
+          phase: 'Job In Progress',
+          team: String(r['Assigned To']||'').trim(),
+          groupLink: String(r['Group Invite Link (AJ)']||'').trim(),
+          ageHours: ageH,
+          detail: (ageH>=0 ? ageLabel(ageH)+' in progress' : 'started date unknown'),
+          extra: [ sqft>0 ? sqft.toLocaleString()+' sqft' : '', rm>0 ? 'RM '+rm.toLocaleString() : '' ].filter(Boolean).join(' · ')
+        };
+      })
+      .sort(function(a,b){ return (b.ageHours||0)-(a.ageHours||0); });
+
+    render();
+  } catch(e){
+    list.innerHTML = '<div class="empty">⚠ Scan failed: '+esc(e.message||e)+'<br><br>The <b>adminScan</b> action must be live in the deployed Apps Script.</div>';
+    document.getElementById('hSub').textContent = 'Load failed.';
+  }
+}
+
+function teamMatch(c){
+  if (TEAM === 'all') return true;
+  const jb = isJb(c.team);
+  return TEAM === 'jb' ? jb : !jb;
+}
+
+function renderTabs(){
+  document.getElementById('tabs').innerHTML = SECTIONS.map(function(s){
+    const n = (DATA[s.id]||[]).filter(teamMatch).length;
+    return '<div class="tab'+(s.id===TAB?' on':'')+'" onclick="setTab(\''+s.id+'\')">'+
+      s.icon+' '+esc(s.short)+'<span class="tcnt">'+n+'</span></div>';
+  }).join('');
+}
+
+function render(){
+  renderTabs();
+  const list = document.getElementById('list');
+  const s = SECTIONS.filter(function(x){ return x.id===TAB; })[0] || SECTIONS[0];
+  const cards = (DATA[s.id]||[]).filter(teamMatch);
+  let total = 0; SECTIONS.forEach(function(x){ total += (DATA[x.id]||[]).filter(teamMatch).length; });
+  document.getElementById('hSub').textContent = total + ' card' + (total===1?'':'s') + ' need attention' + (TEAM!=='all' ? ' · '+TEAM.toUpperCase() : '');
+  CARDIDX = 0;
+  list.innerHTML = cards.length
+    ? '<div class="sect-title">'+s.icon+' '+esc(s.title)+' · '+cards.length+'</div>' + cards.map(cardHtml).join('')
+    : '<div class="allclear">✅ Nothing in “'+esc(s.title)+'”.</div>';
+}
+
+function setTab(id){ TAB = id; render(); }
+
+let CARDIDX = 0;
+function cardHtml(c){
+  const id = 'c'+(CARDIDX++);
+  window['CARD_'+id] = c;
+  const tel = String(c.phone||'').replace(/\D/g,'');
+  const hot = c.ageHours!=null && c.ageHours >= 168;   // 7d+ = red
+  const warn = c.ageHours!=null && c.ageHours >= 72;    // 3d+ = amber
+  const cls = 'card' + (hot?' hot':(warn?' warn':''));
+  const ageCls = 'badge b-age' + (hot?' hot':'');
+  const opts = MOVE_PHASES.map(function(p){ return '<option value="'+esc(p)+'"'+(p===c.phase?' selected':'')+'>'+esc(p)+'</option>'; }).join('');
+  return '<div class="'+cls+'" id="'+id+'">'+
+    '<div class="cname">'+esc(c.name)+'</div>'+
+    '<div class="badges">'+
+      '<span class="badge b-phase">'+esc(c.phase)+'</span>'+
+      (c.team ? '<span class="badge b-team">'+esc(c.team)+'</span>' : '')+
+      (c.ageHours!=null && c.ageHours>=0 ? '<span class="'+ageCls+'">'+ageLabel(c.ageHours)+'</span>' : '')+
+    '</div>'+
+    '<div class="meta">'+esc(c.detail)+(c.extra?'<br><b>'+esc(c.extra)+'</b>':'')+'</div>'+
+    '<div class="links">'+
+      (tel ? '<a href="tel:'+tel+'">📞 Call '+esc(c.phone)+'</a>' : '')+
+      (c.groupLink ? '<a href="'+esc(c.groupLink)+'" target="_blank">💬 WA group</a>' : '')+
+    '</div>'+
+    '<div class="mv">'+
+      '<select id="'+id+'_sel">'+opts+'</select>'+
+      '<button onclick="moveCard(\''+id+'\')">Move →</button>'+
+    '</div>'+
+  '</div>';
+}
+
+async function moveCard(id){
+  const c = window['CARD_'+id]; if(!c) return;
+  const phase = document.getElementById(id+'_sel').value;
+  if (phase === c.phase){ toast('Pick a different phase', 'err'); return; }
+  if (!confirm('Move ' + (c.name||'this card') + '\nfrom "'+c.phase+'"\nto "'+phase+'"?')) return;
+  const res = await api('updateStatus', { phone: c.phone, status: phase, changedBy: 'Phase Scan Page' });
+  if (res && res.status === 'ok'){
+    toast('Moved → '+phase+' ✓', 'ok');
+    const el = document.getElementById(id); if (el) el.classList.add('gone');
+  } else {
+    toast('Failed: ' + ((res && res.message) || 'error'), 'err');
+  }
+}
+
+function setTeam(t){
+  TEAM = t;
+  document.querySelectorAll('.hdr .tools button[data-team]').forEach(function(b){ b.classList.toggle('on', b.dataset.team===t); });
+  render();
+}
+
+load();
+</script>
+</body>
+</html>
