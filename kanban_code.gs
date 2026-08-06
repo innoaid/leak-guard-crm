@@ -58,6 +58,8 @@ function doPost(e) {
       case 'bulkInviteLinks':    return handleBulkInviteLinks(body);  // round 89 — fetch/return WA invite links for selected cards
       case 'callerJobs':         return handleCallerJobs(body);  // round 90 — caller mini-page due list
       case 'logCall':            return handleLogCall(body);     // round 90 — caller logs an outcome
+      case 'phaseScanState':     return handlePhaseScanState(body);  // round 134 — phase-scan notes + snooze
+      case 'logScanNote':        return handleLogScanNote(body);     // round 134 — phase-scan note / follow-up
       case 'callerReport':       return handleCallerReport(body);  // round 90 — caller performance report
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
@@ -3691,6 +3693,87 @@ function handleLogCall(body) {
     return jsonResponse({status: 'ok', outcome: outcome, newStatus: newStatus});
   }
   return jsonResponse({status: 'ok', outcome: outcome, groupMsgSent: groupMsgSent});
+}
+
+// ================================================================
+// Round 134 — Phase Scan page (phase_scan.html): per-card note history +
+// follow-up snooze. Reuses the append-only Calls sheet — NO new columns.
+//   • scan_note     row = a plain traceable note.
+//   • scan_followup row = carries a future Next Call Date; the scan hides the
+//     card until that date, then it reappears. Kept separate from the caller
+//     queue (which reads the lead-row 'Next Call Date'), so the two never
+//     interfere.
+// ================================================================
+function _callsSheet_() {
+  const ss = SpreadsheetApp.openById(LIVE_SHEET_ID);
+  let s = ss.getSheetByName(CALLS_SHEET);
+  if (!s) { s = ss.insertSheet(CALLS_SHEET); s.appendRow(CALLS_HEADERS); }
+  return s;
+}
+
+// action 'phaseScanState' — one Calls-sheet read → per-phone note history +
+// current follow-up snooze. Returns { map: { <last8>: {notes:[{date,by,note}],
+// snoozeUntil:'YYYY-MM-DD'} } }. snoozeUntil = Next Call Date of the most
+// recent 'scan_followup' row for that phone (client hides the card if it's in
+// the future).
+function handlePhaseScanState(body) {
+  const s = _callsSheet_();
+  const map = {};
+  const d = s.getDataRange().getValues();
+  if (d.length > 1) {
+    const h = getHeaders(s);
+    const cTs = h.colByName['Timestamp'] - 1, cPhone = h.colByName['Phone'] - 1,
+          cBy = h.colByName['Caller'] - 1, cOut = h.colByName['Outcome'] - 1,
+          cNext = h.colByName['Next Call Date'] - 1, cNote = h.colByName['Note'] - 1;
+    for (let i = 1; i < d.length; i++) {
+      const k = _last8(d[i][cPhone]); if (!k) continue;
+      const rec = map[k] || (map[k] = { notes: [], snoozeUntil: '', _fuTs: 0 });
+      const note = String(d[i][cNote] || '').trim();
+      if (note) rec.notes.push({ ts: String(d[i][cTs] || ''), date: _normalizeDateStr(d[i][cTs]), by: String(d[i][cBy] || '').trim(), note: note });
+      if (String(d[i][cOut] || '').trim() === 'scan_followup') {
+        const tms = _scanToMs(d[i][cTs]);
+        if (tms >= rec._fuTs) { rec._fuTs = tms; rec.snoozeUntil = _normalizeDateStr(d[i][cNext]); }
+      }
+    }
+  }
+  Object.keys(map).forEach(function(k) {
+    map[k].notes.sort(function(a, b) { return a.ts < b.ts ? 1 : -1; });       // newest first
+    map[k].notes = map[k].notes.slice(0, 6).map(function(n) { return { date: n.date, by: n.by, note: n.note }; });
+    delete map[k]._fuTs;
+  });
+  return jsonResponse({ status: 'ok', map: map });
+}
+
+// action 'logScanNote' — append a note and/or set a follow-up snooze from the
+// Phase Scan page. body: {phone, by?, note?, followUpDate? (YYYY-MM-DD, hides
+// the card until then), groupMsg? (optional WA message to the customer group)}
+function handleLogScanNote(body) {
+  const phone = String(body.phone || '').trim();
+  if (!phone) return jsonResponse({ status: 'error', message: 'phone required' });
+  const by = String(body.by || 'Scan').trim();
+  const note = String(body.note || '').slice(0, 500);
+  const fu = _normalizeDateStr(body.followUpDate || '');
+  const groupMsg = String(body.groupMsg || '').slice(0, 1000);
+  if (!note && !fu && !groupMsg) return jsonResponse({ status: 'error', message: 'nothing to log' });
+  if (body.followUpDate && !/^\d{4}-\d{2}-\d{2}$/.test(fu)) {
+    return jsonResponse({ status: 'error', message: 'followUpDate must be YYYY-MM-DD' });
+  }
+
+  const sheet = getSheet();
+  const row = findRowByPhone(sheet, phone);
+  let name = '';
+  if (row) { try { name = String(sheet.getRange(row, getHeaders(sheet).colByName['Name']).getValue() || '').trim(); } catch (_e) {} }
+
+  _callsSheet_().appendRow([ new Date().toISOString(), phone, name, by, fu ? 'scan_followup' : 'scan_note', fu || '', note ]);
+
+  let groupMsgSent = false;
+  if (groupMsg && row) {
+    try {
+      const gid = String(sheet.getRange(row, getHeaders(sheet).colByName['Group ID (AB)']).getValue() || '').trim();
+      if (gid) { _sendWhapiText(gid, groupMsg); groupMsgSent = true; }
+    } catch (_e) {}
+  }
+  return jsonResponse({ status: 'ok', outcome: fu ? 'scan_followup' : 'scan_note', followUpDate: fu, groupMsgSent: groupMsgSent });
 }
 
 // ── Reminders: 3x/day (8am, 3pm, 7pm MYT) per caller ──

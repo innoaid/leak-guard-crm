@@ -19,6 +19,7 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .rmtag{display:inline-block;background:#EEF2FF;color:#2D2A6E;font-weight:700;font-size:12px;padding:2px 9px;border-radius:9px;margin-top:5px}
 .links{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
 .links a{font-size:13px;color:#2563EB;text-decoration:none;border:1px solid #BFDBFE;border-radius:8px;padding:6px 12px;background:#EFF6FF}
+.links a.est{color:#065F46;border-color:#A7F3D0;background:#ECFDF5}
 .btns{display:flex;gap:8px;margin-top:12px}
 .btn{flex:1;border:none;border-radius:10px;padding:12px 8px;font-size:14px;font-weight:700;cursor:pointer;color:#fff}
 .btn-acc{background:#10B981}.btn-rej{background:#EF4444}.btn-fu{background:#F59E0B}
@@ -75,10 +76,35 @@ async function api(action, payload){
 }
 
 let JOBS = [];
+// Round 135 — stored-estimation preview. The estimation PDF Drive link lives in
+// the lead's 'Quotation PDF URL' column; read it via the public gviz endpoint
+// (read-only, no credentials) and key it by phone(last8) so each card can link
+// straight to the estimation that was sent.
+const LEADS_SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+let PDFMAP = {};
+function last8(p){ return String(p || '').replace(/\D/g,'').slice(-8); }
+async function loadPdfMap(){
+  try {
+    const url = 'https://docs.google.com/spreadsheets/d/'+LEADS_SHEET_ID+'/gviz/tq?tqx=out:json&sheet=Leak%20Guard%20Leads&nocache='+Date.now();
+    const txt = await (await fetch(url)).text();
+    const m = txt.match(/setResponse\(([\s\S]*)\)/); if (!m) return;
+    const j = JSON.parse(m[1]);
+    const cols = j.table.cols.map(function(c){ return (c.label||'').trim(); });
+    const pi = cols.indexOf('Phone'), ui = cols.indexOf('Quotation PDF URL');
+    if (pi < 0 || ui < 0) return;
+    (j.table.rows||[]).forEach(function(r){
+      const pc = r.c[pi], uc = r.c[ui];
+      const ph = pc ? String(pc.v!=null?pc.v:(pc.f||'')) : '';
+      const u  = uc ? String(uc.v!=null?uc.v:(uc.f||'')) : '';
+      const k = last8(ph); if (k && u) PDFMAP[k] = u;
+    });
+  } catch(_e){ /* preview is best-effort — never block the call list */ }
+}
+
 async function load(){
   if (!CALLER){ document.getElementById('hSub').textContent = 'No caller specified in the link.'; return; }
   document.getElementById('hTitle').textContent = '📞 ' + CALLER + ' — Call List';
-  const res = await api('callerJobs', { caller: CALLER });
+  const [res] = await Promise.all([ api('callerJobs', { caller: CALLER }), loadPdfMap() ]);
   const list = document.getElementById('list');
   if (!res || res.status !== 'ok'){ document.getElementById('hSub').textContent = 'Load failed.'; return; }
   JOBS = res.jobs || [];
@@ -89,6 +115,7 @@ async function load(){
 
 function cardHtml(j, i){
   const tel = String(j.phone || '').replace(/\D/g,'');
+  const pdf = PDFMAP[last8(j.phone)] || '';
   const bits = [];
   if (j.daysSinceQs >= 0) bits.push('<b>' + j.daysSinceQs + 'd</b> since QT');
   if (j.callCount) bits.push(j.callCount + ' call' + (j.callCount>1?'s':'') + ' so far');
@@ -108,6 +135,7 @@ function cardHtml(j, i){
     histHtml +
     '<div class="links">' +
       (tel ? '<a href="tel:'+tel+'">📞 Call ' + esc(j.phone) + '</a>' : '') +
+      (pdf ? '<a class="est" href="'+esc(pdf)+'" target="_blank" rel="noopener">📄 Estimation</a>' : '') +
       (j.groupLink ? '<a href="'+esc(j.groupLink)+'" target="_blank">💬 WA group</a>' : '') +
     '</div>' +
     '<div class="btns">' +

@@ -24,6 +24,11 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .card.warn{border-left-color:#F59E0B}
 .card.hot{border-left-color:#EF4444}
 .card.gone{opacity:.4;pointer-events:none}
+.card.snz{opacity:.5;border-left-color:#A5B4FC;background:#FbFbFe}
+.b-snz{background:#E0E7FF;color:#3730A3}
+.search{margin-top:10px;width:100%;border:1px solid rgba(255,255,255,.3);border-radius:9px;padding:9px 12px;font-size:14px;background:rgba(255,255,255,.14);color:#fff;font-family:inherit}
+.search::placeholder{color:rgba(255,255,255,.7)}
+.search:focus{outline:none;background:#fff;color:#111827}
 .cname{font-size:16px;font-weight:800}
 .badges{margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px}
@@ -38,6 +43,21 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .mv{margin-top:11px;display:flex;gap:8px}
 .mv select{flex:1;border:1px solid #D1D5DB;border-radius:9px;padding:9px;font-size:13.5px;background:#fff;font-family:inherit}
 .mv button{border:none;border-radius:9px;padding:9px 14px;font-size:13.5px;font-weight:700;color:#fff;background:#10B981;cursor:pointer}
+.hist{margin-top:9px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px}
+.hist-h{font-size:11px;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px}
+.hist-row{font-size:12px;color:#374151;line-height:1.5;padding:2px 0;border-top:.5px solid #F3F4F6}
+.hist-row:first-of-type{border-top:none}
+.hist-d{font-weight:700;color:#6B7280}
+.acts{display:flex;gap:8px;margin-top:9px}
+.abtn{flex:1;border:none;border-radius:9px;padding:9px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#fff}
+.abtn.fu{background:#F59E0B}.abtn.nt{background:#6B7280}
+.panel{display:none;margin-top:9px;border-radius:10px;padding:10px}
+.panel.open{display:block}
+.fu-p{background:#FFFBEB;border:1px solid #FDE68A}
+.nt-p{background:#F3F4F6;border:1px solid #E5E7EB}
+.panel label{font-size:12px;font-weight:700;color:#4B5563;display:block;margin-bottom:4px}
+.panel input,.panel textarea{width:100%;border:1px solid #D1D5DB;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;margin-bottom:8px;background:#fff}
+.panel .go{color:#fff;border:none;border-radius:8px;padding:10px;width:100%;font-weight:700;font-size:14px;cursor:pointer;background:#10B981}
 .empty{text-align:center;color:#6b7280;padding:16px;font-size:14px}
 .allclear{text-align:center;color:#059669;padding:60px 20px;font-size:16px;font-weight:700}
 .spin{text-align:center;color:#6b7280;padding:60px 20px}
@@ -56,6 +76,7 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
     <button data-team="jb" onclick="setTeam('jb')">JB</button>
     <button onclick="load()">↻ Re-scan</button>
   </div>
+  <input class="search" id="q" type="search" placeholder="🔍 Search any card by name or phone…" oninput="setSearch(this.value)">
   <div class="tabs" id="tabs"></div>
 </div>
 <div class="wrap" id="list"><div class="spin">Scanning…</div></div>
@@ -85,7 +106,24 @@ const SECTIONS = [
 
 let TEAM = 'all';
 let TAB = 'g1';
+let SEARCH = '';
 let DATA = { g1:[], g2:[], g3:[], g4:[] };
+let STATE = {};   // phaseScanState map: last8(phone) -> { notes:[{date,by,note}], snoozeUntil }
+const BY = (new URLSearchParams(location.search).get('by') || 'Scan').trim();
+
+function last8(p){ p = String(p||'').replace(/\D/g,''); return p.slice(-8); }
+function cardState(c){ return STATE[last8(c.phone)] || null; }
+function snoozed(c){ const s = cardState(c); return !!(s && s.snoozeUntil && s.snoozeUntil > todayStr()); }
+function searchMatch(c){
+  if (!SEARCH) return true;
+  const qd = SEARCH.replace(/\D/g,'');
+  if (String(c.name||'').toLowerCase().indexOf(SEARCH) >= 0) return true;
+  if (qd && String(c.phone||'').replace(/\D/g,'').indexOf(qd) >= 0) return true;
+  return false;
+}
+function shown(c){ return teamMatch(c) && searchMatch(c); }         // appears in list (incl. snoozed)
+function actionable(c){ return shown(c) && !snoozed(c); }           // counts toward "need attention"
+function setSearch(v){ SEARCH = String(v||'').trim().toLowerCase(); render(); }
 
 function toast(msg, kind){
   const t = document.getElementById('toast');
@@ -94,6 +132,7 @@ function toast(msg, kind){
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
 function todayStr(){ return new Date(Date.now()+8*3600*1000).toISOString().slice(0,10); }
+function tomorrowStr(){ return new Date(Date.now()+8*3600*1000+86400000).toISOString().slice(0,10); }
 function isJb(s){ return /(?:^|[^A-Z])(JB|JOHOR)(?:[^A-Z]|$)/i.test(String(s||'')); }
 function ageLabel(h){ if(h==null||h<0) return ''; if(h>=48) return Math.floor(h/24)+'d'; if(h>=24) return '1d '+(h-24)+'h'; return Math.round(h)+'h'; }
 
@@ -146,8 +185,9 @@ async function load(){
   list.innerHTML = '<div class="spin">Scanning…</div>';
   document.getElementById('hSub').textContent = 'Scanning…';
   try {
-    const [scan, rows] = await Promise.all([ api('adminScan', {}), gvizRows() ]);
+    const [scan, rows, st] = await Promise.all([ api('adminScan', {}), gvizRows(), api('phaseScanState', {}).catch(function(){ return null; }) ]);
     if (!scan || scan.status !== 'ok') throw new Error((scan && scan.message) || 'adminScan failed');
+    STATE = (st && st.map) || {};
     const byKey = {};
     (scan.rules||[]).forEach(function(r){ byKey[r.key] = r.violations||[]; });
 
@@ -190,26 +230,45 @@ function teamMatch(c){
 
 function renderTabs(){
   document.getElementById('tabs').innerHTML = SECTIONS.map(function(s){
-    const n = (DATA[s.id]||[]).filter(teamMatch).length;
-    return '<div class="tab'+(s.id===TAB?' on':'')+'" onclick="setTab(\''+s.id+'\')">'+
+    const n = (DATA[s.id]||[]).filter(actionable).length;
+    return '<div class="tab'+(s.id===TAB && !SEARCH?' on':'')+'" onclick="setTab(\''+s.id+'\')">'+
       s.icon+' '+esc(s.short)+'<span class="tcnt">'+n+'</span></div>';
   }).join('');
+}
+
+// Active cards first (most overdue on top); snoozed cards sink to the bottom,
+// faded, sorted by soonest follow-up — still readable with their notes.
+function sortCards(cards){
+  return cards.slice().sort(function(a,b){
+    const sa = snoozed(a)?1:0, sb = snoozed(b)?1:0;
+    if (sa!==sb) return sa-sb;
+    if (sa){ const da=(cardState(a)||{}).snoozeUntil||'', db=(cardState(b)||{}).snoozeUntil||''; return da<db?-1:(da>db?1:0); }
+    return (b.ageHours||0)-(a.ageHours||0);
+  });
 }
 
 function render(){
   renderTabs();
   const list = document.getElementById('list');
-  const s = SECTIONS.filter(function(x){ return x.id===TAB; })[0] || SECTIONS[0];
-  const cards = (DATA[s.id]||[]).filter(teamMatch);
-  let total = 0; SECTIONS.forEach(function(x){ total += (DATA[x.id]||[]).filter(teamMatch).length; });
+  let title, cards;
+  if (SEARCH){
+    let all = []; SECTIONS.forEach(function(x){ all = all.concat(DATA[x.id]||[]); });
+    cards = sortCards(all.filter(shown));
+    title = '🔍 “'+esc(SEARCH)+'” · '+cards.length+' match'+(cards.length===1?'':'es');
+  } else {
+    const s = SECTIONS.filter(function(x){ return x.id===TAB; })[0] || SECTIONS[0];
+    cards = sortCards((DATA[s.id]||[]).filter(shown));
+    title = s.icon+' '+esc(s.title)+' · '+cards.length;
+  }
+  let total = 0; SECTIONS.forEach(function(x){ total += (DATA[x.id]||[]).filter(actionable).length; });
   document.getElementById('hSub').textContent = total + ' card' + (total===1?'':'s') + ' need attention' + (TEAM!=='all' ? ' · '+TEAM.toUpperCase() : '');
   CARDIDX = 0;
   list.innerHTML = cards.length
-    ? '<div class="sect-title">'+s.icon+' '+esc(s.title)+' · '+cards.length+'</div>' + cards.map(cardHtml).join('')
-    : '<div class="allclear">✅ Nothing in “'+esc(s.title)+'”.</div>';
+    ? '<div class="sect-title">'+title+'</div>' + cards.map(cardHtml).join('')
+    : '<div class="allclear">'+(SEARCH ? 'No match for “'+esc(SEARCH)+'”.' : '✅ Nothing here.')+'</div>';
 }
 
-function setTab(id){ TAB = id; render(); }
+function setTab(id){ TAB = id; if (SEARCH){ SEARCH=''; const q=document.getElementById('q'); if(q) q.value=''; } render(); }
 
 let CARDIDX = 0;
 function cardHtml(c){
@@ -218,17 +277,27 @@ function cardHtml(c){
   const tel = String(c.phone||'').replace(/\D/g,'');
   const hot = c.ageHours!=null && c.ageHours >= 168;   // 7d+ = red
   const warn = c.ageHours!=null && c.ageHours >= 72;    // 3d+ = amber
-  const cls = 'card' + (hot?' hot':(warn?' warn':''));
+  const snz = snoozed(c);
+  const snzUntil = snz ? ((cardState(c)||{}).snoozeUntil||'') : '';
+  const cls = 'card' + (snz?' snz':'') + (hot?' hot':(warn?' warn':''));
   const ageCls = 'badge b-age' + (hot?' hot':'');
   const opts = MOVE_PHASES.map(function(p){ return '<option value="'+esc(p)+'"'+(p===c.phase?' selected':'')+'>'+esc(p)+'</option>'; }).join('');
+  const hist = (cardState(c)||{}).notes || [];
+  const histHtml = hist.length
+    ? '<div class="hist"><div class="hist-h">📝 Notes history</div>'+hist.map(function(n){
+        return '<div class="hist-row"><span class="hist-d">'+esc(n.date)+(n.by?' · '+esc(n.by):'')+'</span> '+esc(n.note)+'</div>';
+      }).join('')+'</div>'
+    : '';
   return '<div class="'+cls+'" id="'+id+'">'+
     '<div class="cname">'+esc(c.name)+'</div>'+
     '<div class="badges">'+
       '<span class="badge b-phase">'+esc(c.phase)+'</span>'+
       (c.team ? '<span class="badge b-team">'+esc(c.team)+'</span>' : '')+
       (c.ageHours!=null && c.ageHours>=0 ? '<span class="'+ageCls+'">'+ageLabel(c.ageHours)+'</span>' : '')+
+      (snz ? '<span class="badge b-snz">⏳ Follow up '+esc(snzUntil)+'</span>' : '')+
     '</div>'+
     '<div class="meta">'+esc(c.detail)+(c.extra?'<br><b>'+esc(c.extra)+'</b>':'')+'</div>'+
+    histHtml+
     '<div class="links">'+
       (tel ? '<a href="tel:'+tel+'">📞 Call '+esc(c.phone)+'</a>' : '')+
       (c.groupLink ? '<a href="'+esc(c.groupLink)+'" target="_blank">💬 WA group</a>' : '')+
@@ -236,6 +305,24 @@ function cardHtml(c){
     '<div class="mv">'+
       '<select id="'+id+'_sel">'+opts+'</select>'+
       '<button onclick="moveCard(\''+id+'\')">Move →</button>'+
+    '</div>'+
+    '<div class="acts">'+
+      '<button class="abtn fu" onclick="toggleP(\''+id+'\',\'fu\')">📅 Follow-up</button>'+
+      '<button class="abtn nt" onclick="toggleP(\''+id+'\',\'nt\')">📝 Note</button>'+
+    '</div>'+
+    '<div class="panel fu-p" id="'+id+'_fu">'+
+      '<label>Snooze until — hides the card, reappears on this date</label>'+
+      '<input type="date" id="'+id+'_fud" min="'+todayStr()+'" value="'+tomorrowStr()+'">'+
+      '<label>📝 Internal note (traceable)</label>'+
+      '<textarea id="'+id+'_fun" rows="2" placeholder="e.g. waiting on QC for install date, chase Fri"></textarea>'+
+      '<label>💬 Message to customer WA group (optional — sent now)</label>'+
+      '<textarea id="'+id+'_fug" rows="2" placeholder="optional nudge to the customer"></textarea>'+
+      '<button class="go" onclick="saveFu(\''+id+'\')">Save follow-up</button>'+
+    '</div>'+
+    '<div class="panel nt-p" id="'+id+'_nt">'+
+      '<label>📝 Internal note (traceable — card stays in the list)</label>'+
+      '<textarea id="'+id+'_ntn" rows="2" placeholder="log a note for this job card"></textarea>'+
+      '<button class="go" onclick="saveNote(\''+id+'\')">Save note</button>'+
     '</div>'+
   '</div>';
 }
@@ -252,6 +339,43 @@ async function moveCard(id){
   } else {
     toast('Failed: ' + ((res && res.message) || 'error'), 'err');
   }
+}
+
+function toggleP(id, which){
+  const fu = document.getElementById(id+'_fu'), nt = document.getElementById(id+'_nt');
+  const t = document.getElementById(id+'_'+which);
+  [fu,nt].forEach(function(p){ if(p && p!==t) p.classList.remove('open'); });
+  if (t) t.classList.toggle('open');
+}
+function pushNote(phone, note){
+  const k = last8(phone); STATE[k] = STATE[k] || { notes:[], snoozeUntil:'' };
+  STATE[k].notes = STATE[k].notes || [];
+  if (note) STATE[k].notes.unshift({ date: todayStr(), by: BY, note: note });
+  return STATE[k];
+}
+async function saveFu(id){
+  const c = window['CARD_'+id]; if(!c) return;
+  const date = document.getElementById(id+'_fud').value;
+  const note = document.getElementById(id+'_fun').value.trim();
+  const groupMsg = document.getElementById(id+'_fug').value.trim();
+  if(!date){ toast('Pick a date', 'err'); return; }
+  const res = await api('logScanNote', { phone:c.phone, by:BY, followUpDate:date, note:note, groupMsg:groupMsg });
+  if (res && res.status === 'ok'){
+    toast('Follow-up set → '+date+(res.groupMsgSent?' · msg sent':'')+' ✓', 'ok');
+    pushNote(c.phone, note).snoozeUntil = date;   // snooze locally → card fades + sinks to bottom
+    render();
+  } else { toast('Failed: ' + ((res && res.message) || 'error'), 'err'); }
+}
+async function saveNote(id){
+  const c = window['CARD_'+id]; if(!c) return;
+  const note = document.getElementById(id+'_ntn').value.trim();
+  if(!note){ toast('Type a note', 'err'); return; }
+  const res = await api('logScanNote', { phone:c.phone, by:BY, note:note });
+  if (res && res.status === 'ok'){
+    toast('Note saved ✓', 'ok');
+    pushNote(c.phone, note);   // card stays; history refreshes
+    render();
+  } else { toast('Failed: ' + ((res && res.message) || 'error'), 'err'); }
 }
 
 function setTeam(t){
