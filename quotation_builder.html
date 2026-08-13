@@ -313,12 +313,18 @@ async function loadLead(phone) {
     if (!m) throw new Error('gviz parse failed');
     const j = JSON.parse(m[1]);
     const cols = j.table.cols.map(c => (c.label || '').trim());
+    // Round 135 — normalized-digit match that REQUIRES a real phone (>=8
+    // digits); a blank/short cell must never match. (Old code let an empty
+    // phone match via endsWith('') and hijack the customer name.)
+    const _norm = s => String(s == null ? '' : s).replace(/\D/g, '');
+    const _target = _norm(phone);
     const found = (j.table.rows || []).find(row => {
       const phoneIdx = cols.indexOf('Phone');
       if (phoneIdx === -1) return false;
       const cell = row.c[phoneIdx];
-      const cellVal = cell ? String(cell.v || cell.f || '') : '';
-      return cellVal === phone || cellVal.endsWith(phone.slice(-8)) || phone.endsWith(cellVal.slice(-8));
+      const cv = _norm(cell ? (cell.v != null ? cell.v : cell.f) : '');
+      if (cv.length < 8 || _target.length < 8) return false;
+      return cv === _target || cv.endsWith(_target.slice(-8)) || _target.endsWith(cv.slice(-8));
     });
     if (!found) {
       showCustomerError('Lead not found for phone ' + phone);

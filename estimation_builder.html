@@ -523,6 +523,13 @@ let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCr
 // Round 120 — amend mode: when set (?amend=SE-…), regenerate re-uses this SE
 // instead of issuing a new one, and overwrites the same estimation record.
 let amendSe = '', amendQtNo = '';
+// Bugfix: Drive photo uploads are fire-and-forget (see handlePhotoFiles /
+// handleServicePhotoFiles) — driveUrl/driveId land on the photo async, after
+// the upload fetch resolves. buildStateJson() only keeps photos that already
+// have a driveUrl/driveId, so submitting before an upload finishes silently
+// dropped that photo from the saved (amendable) state. Track in-flight
+// uploads here and await them before buildStateJson() runs.
+let pendingPhotoUploads = [];
 
 // Ephemeral UI collapse state per slab — not persisted (re-derived on render)
 const uiCollapse = new Map(); // slabId -> { measurements: bool, services: bool }
@@ -865,7 +872,7 @@ async function handlePhotoFiles(slabId, files){
       // Round 72 — fire-and-forget upload to Drive for audit trail.
       // PDF render still uses dataUrl; driveUrl is metadata only.
       if (currentLead && currentLead['Phone']) {
-        fetch(APPS_SCRIPT_URL, {
+        const _up = fetch(APPS_SCRIPT_URL, {
           method: 'POST',
           // Round 72.3: text/plain avoids CORS preflight on Apps Script.
           headers: { 'Content-Type': 'text/plain' },
@@ -880,6 +887,7 @@ async function handlePhotoFiles(slabId, files){
         }).then(function(r){ return r.ok ? r.json() : null; })
           .then(function(j){ if (j && j.url) { photo.driveUrl = j.url; photo.driveId = j.id || ''; } })
           .catch(function(){});
+        pendingPhotoUploads.push(_up);
       }
     } catch(_){ toast('Failed to read one photo','error'); }
   }
@@ -916,12 +924,13 @@ async function handleServicePhotoFiles(arrName, id, files){
       item.photos.push(photo);
       added++;
       if (currentLead && currentLead['Phone']) {
-        fetch(APPS_SCRIPT_URL, {
+        const _up = fetch(APPS_SCRIPT_URL, {
           method: 'POST', headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({ action:'uploadEstimationPhoto', secret:SHARED_SECRET, phone:currentLead['Phone'], slabName:label, photoLabel:'', dataUrl:dataUrl })
         }).then(function(r){ return r.ok ? r.json() : null; })
           .then(function(j){ if (j && j.url) { photo.driveUrl = j.url; photo.driveId = j.id || ''; } })
           .catch(function(){});
+        pendingPhotoUploads.push(_up);
       }
     } catch(_){ toast('Failed to read one photo','error'); }
   }
@@ -2056,6 +2065,15 @@ async function runSubmit(doSend, clickedBtn){
     // (the kanban "Sync to AutoCount" button needs it later, and the
     // membrane rate only exists in this device's localStorage). Non-fatal:
     // the estimation is already with the customer at this point.
+    // Bugfix: wait for any still-in-flight Drive photo uploads before
+    // buildStateJson() runs below — it only keeps photos that already have a
+    // driveUrl/driveId, so saving too early silently dropped recently-added
+    // photos from the amendable state (they'd then be "missing" on Amend).
+    if (pendingPhotoUploads.length) {
+      ut.textContent = 'Finishing photo uploads…';
+      await Promise.allSettled(pendingPhotoUploads);
+      pendingPhotoUploads = [];
+    }
     ut.textContent = 'Saving estimation record…';
     // Round 111 — retry; the AutoCount QT + the kanban retry both depend on this
     // row, so a silent loss here breaks the whole pipeline.
@@ -2159,6 +2177,7 @@ document.getElementById('btnSaveSyncSend').addEventListener('click', function(){
 document.getElementById('btnClear').addEventListener('click', function(){
   if (!confirm('Clear all slabs, services, and photos?')) return;
   state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0 };
+  pendingPhotoUploads = [];
   uiCollapse.clear();
   document.getElementById('fSubmittedBy').value='';
   document.getElementById('fNotes').value='';
@@ -2808,12 +2827,20 @@ async function loadLead(phone) {
     if (!m) throw new Error('gviz parse failed');
     const j = JSON.parse(m[1]);
     const cols = j.table.cols.map(function(c){ return (c.label || '').trim(); });
+    // Round 135 — match on normalized digits and REQUIRE a real phone (>=8
+    // digits). The old test `phone.endsWith(cellVal.slice(-8))` treated an
+    // empty phone cell as endsWith('') === true, so the lone blank-phone lead
+    // ("Pesona Gemilang Sdn Bhd") matched every phone and, sitting before the
+    // real lead, hijacked the customer name on estimations opened after it.
+    const _norm = function(s){ return String(s == null ? '' : s).replace(/\D/g, ''); };
+    const _target = _norm(phone);
     const found = (j.table.rows || []).find(function(row){
       const phoneIdx = cols.indexOf('Phone');
       if (phoneIdx === -1) return false;
       const cell = row.c[phoneIdx];
-      const cellVal = cell ? String(cell.v || cell.f || '') : '';
-      return cellVal === phone || cellVal.endsWith(phone.slice(-8)) || phone.endsWith(cellVal.slice(-8));
+      const cv = _norm(cell ? (cell.v != null ? cell.v : cell.f) : '');
+      if (cv.length < 8 || _target.length < 8) return false;
+      return cv === _target || cv.endsWith(_target.slice(-8)) || _target.endsWith(cv.slice(-8));
     });
     if (!found) {
       const grid = document.getElementById('custGrid');
@@ -2905,6 +2932,7 @@ function showAmendBanner(se){
 // stale device draft never shows when an estimation can't be loaded.
 function clearStateBlank(){
   state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0 };
+  pendingPhotoUploads = [];
   renderAll();
 }
 async function loadAmend(phone, se){
