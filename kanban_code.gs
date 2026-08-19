@@ -67,6 +67,7 @@ function doPost(e) {
       case 'claimCooldown':      return handleClaimCooldown(body);  // round 54 — atomic check-and-set for v2 link cooldown
       case 'updateStatusByGroup': return handleUpdateStatusByGroup(body);  // round 61 — auto phase-shift from template detection
       case 'addTagByGroup':      return handleAddTagByGroup(body);  // round 63 — auto-tag from template detection
+      case 'addTagByPhone':      return handleAddTagByPhone(body);  // round 136 — idempotent tag append by phone (RollTrack "Flag repair")
       case 'addPaymentVerification':   return handleAddPaymentVerification(body);  // round 64 — payment-noted template
       case 'clearPaymentVerification': return handleClearPaymentVerification(body);  // round 64 — account tick verify
       case 'updateLastAdminMsg': return handleUpdateLastAdminMsg(body);  // round 68 — admin-msg capture from Parse & Route
@@ -133,12 +134,19 @@ function findRowByPhone(sheet, phone) {
   const phoneCol = headers.indexOf('Phone');
   if (phoneCol === -1) return null;
 
+  // Round 136 — exact match must win globally, not just within its own row.
+  // The old single pass returned a last-8 SUFFIX match on an earlier row before
+  // ever reaching an EXACT match on a later row, so even a byte-exact phone
+  // wasn't guaranteed the right lead (a real hazard on write paths — tagging /
+  // status moves on the wrong customer). Two passes: exact wins immediately;
+  // the first suffix match is only a fallback when no exact row exists.
+  let fallback = null;
   for (let i = 1; i < data.length; i++) {
     const cell = String(data[i][phoneCol] || '').trim();
     if (cell === target) return i + 1;
-    if (cell.length >= 8 && cell.endsWith(last8)) return i + 1;
+    if (fallback === null && cell.length >= 8 && cell.endsWith(last8)) fallback = i + 1;
   }
-  return null;
+  return fallback;
 }
 
 // Centralized cell update by header name
@@ -619,6 +627,52 @@ function handleAddTagByGroup(body) {
     return jsonResponse({status: 'ok', rowNum: rowNum, tags: tagList.join(','), added: added});
   }
   return jsonResponse({status: 'error', message: 'group not found', groupId: target});
+}
+
+// ================================================================
+// Round 136 — append a tag to a lead by PHONE (idempotent). Mirror of
+// handleAddTagByGroup for callers that only have the phone — e.g. the
+// RollTrack "Flag repair" control: the superior who finds repairs approves
+// in RollTrack and never touches the kanban/WA group, so group ID isn't
+// available there. Read-modify-write PRESERVES existing tags; unlike
+// handleUpdateTag (which overwrites the whole Tags cell) it can't clobber a
+// concurrent kanban tag edit. Phone resolves via findRowByPhone (digit-norm
+// + last-8 fallback), so 60-prefixed / 0-prefixed variants all match.
+// ================================================================
+function handleAddTagByPhone(body) {
+  // body: {action, secret, phone, tag, changedBy?}
+  const phone  = String(body.phone || '').trim();
+  const newTag = String(body.tag || '').trim();
+  if (!phone || !newTag) {
+    return jsonResponse({status: 'error', message: 'phone and tag required'});
+  }
+  const sheet = getSheet();
+  const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({status: 'error', message: 'lead not found', phone: phone});
+  const h = getHeaders(sheet);
+  const tagsCol = h.colByName['Tags'];
+  if (!tagsCol) return jsonResponse({status: 'error', message: 'Tags column missing'});
+
+  // Round 136 — serialise the read-modify-write so two concurrent tag appends
+  // (e.g. this + the WA-template addTagByGroup) can't lose one. NOTE: this does
+  // NOT protect against the kanban's handleUpdateTag, which overwrites the whole
+  // Tags cell with a client-computed list — see the residual-race note there.
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(5000); } catch (_e) { /* best-effort */ }
+  try {
+    const existing = String(sheet.getRange(row, tagsCol).getValue() || '').trim();
+    const tagList = existing.split(',').map(function(t){ return t.trim(); }).filter(function(t){ return t; });
+    let added = false;
+    if (tagList.indexOf(newTag) === -1) {
+      tagList.push(newTag);
+      setCellByHeader(sheet, row, 'Tags', tagList.join(','));
+      added = true;
+    }
+    if (body.changedBy) { try { setCellByHeader(sheet, row, 'Changed By', String(body.changedBy)); } catch (_e) {} }
+    return jsonResponse({status: 'ok', rowNum: row, phone: phone, tag: newTag, added: added, tags: tagList.join(',')});
+  } finally {
+    try { lock.releaseLock(); } catch (_e) {}
+  }
 }
 
 // ================================================================
