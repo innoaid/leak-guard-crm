@@ -26,3 +26,14 @@ re-implement if the feature is still wanted, not as a patch to replay.
 
 The n8n side (`lg-fb-conversion`) may or may not still exist — check before
 rebuilding.
+
+## `CLAUDE-primer-2026-04.md`
+
+A 211-line "Claude Code primer" found untracked in the same stale worktree —
+a different document from the maintained 104-line `CLAUDE.md` at the repo root,
+not an older revision of it. It carries stack detail the live file doesn't
+(Whapi bot number, calendar list, hosting status, the v2 agent's model).
+
+Kept for reference only. It is April 2026 vintage and unverified since — see
+`../gotchas/gotcha_claudemd_stale.md` for how badly docs of this era drifted.
+**The root `CLAUDE.md` remains the live one.**
