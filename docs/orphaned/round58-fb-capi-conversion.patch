@@ -1,0 +1,150 @@
+diff --git a/kanban_code.gs b/kanban_code.gs
+index a5630f5..d6bb6f2 100644
+--- a/kanban_code.gs
++++ b/kanban_code.gs
+@@ -24,6 +24,7 @@ const SHEET_NAME    = 'Leak Guard Leads';
+ const SHARED_SECRET = 'ABC'; // matches team_kanban.html
+ const N8N_BOOKING_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-booking';
+ const N8N_WAGROUP_URL = 'https://gate.whapi.cloud/messages/text';
++const N8N_FB_CONVERSION_URL = 'https://leakguard.app.n8n.cloud/webhook/lg-fb-conversion'; // Round 58 — CAPI fan-out
+ const WHAPI_TOKEN     = 'tjJeSotqcmnYBfQulcRxcFHHQ8QtDcC5';
+ 
+ // ================================================================
+@@ -55,6 +56,7 @@ function doPost(e) {
+       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
+       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
+       case 'claimCooldown':      return handleClaimCooldown(body);  // round 54 — atomic check-and-set for v2 link cooldown
++      case 'updateLeadCtwa':     return handleUpdateLeadCtwa(body);  // round 58 — capture FB CTWA referral fields on first message
+       case 'updateStatusByGroup': return handleUpdateStatusByGroup(body);  // round 61 — auto phase-shift from template detection
+       case 'addTagByGroup':      return handleAddTagByGroup(body);  // round 63 — auto-tag from template detection
+       case 'addPaymentVerification':   return handleAddPaymentVerification(body);  // round 64 — payment-noted template
+@@ -139,10 +141,44 @@ function handleUpdateStatus(body) {
+ 
+   if (!statusCol) return jsonResponse({status: 'error', message: 'Status column not found'});
+ 
++  // Round 58: snapshot prev status BEFORE we overwrite, so we can detect the
++  // exact "Pending Invitation" transition for FB CAPI fan-out (no double-fires).
++  const prevStatus = String(sheet.getRange(rowNum, statusCol).getValue() || '').trim();
++
+   sheet.getRange(rowNum, statusCol).setValue(body.status);
+   if (changedAt) sheet.getRange(rowNum, changedAt).setValue(new Date().toISOString());
+   if (changedBy) sheet.getRange(rowNum, changedBy).setValue(body.changedBy || 'Kanban');
+ 
++  // Round 58: fire CAPI webhook on Pending Invitation transition for CTWA leads.
++  // Best-effort — never blocks status update on transport failure.
++  try {
++    if (body.status === 'Pending Invitation' && prevStatus !== 'Pending Invitation') {
++      const ctwaCol = h.colByName['CTWA CLID'];
++      const adIdCol = h.colByName['FB Ad ID'];
++      const nameCol = h.colByName['Name'];
++      const ctwaClid = ctwaCol ? String(sheet.getRange(rowNum, ctwaCol).getValue() || '').trim() : '';
++      if (ctwaClid) {
++        const adId = adIdCol ? String(sheet.getRange(rowNum, adIdCol).getValue() || '').trim() : '';
++        const leadName = nameCol ? String(sheet.getRange(rowNum, nameCol).getValue() || '').trim() : '';
++        UrlFetchApp.fetch(N8N_FB_CONVERSION_URL, {
++          method: 'post',
++          contentType: 'application/json',
++          payload: JSON.stringify({
++            secret: SHARED_SECRET,
++            phone: body.phone,
++            ctwaClid: ctwaClid,
++            adId: adId,
++            leadName: leadName,
++            eventName: 'Lead'
++          }),
++          muteHttpExceptions: true
++        });
++      }
++    }
++  } catch (capiErr) {
++    Logger.log('CAPI fan-out failed (non-fatal): ' + capiErr.toString());
++  }
++
+   return jsonResponse({status: 'ok', rowNum: rowNum});
+ }
+ 
+@@ -668,6 +704,17 @@ function handleCreateLead(body) {
+   if (body.notes)       setCellByHeader(sheet, newRow, 'Notes', body.notes);
+   if (body.assignedTo)  setCellByHeader(sheet, newRow, 'Assigned To', body.assignedTo);
+ 
++  // Round 58: CTWA referral fields when lead was created from FB Click-to-WA ad.
++  // Tolerant — silently skips if a column is missing (run bootstrapCtwaColumns once).
++  const _setIfExists = function(header, value) {
++    if (!value) return;
++    try { setCellByHeader(sheet, newRow, header, value); } catch (_e) { /* column not yet bootstrapped */ }
++  };
++  _setIfExists('FB Ad ID', body.fbAdId);
++  _setIfExists('FB Ad Headline', body.fbAdHeadline);
++  _setIfExists('FB Ad Source URL', body.fbAdSourceUrl);
++  _setIfExists('CTWA CLID', body.ctwaClid);
++
+   return jsonResponse({status: 'ok', rowNum: newRow});
+ }
+ 
+@@ -1123,6 +1170,66 @@ function fetchInviteLinkForGroup(groupId) {
+   return '';
+ }
+ 
++// ================================================================
++// Round 58 — capture CTWA referral fields on inbound first message
++// ================================================================
++
++function handleUpdateLeadCtwa(body) {
++  // body: {phone, ctwaClid, fbAdId?, fbAdHeadline?, fbAdSourceUrl?, secret}
++  // Idempotent: only writes a field if (a) the column exists AND
++  // (b) the cell is currently empty (don't clobber existing data on retries).
++  if (!body.phone || !body.ctwaClid) {
++    return jsonResponse({status: 'error', message: 'phone and ctwaClid required'});
++  }
++  const sheet = getSheet();
++  const rowNum = findRowByPhone(sheet, body.phone);
++  if (!rowNum) return jsonResponse({status: 'error', message: 'lead not found', phone: body.phone});
++
++  const h = getHeaders(sheet);
++  const writes = {
++    'CTWA CLID':         body.ctwaClid,
++    'FB Ad ID':          body.fbAdId,
++    'FB Ad Headline':    body.fbAdHeadline,
++    'FB Ad Source URL':  body.fbAdSourceUrl,
++  };
++  const written = [];
++  Object.keys(writes).forEach(function(header) {
++    const v = writes[header];
++    const col = h.colByName[header];
++    if (!col || !v) return;
++    const cur = String(sheet.getRange(rowNum, col).getValue() || '').trim();
++    if (cur) return; // first-write-wins — referral is locked at first ad click
++    sheet.getRange(rowNum, col).setValue(v);
++    written.push(header);
++  });
++
++  return jsonResponse({status: 'ok', rowNum: rowNum, written: written});
++}
++
++// ================================================================
++// Round 58 — bootstrap CTWA columns (run ONCE manually from editor)
++// ================================================================
++
++function bootstrapCtwaColumns() {
++  // Idempotent — appends only the columns that aren't already in the header row.
++  const sheet = getSheet();
++  const lastCol = sheet.getLastColumn();
++  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
++    .map(function(h) { return String(h || '').trim(); });
++
++  const wanted = ['FB Ad ID', 'FB Ad Headline', 'FB Ad Source URL', 'CTWA CLID'];
++  const missing = wanted.filter(function(name) { return headers.indexOf(name) === -1; });
++
++  if (missing.length === 0) {
++    Logger.log('bootstrapCtwaColumns: all 4 columns already present, nothing to do.');
++    return;
++  }
++
++  const startCol = lastCol + 1;
++  sheet.getRange(1, startCol, 1, missing.length).setValues([missing]);
++  Logger.log('bootstrapCtwaColumns: appended ' + missing.length + ' column(s) starting at col ' + startCol + ': ' + missing.join(', '));
++}
++
+ // ================================================================
+ // Round 60 — backfill Group Invite Link via Whapi (run ONCE manually)
+ // ================================================================
