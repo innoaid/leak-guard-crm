@@ -282,12 +282,28 @@ function _buildSiGroupName(currentName, siCode) {
   return (work + ' SI-' + mmyy + '-' + nnn).trim();
 }
 
+// Round 137 — capture the AutoCount invoice (SI) number when a card enters
+// Pending Balance. Protocol: proformas run through the job, then ONE real
+// invoice is raised at the end — and that raise IS the move to Pending Balance.
+// Typed via the kanban prompt (the WA bot that used to detect the PDF is gone).
+// Only writes on a NON-EMPTY value moving INTO Pending Balance: a skipped prompt
+// or the Round-65 payment auto-jump leaves the cell blank on purpose — a blank
+// 'AutoCount SI No' on a Pending Balance card is a real signal (invoice not
+// recorded, or the card was moved before the invoice existed). Same shape as
+// _resetFuCadenceIfPhaseChanged; safe no-op if the column isn't bootstrapped yet.
+function _captureSiNo(sheet, rowNum, newStatus, siNo) {
+  if (newStatus !== 'Pending Balance') return false;
+  const v = String(siNo == null ? '' : siNo).trim();
+  if (!v) return false;
+  try { setCellByHeader(sheet, rowNum, 'AutoCount SI No', v); return true; } catch (_e) { return false; }
+}
+
 // ================================================================
 // Action handlers
 // ================================================================
 
 function handleUpdateStatus(body) {
-  // body: {action, phone, status, changedBy, secret}
+  // body: {action, phone, status, changedBy, secret, siNo?}
   const sheet = getSheet();
   const rowNum = findRowByPhone(sheet, body.phone);
   if (!rowNum) return jsonResponse({status: 'error', message: 'lead not found'});
@@ -309,8 +325,9 @@ function handleUpdateStatus(body) {
 
   const fuReset = _resetFuCadenceIfPhaseChanged(sheet, rowNum, prevStatus, body.status);
   _assignCallerOnQuotationSent(sheet, rowNum, prevStatus, body.status);  // round 90
+  const siNoWritten = _captureSiNo(sheet, rowNum, body.status, body.siNo);  // round 137
 
-  return jsonResponse({status: 'ok', rowNum: rowNum, fuReset: fuReset});
+  return jsonResponse({status: 'ok', rowNum: rowNum, fuReset: fuReset, siNoWritten: siNoWritten});
 }
 
 function handleUpdateTag(body) {
@@ -492,6 +509,9 @@ function handleUpdateStatusByGroup(body) {
       if (siName && siName !== groupName) {
         var siRow = i + 1;
         try { setCellByHeader(sheet, siRow, 'Group Name (AE)', siName); } catch (_e) {}
+        // Round 137 — same field the manual Pending Balance prompt writes, so a
+        // future passive detector and the manual path populate one column.
+        try { setCellByHeader(sheet, siRow, 'AutoCount SI No', body.siCode); } catch (_e) {}
         try {
           UrlFetchApp.fetch(N8N_RENAME_GROUP_URL, {
             method: 'post',

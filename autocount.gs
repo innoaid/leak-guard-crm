@@ -688,12 +688,14 @@ function bootstrapEstimationsSheet() {
   Logger.log('bootstrapEstimationsSheet: appended headers ' + missing.join(', '));
 }
 
-// Adds 'AutoCount QT No' + 'Total Sqft' to the lead sheet if missing.
-// Idempotent: only appends headers that don't exist yet.
+// Adds 'AutoCount QT No' + 'Total Sqft' + 'AutoCount SI No' to the lead sheet
+// if missing. Idempotent: only appends headers that don't exist yet.
+// ('AutoCount SI No' — Round 137 — captures the one real invoice number when a
+// card is moved to Pending Balance; see _captureSiNo in kanban_code.gs.)
 function bootstrapAutocountLeadColumns() {
   const sheet = getSheet();
   const h = getHeaders(sheet);
-  const wanted = ['AutoCount QT No', 'Total Sqft'].filter(function(name) {
+  const wanted = ['AutoCount QT No', 'Total Sqft', 'AutoCount SI No'].filter(function(name) {
     return !h.colByName[name];
   });
   if (!wanted.length) {
