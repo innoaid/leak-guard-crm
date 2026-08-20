@@ -68,6 +68,7 @@ function doPost(e) {
       case 'updateStatusByGroup': return handleUpdateStatusByGroup(body);  // round 61 — auto phase-shift from template detection
       case 'addTagByGroup':      return handleAddTagByGroup(body);  // round 63 — auto-tag from template detection
       case 'addTagByPhone':      return handleAddTagByPhone(body);  // round 136 — idempotent tag append by phone (RollTrack "Flag repair")
+      case 'setSiNo':            return handleSetSiNo(body);        // round 137 — set/correct AutoCount SI No by phone (kanban badge)
       case 'addPaymentVerification':   return handleAddPaymentVerification(body);  // round 64 — payment-noted template
       case 'clearPaymentVerification': return handleClearPaymentVerification(body);  // round 64 — account tick verify
       case 'updateLastAdminMsg': return handleUpdateLastAdminMsg(body);  // round 68 — admin-msg capture from Parse & Route
@@ -282,20 +283,61 @@ function _buildSiGroupName(currentName, siCode) {
   return (work + ' SI-' + mmyy + '-' + nnn).trim();
 }
 
-// Round 137 — capture the AutoCount invoice (SI) number when a card enters
-// Pending Balance. Protocol: proformas run through the job, then ONE real
-// invoice is raised at the end — and that raise IS the move to Pending Balance.
-// Typed via the kanban prompt (the WA bot that used to detect the PDF is gone).
-// Only writes on a NON-EMPTY value moving INTO Pending Balance: a skipped prompt
-// or the Round-65 payment auto-jump leaves the cell blank on purpose — a blank
-// 'AutoCount SI No' on a Pending Balance card is a real signal (invoice not
-// recorded, or the card was moved before the invoice existed). Same shape as
-// _resetFuCadenceIfPhaseChanged; safe no-op if the column isn't bootstrapped yet.
+// Round 137 — normalize an SI invoice number to the canonical AutoCount form
+// SI-MMYY-NNN. Mirrors handleLinkQt's QT rule exactly (uppercase, strip spaces,
+// accept the bare "MMYY-NNN", prefix it, reject anything else). AutoCount doc
+// numbers are uniformly PREFIX-MMYY-NNN (verified: all live QT numbers match),
+// so a non-matching entry is a typo, not a valid invoice. Returns '' on invalid.
+function _normSiNo(raw) {
+  var v = String(raw == null ? '' : raw).trim().toUpperCase().replace(/\s+/g, '');
+  if (!v) return '';
+  if (/^\d{4}-\d{3}$/.test(v)) v = 'SI-' + v;
+  return /^SI-\d{4}-\d{3}$/.test(v) ? v : '';
+}
+
+// Capture the AutoCount invoice (SI) number when a card is set to Pending
+// Balance. Protocol: proformas run through the job, then ONE real invoice is
+// raised at the end. Typed via the kanban prompt (the WA bot that detected the
+// PDF is gone). Fires on ANY update where newStatus is Pending Balance — NOT
+// gated on prevStatus — so a correction re-submitted on an already-Balance card
+// still lands; the non-empty guard means a skip never overwrites an existing
+// number with blank. A blank 'AutoCount SI No' on a Pending Balance card is a
+// deliberate signal (invoice not recorded, or card moved early). Safe no-op if
+// the column isn't bootstrapped yet. Returns {status, value}:
+//   'na' (not Pending Balance) | 'blank' (skipped) | 'invalid' (typo, not written)
+//   | 'ok' (written, value = normalized) | 'error' (write failed).
 function _captureSiNo(sheet, rowNum, newStatus, siNo) {
-  if (newStatus !== 'Pending Balance') return false;
-  const v = String(siNo == null ? '' : siNo).trim();
-  if (!v) return false;
-  try { setCellByHeader(sheet, rowNum, 'AutoCount SI No', v); return true; } catch (_e) { return false; }
+  if (newStatus !== 'Pending Balance') return { status: 'na', value: '' };
+  var raw = String(siNo == null ? '' : siNo).trim();
+  if (!raw) return { status: 'blank', value: '' };
+  var v = _normSiNo(raw);
+  if (!v) return { status: 'invalid', value: '' };
+  try { setCellByHeader(sheet, rowNum, 'AutoCount SI No', v); return { status: 'ok', value: v }; }
+  catch (_e) { return { status: 'error', value: '' }; }
+}
+
+// action 'setSiNo' — set / correct / clear the AutoCount SI No on a lead by
+// phone WITHOUT touching Status or Status Changed At (editing the invoice #
+// must not reset the phase clock the payment reminders key on). Used by the
+// clickable SI badge on Pending Balance cards, and to fix a rejected typo or
+// fill in the number after the Round-65 auto-jump. Normalizes to SI-MMYY-NNN;
+// an empty siNo explicitly clears the cell. body: {action, secret, phone, siNo}
+function handleSetSiNo(body) {
+  var phone = String(body.phone || '').trim();
+  if (!phone) return jsonResponse({status: 'error', message: 'phone required'});
+  var sheet = getSheet();
+  var row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({status: 'error', message: 'lead not found', phone: phone});
+  var raw = String(body.siNo == null ? '' : body.siNo).trim();
+  if (!raw) {
+    try { setCellByHeader(sheet, row, 'AutoCount SI No', ''); } catch (_e) {}
+    return jsonResponse({status: 'ok', siNoStatus: 'blank', siNo: ''});
+  }
+  var v = _normSiNo(raw);
+  if (!v) return jsonResponse({status: 'ok', siNoStatus: 'invalid', siNo: ''});
+  try { setCellByHeader(sheet, row, 'AutoCount SI No', v); }
+  catch (_e) { return jsonResponse({status: 'error', message: 'write failed (column missing?)'}); }
+  return jsonResponse({status: 'ok', siNoStatus: 'ok', siNo: v});
 }
 
 // ================================================================
@@ -325,9 +367,9 @@ function handleUpdateStatus(body) {
 
   const fuReset = _resetFuCadenceIfPhaseChanged(sheet, rowNum, prevStatus, body.status);
   _assignCallerOnQuotationSent(sheet, rowNum, prevStatus, body.status);  // round 90
-  const siNoWritten = _captureSiNo(sheet, rowNum, body.status, body.siNo);  // round 137
+  const _si = _captureSiNo(sheet, rowNum, body.status, body.siNo);  // round 137
 
-  return jsonResponse({status: 'ok', rowNum: rowNum, fuReset: fuReset, siNoWritten: siNoWritten});
+  return jsonResponse({status: 'ok', rowNum: rowNum, fuReset: fuReset, siNoStatus: _si.status, siNo: _si.value});
 }
 
 function handleUpdateTag(body) {
@@ -509,9 +551,10 @@ function handleUpdateStatusByGroup(body) {
       if (siName && siName !== groupName) {
         var siRow = i + 1;
         try { setCellByHeader(sheet, siRow, 'Group Name (AE)', siName); } catch (_e) {}
-        // Round 137 — same field the manual Pending Balance prompt writes, so a
-        // future passive detector and the manual path populate one column.
-        try { setCellByHeader(sheet, siRow, 'AutoCount SI No', body.siCode); } catch (_e) {}
+        // Round 137 — same field + same canonical SI-MMYY-NNN form the manual
+        // Pending Balance prompt writes (body.siCode is the bare guarded code),
+        // so a future passive detector and the manual path share one format.
+        try { setCellByHeader(sheet, siRow, 'AutoCount SI No', 'SI-' + body.siCode); } catch (_e) {}
         try {
           UrlFetchApp.fetch(N8N_RENAME_GROUP_URL, {
             method: 'post',

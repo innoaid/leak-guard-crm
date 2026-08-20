@@ -1391,12 +1391,13 @@ function renderCard(lead) {
           (['Pending Balance','Completed','Job Complete','Receipt Sent'].includes(status)
             ? '<button class="cd-repair' + (tags.includes('repair') ? ' tagged' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();toggleRepairTag(this);" title="' + (tags.includes('repair') ? 'Remove repair tag' : 'Tag as needing repair callback') + '">🔧 ' + (tags.includes('repair') ? 'Repair ✓' : 'Repair') + '</button>'
             : '') +
-          // Round 137 — surface the invoice (SI) number on Pending Balance cards; a blank one is a signal.
+          // Round 137 — surface the invoice (SI) number on Pending Balance cards; blank is a signal. Click to set/edit.
           (status === 'Pending Balance'
             ? (function(){ var _si = String(lead['AutoCount SI No'] || '').trim();
+                var _clk = ' onclick="event.stopPropagation();setSiFromCard(\'' + escapeHtml(phone) + '\')" style="cursor:pointer;font-size:11px;font-weight:700;border-radius:8px;padding:2px 7px;';
                 return _si
-                  ? '<span title="AutoCount invoice number" style="font-size:11px;font-weight:700;color:#065F46;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:2px 7px">🧾 ' + escapeHtml(_si) + '</span>'
-                  : '<span title="No invoice number recorded — invoice not raised yet, or card moved early" style="font-size:11px;font-weight:700;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:2px 7px">⚠ no SI#</span>'; })()
+                  ? '<span title="AutoCount invoice number — click to edit"' + _clk + 'color:#065F46;background:#ECFDF5;border:1px solid #A7F3D0">🧾 ' + escapeHtml(_si) + '</span>'
+                  : '<span title="No invoice number recorded — click to enter it"' + _clk + 'color:#92400E;background:#FFFBEB;border:1px solid #FDE68A">⚠ no SI#</span>'; })()
             : '') +
           (inviteLink
             ? '<a class="cd-wa" href="' + inviteLink + '" target="_blank" onclick="event.stopPropagation()" title="Open WhatsApp group">💬 WA</a>'
@@ -2289,16 +2290,44 @@ function maybeResendWelcomeOnPsvEntry(lead, newStatus, prevStatus) {
 // clear appt fields + set new status atomically.
 // Returns { ok, handled }: ok=false → abort move; handled=true → webhook
 // already updated CRM, caller should skip the normal updateStatus call.
-// Round 137 — on the move to Pending Balance, prompt for the AutoCount invoice
-// (SI) number. Their protocol: exactly one real invoice is raised at job end,
-// and that raise is this move — so the number is in front of the admin. Typed,
-// not detected (no WA bot left). SKIPPABLE: blank/cancel proceeds, and a blank
-// 'AutoCount SI No' on a Pending Balance card is a deliberate signal.
+// Round 137 — AutoCount invoice (SI) capture. Protocol: exactly one real invoice
+// is raised at job end = the move to Pending Balance, so the number is in front
+// of the admin. Typed, not detected (no WA bot left). Format SI-MMYY-NNN; the
+// server validates + normalizes and rejects a typo, so the toast/card reflect
+// the SERVER result, never the raw keystrokes. Skippable — blank is a signal.
+function _askSi(lead) {
+  const who = (lead && (lead['Name'] || lead['Phone'])) || 'this job';
+  const cur = String((lead && lead['AutoCount SI No']) || '');
+  const v = window.prompt('AutoCount invoice (SI) number for ' + who +
+    ':\n\nFormat: SI-MMYY-NNN  (e.g. SI-0826-045)\nLeave blank to skip / clear.', cur);
+  return v == null ? null : String(v).trim();   // null = cancelled
+}
 function promptSiNo(newStatus, lead) {
   if (newStatus !== 'Pending Balance') return '';
-  const who = (lead && (lead['Name'] || lead['Phone'])) || 'this job';
-  const v = window.prompt('AutoCount invoice (SI) number for ' + who + ':\n\nYou just raised it — type the number.\nLeave blank if the invoice isn’t raised yet.', '');
-  return v == null ? '' : String(v).trim();
+  const v = _askSi(lead);
+  return v == null ? '' : v;
+}
+// Build the Pending-Balance toast suffix from the server's result, not the
+// client input — so a rejected typo reads as "not saved", never as success.
+function _siToastSuffix(newStatus, r) {
+  if (newStatus !== 'Pending Balance') return '';
+  if (r.siNoStatus === 'ok') return ' · 🧾 ' + r.siNo;
+  if (r.siNoStatus === 'invalid') return ' · ⚠ invoice # not recognised (SI-MMYY-NNN) — not saved';
+  return ' · ⚠ no invoice # recorded';
+}
+// Set / correct / clear the SI number from the clickable card badge — fixes a
+// rejected typo or fills it after the payment auto-jump, without a phase move.
+async function setSiFromCard(phone) {
+  const lead = allLeads.find(l => String(l['Phone']) === phone);
+  if (!lead) return;
+  const v = _askSi(lead);
+  if (v == null) return;   // cancelled — no change
+  const r = await apiCall('setSiNo', { phone: phone, siNo: v });
+  if (!r || r.status !== 'ok') { toast('Save failed: ' + ((r && r.message) || 'unknown'), 'error'); return; }
+  if (r.siNoStatus === 'invalid') { toast('⚠ Invoice # not recognised (SI-MMYY-NNN) — not saved', 'error'); return; }
+  lead['AutoCount SI No'] = r.siNo || '';
+  toast(r.siNo ? '🧾 Invoice ' + r.siNo + ' saved' : 'Invoice # cleared', 'success');
+  render();
 }
 
 async function preMoveSvcGate(lead, newStatus) {
@@ -2409,12 +2438,12 @@ async function moveCardFromButton(phone, newStatus, currentStatus) {
     siNo: _siNo
   });
   if (r.status === 'ok') {
-    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus) +
-      (newStatus === 'Pending Balance' ? (_siNo ? ' · SI ' + _siNo : ' · ⚠ no invoice # recorded') : ''), 'success');
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus) + _siToastSuffix(newStatus, r),
+      (newStatus === 'Pending Balance' && r.siNoStatus === 'invalid') ? 'warn' : 'success');
     if (lead) {
       lead['Status'] = newStatus;
       lead['Status Changed At'] = new Date().toISOString();
-      if (newStatus === 'Pending Balance') lead['AutoCount SI No'] = _siNo;
+      if (newStatus === 'Pending Balance') lead['AutoCount SI No'] = r.siNo || '';
     }
     maybeResendWelcomeOnPsvEntry(lead, newStatus, currentStatus);
     render();
@@ -2483,12 +2512,12 @@ async function handleDragAdd(evt) {
   });
 
   if (r.status === 'ok') {
-    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus) +
-      (newStatus === 'Pending Balance' ? (_siNo ? ' · SI ' + _siNo : ' · ⚠ no invoice # recorded') : ''), 'success');
+    toast('Moved to ' + (STATUS_LABELS[newStatus] || newStatus) + _siToastSuffix(newStatus, r),
+      (newStatus === 'Pending Balance' && r.siNoStatus === 'invalid') ? 'warn' : 'success');
     if (lead) {
       lead['Status'] = newStatus;
       lead['Status Changed At'] = new Date().toISOString();
-      if (newStatus === 'Pending Balance') lead['AutoCount SI No'] = _siNo;
+      if (newStatus === 'Pending Balance') lead['AutoCount SI No'] = r.siNo || '';
     }
     maybeResendWelcomeOnPsvEntry(lead, newStatus, oldStatus);
   } else {
