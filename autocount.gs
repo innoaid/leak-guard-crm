@@ -104,6 +104,27 @@ function handleSaveEstimation(body) {
     Object.keys(rowObj).forEach(function(k) {
       if (h.colByName[k]) sheet.getRange(rowNum, h.colByName[k]).setValue(rowObj[k]);
     });
+
+    // Round 138 — propagate the estimation total to the LEAD row here, where it
+    // ALWAYS runs (create AND amend) with the current grandTotal. Previously
+    // 'Quotation (RM)' was only written by the later syncAutocount step, so an
+    // amend whose AutoCount sync was skipped/failed left the lead — and the
+    // caller call list — showing the pre-amendment price (e.g. Jeffrey Chan:
+    // amended to RM4690 but the list still read RM3791). The estimation grand
+    // total is the source of truth for the quote (it's what the customer's PDF
+    // shows), so this decouples the displayed amount from the AutoCount sync.
+    // Best-effort: never let a lead-write failure block the estimation save.
+    try {
+      var _leadSheet = getSheet();
+      var _leadRow = findRowByPhone(_leadSheet, body.phone);
+      if (_leadRow) {
+        var _gt = Number(body.grandTotal) || 0;
+        if (_gt > 0) { try { setCellByHeader(_leadSheet, _leadRow, 'Quotation (RM)', _gt); } catch (_e) {} }
+        var _sq = Number(body.totalSqft) || 0;
+        if (_sq > 0) { try { setCellByHeader(_leadSheet, _leadRow, 'Total Sqft', _sq); } catch (_e) {} }
+      }
+    } catch (_e) { /* best-effort */ }
+
     return jsonResponse({status: 'ok', seNo: body.seNo, rowNum: rowNum});
   } finally {
     lock.releaseLock();
