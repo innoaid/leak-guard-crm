@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Booking Chase</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 48px}
+.hdr{background:#2D2A6E;color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:5}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .sub{font-size:12px;opacity:.85;margin-top:2px}
+.hdr .tools{margin-top:10px;display:flex;gap:8px}
+.hdr .tools button{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.hdr .tools button.on{background:#fff;color:#2D2A6E;border-color:#fff}
+.search{margin-top:10px;width:100%;border:1px solid rgba(255,255,255,.3);border-radius:9px;padding:9px 12px;font-size:14px;background:rgba(255,255,255,.14);color:#fff;font-family:inherit}
+.search::placeholder{color:rgba(255,255,255,.7)}
+.search:focus{outline:none;background:#fff;color:#111827}
+.wrap{max-width:560px;margin:0 auto;padding:14px}
+.sect-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#374151;padding:4px 2px 10px}
+.card{background:#fff;border:1px solid #e5e7eb;border-left:4px solid #10B981;border-radius:12px;padding:13px;margin-bottom:11px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card.warm{border-left-color:#F59E0B}
+.card.cold{border-left-color:#9CA3AF}
+.card.snz{opacity:.5;border-left-color:#A5B4FC;background:#FbFbFe}
+.card.gone{opacity:.4;pointer-events:none}
+.cname{font-size:16px;font-weight:800}
+.badges{margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px}
+.b-status{background:#EEF2FF;color:#2D2A6E}
+.b-loc{background:#F3F4F6;color:#374151}
+.b-wait{background:#ECFDF5;color:#065F46}
+.b-wait.warm{background:#FEF3C7;color:#92400E}
+.b-wait.cold{background:#F3F4F6;color:#6B7280}
+.b-snz{background:#E0E7FF;color:#3730A3}
+.b-src{background:#F5F3FF;color:#6D28D9}
+.comp{margin-top:8px;display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:7px;border:1px solid}
+.chip.ok{background:#ECFDF5;border-color:#A7F3D0;color:#065F46}
+.chip.no{background:#FEF2F2;border-color:#FECACA;color:#991B1B}
+.meta{font-size:12.5px;color:#6b7280;margin-top:7px;line-height:1.5}
+.meta b{color:#374151}
+.hist{margin-top:8px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px}
+.hist-h{font-size:11px;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px}
+.hist-row{font-size:12px;color:#374151;line-height:1.5;padding:2px 0;border-top:.5px solid #F3F4F6}
+.hist-row:first-of-type{border-top:none}
+.hist-d{font-weight:700;color:#6B7280}
+.links{margin-top:9px;display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:13px;color:#2563EB;text-decoration:none;border:1px solid #BFDBFE;border-radius:8px;padding:6px 12px;background:#EFF6FF}
+.acts{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+.abtn{flex:1;min-width:calc(50% - 4px);border:none;border-radius:9px;padding:10px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#fff}
+.abtn.book{background:#10B981}.abtn.edit{background:#2563EB}.abtn.fu{background:#F59E0B}.abtn.nt{background:#6B7280}
+.panel{display:none;margin-top:9px;border-radius:10px;padding:10px}
+.panel.open{display:block}
+.edit-p{background:#EFF6FF;border:1px solid #BFDBFE}
+.fu-p{background:#FFFBEB;border:1px solid #FDE68A}
+.nt-p{background:#F3F4F6;border:1px solid #E5E7EB}
+.panel label{font-size:12px;font-weight:700;color:#4B5563;display:block;margin:6px 0 4px}
+.panel input,.panel textarea{width:100%;border:1px solid #D1D5DB;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;background:#fff}
+.panel .go{color:#fff;border:none;border-radius:8px;padding:10px;width:100%;font-weight:700;font-size:14px;cursor:pointer;margin-top:8px;background:#10B981}
+.edit-p .go{background:#2563EB}
+.nophone{margin-top:22px}
+.nophone .card{border-left-color:#EF4444;opacity:.85}
+.allclear{text-align:center;color:#059669;padding:60px 20px;font-size:16px;font-weight:700}
+.spin{text-align:center;color:#6b7280;padding:60px 20px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+.toast.on{opacity:1}
+.toast.err{background:#DC2626}.toast.ok{background:#059669}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>📞 Booking Chase</h1>
+  <div class="sub" id="hSub">Loading…</div>
+  <div class="tools">
+    <button data-win="7" onclick="setWin(7)">🔥 ≤7d</button>
+    <button data-win="14" class="on" onclick="setWin(14)">≤14d</button>
+    <button data-win="30" onclick="setWin(30)">≤30d</button>
+    <button data-win="999" onclick="setWin(999)">All</button>
+    <button onclick="load()">↻</button>
+  </div>
+  <input class="search" id="q" type="search" placeholder="🔍 Search name, phone, area…" oninput="setSearch(this.value)">
+</div>
+<div class="wrap" id="list"><div class="spin">Scanning…</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// Un-booked leads > 24h old that still need a site visit booked. Read-only list
+// via public gviz; every write reuses an already-live Apps Script action:
+//   book  -> the /appointment/?p= booking page   (availability + LG-Booking)
+//   edit  -> updateLeadDetails                    (fill missing name/addr/etc)
+//   note/follow-up -> logScanNote + phaseScanState (notes + snooze, round 134/137)
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SECRET = 'ABC';
+const SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+const SHEET_NAME = 'Leak Guard Leads';
+const BOOK_URL = 'https://leakguard.my/appointment/';
+const BY = (new URLSearchParams(location.search).get('by') || 'Chase').trim();
+
+// Only these pre-booking statuses need chasing (booked / dead are excluded).
+const OPEN_STATUSES = ['New Lead','Pending Invitation','Pending Site Visit'];
+const AGE_MIN_H = 24;
+
+let DATA = [];      // actionable (has phone)
+let NOPHONE = [];   // matched but no phone — can't call/book
+let STATE = {};     // phaseScanState: last8(phone) -> {notes:[{date,by,note}], snoozeUntil}
+let SEARCH = '';
+let WIN = 14;       // age window in days (999 = all). Default 14d: the actionable
+                    // chase window — most eligible leads older than that are cold.
+
+function setWin(d){ WIN=d; document.querySelectorAll('.hdr .tools button[data-win]').forEach(function(b){ b.classList.toggle('on', +b.dataset.win===d); }); render(); }
+function winMatch(c){ if(WIN>=999) return true; return c.ageH!=null && c.ageH <= WIN*24; }
+
+function toast(msg, kind){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast on '+(kind||''); setTimeout(function(){ t.className='toast '+(kind||''); },2600); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
+function todayStr(){ return new Date(Date.now()+8*3600*1000).toISOString().slice(0,10); }
+function tomorrowStr(){ return new Date(Date.now()+8*3600*1000+86400000).toISOString().slice(0,10); }
+function last8(p){ p=String(p||'').replace(/\D/g,''); return p.slice(-8); }
+function cardState(c){ return STATE[last8(c.phone)] || null; }
+function snoozed(c){ const s=cardState(c); return !!(s && s.snoozeUntil && s.snoozeUntil > todayStr()); }
+function waitLabel(h){ if(h==null) return '?'; const d=Math.floor(h/24); return d>=1 ? d+'d' : Math.round(h)+'h'; }
+
+async function api(action, payload){
+  const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify(Object.assign({action:action, secret:SECRET}, payload)) });
+  return r.json();
+}
+async function gvizRows(){
+  const url='https://docs.google.com/spreadsheets/d/'+SHEET_ID+'/gviz/tq?tqx=out:json&sheet='+encodeURIComponent(SHEET_NAME)+'&nocache='+Date.now();
+  const txt=await (await fetch(url)).text();
+  const m=txt.match(/setResponse\(([\s\S]*)\)/); if(!m) return [];
+  const j=JSON.parse(m[1]); const cols=j.table.cols.map(function(c){return (c.label||'').trim();});
+  return (j.table.rows||[]).map(function(r){ const o={}; cols.forEach(function(lbl,i){ if(!lbl) return; const c=r.c[i]; o[lbl]= c ? (c.v!=null?c.v:(c.f!=null?c.f:'')) : ''; }); return o; });
+}
+
+function parseTs(r){
+  let t = Date.parse(String(r['Timestamp']||''));
+  if (isNaN(t)) { const dli=String(r['Date Lead In']||'').slice(0,10); if(/^\d{4}-\d{2}-\d{2}$/.test(dli)) t=Date.parse(dli+'T00:00:00+08:00'); }
+  return isNaN(t) ? 0 : t;
+}
+
+async function load(){
+  const list=document.getElementById('list'); list.innerHTML='<div class="spin">Scanning…</div>';
+  document.getElementById('hSub').textContent='Scanning…';
+  try {
+    const [rows, st] = await Promise.all([ gvizRows(), api('phaseScanState',{}).catch(function(){return null;}) ]);
+    STATE = (st && st.map) || {};
+    const now = Date.now();
+    DATA = []; NOPHONE = [];
+    rows.forEach(function(r){
+      const status = String(r['Status']||'').trim();
+      if (OPEN_STATUSES.indexOf(status) === -1) return;               // booked or dead
+      if (String(r['Date Appt Confirmed']||'').trim()) return;         // already has an appointment
+      const ts = parseTs(r);
+      const ageH = ts ? (now-ts)/3600000 : 999999;                    // unknown date -> treat as old
+      if (ageH < AGE_MIN_H) return;                                    // too fresh, give them time
+      const phone = String(r['Phone']||'').trim();
+      const c = {
+        name: String(r['Name']||'').trim(),
+        phone: phone,
+        location: String(r['Location']||'').trim(),
+        fullAddress: String(r['Full Address']||'').trim(),
+        problem: String(r['Problem Type']||r['Slab or toilet leaking']||'').trim(),
+        source: String(r['Source']||'').trim(),
+        status: status,
+        ageH: ts ? ageH : null
+      };
+      if (last8(phone).length >= 8) DATA.push(c); else NOPHONE.push(c);
+    });
+    DATA.sort(function(a,b){ return (a.ageH||1e9)-(b.ageH||1e9); });   // freshest (hottest) first
+    render();
+  } catch(e){
+    list.innerHTML='<div class="allclear" style="color:#DC2626">⚠ Scan failed: '+esc(e.message||e)+'</div>';
+    document.getElementById('hSub').textContent='Load failed.';
+  }
+}
+
+function setSearch(v){ SEARCH=String(v||'').trim().toLowerCase(); render(); }
+function match(c){
+  if(!SEARCH) return true;
+  const qd=SEARCH.replace(/\D/g,'');
+  if(String(c.name||'').toLowerCase().indexOf(SEARCH)>=0) return true;
+  if(String(c.location||'').toLowerCase().indexOf(SEARCH)>=0) return true;
+  if(String(c.fullAddress||'').toLowerCase().indexOf(SEARCH)>=0) return true;
+  if(qd && String(c.phone||'').replace(/\D/g,'').indexOf(qd)>=0) return true;
+  return false;
+}
+function sortSnoozeLast(cards){
+  return cards.slice().sort(function(a,b){
+    const sa=snoozed(a)?1:0, sb=snoozed(b)?1:0;
+    if(sa!==sb) return sa-sb;
+    if(sa){ const da=(cardState(a)||{}).snoozeUntil||'', db=(cardState(b)||{}).snoozeUntil||''; return da<db?-1:(da>db?1:0); }
+    return (a.ageH||1e9)-(b.ageH||1e9);
+  });
+}
+
+let CARDIDX=0;
+function render(){
+  const list=document.getElementById('list');
+  const inWin=function(c){ return match(c)&&winMatch(c); };
+  const cards=sortSnoozeLast(DATA.filter(inWin));
+  const active=cards.filter(function(c){return !snoozed(c);}).length;
+  const np=NOPHONE.filter(inWin);
+  const winLbl = WIN>=999 ? 'all ages' : ('≤'+WIN+'d');
+  document.getElementById('hSub').textContent = active+' to chase ('+winLbl+')'+(np.length?(' · '+np.length+' no-phone'):'')+' · '+DATA.length+' eligible total'+(SEARCH?' · filtered':'');
+  CARDIDX=0;
+  let html='';
+  if(cards.length){
+    html += '<div class="sect-title">Un-booked &gt; 24h · '+winLbl+' · '+cards.length+'</div>' + cards.map(cardHtml).join('');
+  } else {
+    html += '<div class="allclear">'+(SEARCH?'No match for “'+esc(SEARCH)+'”.':'✅ All caught up — no un-booked leads over 24h.')+'</div>';
+  }
+  if(np.length){
+    html += '<div class="nophone"><div class="sect-title">⚠ No phone — can’t call/book ('+np.length+')</div>' + np.map(cardHtml).join('') + '</div>';
+  }
+  list.innerHTML=html;
+}
+
+function comp(label, ok){ return '<span class="chip '+(ok?'ok':'no')+'">'+label+(ok?' ✓':' ✗')+'</span>'; }
+
+function cardHtml(c){
+  const id='c'+(CARDIDX++); window['C_'+id]=c;
+  const tel=String(c.phone||'').replace(/\D/g,'');
+  const snz=snoozed(c); const snzUntil=snz?((cardState(c)||{}).snoozeUntil||''):'';
+  const cold = c.ageH!=null && c.ageH>=168;   // 7d+ going cold
+  const warm = c.ageH!=null && c.ageH>=72 && c.ageH<168;
+  const cls='card'+(snz?' snz':(cold?' cold':(warm?' warm':'')));
+  const waitCls='badge b-wait'+(cold?' cold':(warm?' warm':''));
+  const hist=(cardState(c)||{}).notes||[];
+  const histHtml = hist.length ? '<div class="hist"><div class="hist-h">📝 Notes</div>'+hist.map(function(n){ return '<div class="hist-row"><span class="hist-d">'+esc(n.date)+(n.by?' · '+esc(n.by):'')+'</span> '+esc(n.note)+'</div>'; }).join('')+'</div>' : '';
+  const hasPhone = last8(c.phone).length>=8;
+  return '<div class="'+cls+'" id="'+id+'">'+
+    '<div class="cname">'+esc(c.name||'(no name)')+'</div>'+
+    '<div class="badges">'+
+      '<span class="badge b-status">'+esc(c.status)+'</span>'+
+      (c.ageH!=null ? '<span class="'+waitCls+'">'+waitLabel(c.ageH)+' waiting</span>' : '<span class="badge b-wait cold">age ?</span>')+
+      (c.location ? '<span class="badge b-loc">'+esc(c.location)+'</span>' : '')+
+      (c.source ? '<span class="badge b-src">'+esc(c.source)+'</span>' : '')+
+      (snz ? '<span class="badge b-snz">⏳ '+esc(snzUntil)+'</span>' : '')+
+    '</div>'+
+    '<div class="comp">'+
+      comp('Name', !!c.name)+comp('Phone', hasPhone)+comp('Area', !!c.location)+comp('Address', !!c.fullAddress)+comp('Problem', !!c.problem)+
+    '</div>'+
+    (c.problem||c.fullAddress ? '<div class="meta">'+(c.problem?'<b>Problem:</b> '+esc(c.problem):'')+(c.problem&&c.fullAddress?'<br>':'')+(c.fullAddress?'<b>Addr:</b> '+esc(c.fullAddress):'')+'</div>' : '')+
+    histHtml+
+    '<div class="links">'+
+      (tel ? '<a href="tel:'+tel+'">📞 Call '+esc(c.phone)+'</a>' : '<span style="font-size:12px;color:#991B1B">no phone on file</span>')+
+    '</div>'+
+    '<div class="acts">'+
+      (hasPhone ? '<button class="abtn book" onclick="bookLead(\''+id+'\')">📅 Book site visit</button>' : '')+
+      (hasPhone ? '<button class="abtn edit" onclick="toggleP(\''+id+'\',\'ed\')">✏️ Complete details</button>' : '')+
+      (hasPhone ? '<button class="abtn fu" onclick="toggleP(\''+id+'\',\'fu\')">📅 Follow-up</button>' : '')+
+      (hasPhone ? '<button class="abtn nt" onclick="toggleP(\''+id+'\',\'nt\')">📝 Note</button>' : '')+
+    '</div>'+
+    '<div class="panel edit-p" id="'+id+'_ed">'+
+      '<label>Name</label><input id="'+id+'_name" value="'+esc(c.name)+'">'+
+      '<label>Area / State</label><input id="'+id+'_loc" list="states" value="'+esc(c.location)+'" placeholder="e.g. Selangor">'+
+      '<label>Full address (the team needs this for the visit)</label><textarea id="'+id+'_addr" rows="2" placeholder="unit, street, postcode, city">'+esc(c.fullAddress)+'</textarea>'+
+      '<label>Problem</label><input id="'+id+'_prob" value="'+esc(c.problem)+'" placeholder="e.g. roof leaking, wall seepage">'+
+      '<button class="go" onclick="saveComplete(\''+id+'\')">Save to CRM</button>'+
+    '</div>'+
+    '<div class="panel fu-p" id="'+id+'_fu">'+
+      '<label>Call back on (hides the card until then)</label>'+
+      '<input type="date" id="'+id+'_fud" min="'+todayStr()+'" value="'+tomorrowStr()+'">'+
+      '<label>📝 Note (traceable)</label><textarea id="'+id+'_fun" rows="2" placeholder="e.g. no answer, WhatsApp sent, call after 6pm"></textarea>'+
+      '<button class="go" style="background:#F59E0B" onclick="saveFollowup(\''+id+'\')">Save follow-up</button>'+
+    '</div>'+
+    '<div class="panel nt-p" id="'+id+'_nt">'+
+      '<label>📝 Note (traceable — card stays)</label><textarea id="'+id+'_ntn" rows="2" placeholder="log a note for this lead"></textarea>'+
+      '<button class="go" style="background:#6B7280" onclick="saveNote(\''+id+'\')">Save note</button>'+
+    '</div>'+
+  '</div>';
+}
+
+function bookLead(id){
+  const c=window['C_'+id]; if(!c) return;
+  const tel=String(c.phone||'').replace(/\D/g,'');
+  window.open(BOOK_URL+'?p='+encodeURIComponent(tel), '_blank');
+  toast('Opened booking page — pick the slot, then Re-scan when done', 'ok');
+}
+function toggleP(id, which){
+  ['ed','fu','nt'].forEach(function(k){ const p=document.getElementById(id+'_'+k); if(p && k!==which) p.classList.remove('open'); });
+  const t=document.getElementById(id+'_'+which); if(t) t.classList.toggle('open');
+}
+function pushNote(phone, note){
+  const k=last8(phone); STATE[k]=STATE[k]||{notes:[],snoozeUntil:''}; STATE[k].notes=STATE[k].notes||[];
+  if(note) STATE[k].notes.unshift({date:todayStr(), by:BY, note:note}); return STATE[k];
+}
+async function saveComplete(id){
+  const c=window['C_'+id]; if(!c) return;
+  const name=document.getElementById(id+'_name').value.trim();
+  const loc=document.getElementById(id+'_loc').value.trim();
+  const addr=document.getElementById(id+'_addr').value.trim();
+  const prob=document.getElementById(id+'_prob').value.trim();
+  const res=await api('updateLeadDetails', { phone:c.phone, name:name, location:loc, fullAddress:addr, problemType:prob, changedBy:'Chase:'+BY });
+  if(res && res.status==='ok'){
+    c.name=name; c.location=loc; c.fullAddress=addr; c.problem=prob;
+    toast('Details saved ✓', 'ok'); render();
+  } else { toast('Failed: '+((res&&res.message)||'error'), 'err'); }
+}
+async function saveFollowup(id){
+  const c=window['C_'+id]; if(!c) return;
+  const date=document.getElementById(id+'_fud').value;
+  const note=document.getElementById(id+'_fun').value.trim();
+  if(!date){ toast('Pick a date','err'); return; }
+  const res=await api('logScanNote', { phone:c.phone, by:BY, followUpDate:date, note:note });
+  if(res && res.status==='ok'){ toast('Call-back set → '+date+' ✓','ok'); pushNote(c.phone, note).snoozeUntil=date; render(); }
+  else { toast('Failed: '+((res&&res.message)||'error'),'err'); }
+}
+async function saveNote(id){
+  const c=window['C_'+id]; if(!c) return;
+  const note=document.getElementById(id+'_ntn').value.trim();
+  if(!note){ toast('Type a note','err'); return; }
+  const res=await api('logScanNote', { phone:c.phone, by:BY, note:note });
+  if(res && res.status==='ok'){ toast('Note saved ✓','ok'); pushNote(c.phone, note); render(); }
+  else { toast('Failed: '+((res&&res.message)||'error'),'err'); }
+}
+
+load();
+</script>
+<datalist id="states">
+  <option value="Kuala Lumpur"><option value="Selangor"><option value="Putrajaya"><option value="Negeri Sembilan"><option value="Johor">
+</datalist>
+</body>
+</html>
