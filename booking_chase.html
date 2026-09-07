@@ -117,6 +117,11 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 function todayStr(){ return new Date(Date.now()+8*3600*1000).toISOString().slice(0,10); }
 function tomorrowStr(){ return new Date(Date.now()+8*3600*1000+86400000).toISOString().slice(0,10); }
 function last8(p){ p=String(p||'').replace(/\D/g,''); return p.slice(-8); }
+// The public gviz read can lag a minute or two behind a write, so a just-
+// cancelled card can flicker back on the next refresh. Suppress it locally for
+// 10 min so it stays gone until the sheet read catches up.
+function suppress(phone){ try{ const m=JSON.parse(localStorage.getItem('chaseSuppress')||'{}'); m[last8(phone)]=Date.now()+600000; localStorage.setItem('chaseSuppress', JSON.stringify(m)); }catch(_e){} }
+function isSuppressed(phone){ try{ const m=JSON.parse(localStorage.getItem('chaseSuppress')||'{}'); const e=m[last8(phone)]; return !!(e && e>Date.now()); }catch(_e){ return false; } }
 function cardState(c){ return STATE[last8(c.phone)] || null; }
 function snoozed(c){ const s=cardState(c); return !!(s && s.snoozeUntil && s.snoozeUntil > todayStr()); }
 function waitLabel(h){ if(h==null) return '?'; const d=Math.floor(h/24); return d>=1 ? d+'d' : Math.round(h)+'h'; }
@@ -156,6 +161,7 @@ async function load(){
       const ageH = ts ? (now-ts)/3600000 : 999999;                    // unknown date -> treat as old
       if (ageH < AGE_MIN_H) return;                                    // too fresh, give them time
       const phone = String(r['Phone']||'').trim();
+      if (isSuppressed(phone)) return;   // just cancelled here — hide while gviz catches up
       const c = {
         name: String(r['Name']||'').trim(),
         phone: phone,
@@ -311,6 +317,7 @@ async function cancelCard(id, status, reason){
   const r=await api('updateStatus', { phone:c.phone, status:status, changedBy:'Chase:'+BY });
   if(!r || r.status!=='ok'){ toast('Failed: '+((r&&r.message)||'error'),'err'); return; }
   try { await api('logScanNote', { phone:c.phone, by:BY, note:'Cancelled ('+reason+') → '+status }); } catch(_e){}
+  suppress(c.phone);   // keep it gone across refreshes while the sheet read catches up
   toast('Removed → '+status+' ✓','ok');
   const el=document.getElementById(id); if(el) el.classList.add('gone');
 }
