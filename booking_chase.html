@@ -48,8 +48,9 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .links a{font-size:13px;color:#2563EB;text-decoration:none;border:1px solid #BFDBFE;border-radius:8px;padding:6px 12px;background:#EFF6FF}
 .acts{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
 .abtn{flex:1;min-width:calc(50% - 4px);border:none;border-radius:9px;padding:10px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#fff}
-.abtn.book{background:#10B981}.abtn.edit{background:#2563EB}.abtn.fu{background:#F59E0B}.abtn.nt{background:#6B7280}
+.abtn.book{background:#10B981}.abtn.edit{background:#2563EB}.abtn.fu{background:#F59E0B}.abtn.nt{background:#6B7280}.abtn.cancel{background:#EF4444}
 .abtn.book.alt{background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7}
+.cancel-p{background:#FEF2F2;border:1px solid #FECACA}
 .panel{display:none;margin-top:9px;border-radius:10px;padding:10px}
 .panel.open{display:block}
 .edit-p{background:#EFF6FF;border:1px solid #BFDBFE}
@@ -256,6 +257,12 @@ function cardHtml(c){
       (hasPhone ? '<button class="abtn edit" onclick="toggleP(\''+id+'\',\'ed\')">✏️ Complete details</button>' : '')+
       (hasPhone ? '<button class="abtn fu" onclick="toggleP(\''+id+'\',\'fu\')">📅 Follow-up</button>' : '')+
       (hasPhone ? '<button class="abtn nt" onclick="toggleP(\''+id+'\',\'nt\')">📝 Note</button>' : '')+
+      '<button class="abtn cancel" onclick="toggleP(\''+id+'\',\'cx\')">❌ Cancel</button>'+
+    '</div>'+
+    '<div class="panel cancel-p" id="'+id+'_cx">'+
+      '<label>Remove this card — why?</label>'+
+      '<button class="go" style="background:#EF4444" onclick="cancelCard(\''+id+'\',\'Lost\',\'wrong enquiry\')">🚫 Wrong enquiry / junk → Lost</button>'+
+      '<button class="go" style="background:#B91C1C;margin-top:6px" onclick="cancelCard(\''+id+'\',\'Rejected\',\'already done\')">✅ Already done / handled → Rejected</button>'+
     '</div>'+
     '<div class="panel edit-p" id="'+id+'_ed">'+
       '<label>Name</label><input id="'+id+'_name" value="'+esc(c.name)+'">'+
@@ -292,8 +299,20 @@ function bookLead(id, team){
   toast('Opened '+team+' booking — pick the slot, then Re-scan when done', 'ok');
 }
 function toggleP(id, which){
-  ['ed','fu','nt'].forEach(function(k){ const p=document.getElementById(id+'_'+k); if(p && k!==which) p.classList.remove('open'); });
+  ['ed','fu','nt','cx'].forEach(function(k){ const p=document.getElementById(id+'_'+k); if(p && k!==which) p.classList.remove('open'); });
   const t=document.getElementById(id+'_'+which); if(t) t.classList.toggle('open');
+}
+// Cancel a card off the chase list — 'Lost' (wrong enquiry) or 'Rejected'
+// (already done). Sets the status (removes it from the open funnel) and logs
+// the reason as a traceable note. Card greys out and drops on the next re-scan.
+async function cancelCard(id, status, reason){
+  const c=window['C_'+id]; if(!c) return;
+  if(!confirm('Remove '+(c.name||'this lead')+' from the chase list?\n\nReason: '+reason+'\nStatus → '+status)) return;
+  const r=await api('updateStatus', { phone:c.phone, status:status, changedBy:'Chase:'+BY });
+  if(!r || r.status!=='ok'){ toast('Failed: '+((r&&r.message)||'error'),'err'); return; }
+  try { await api('logScanNote', { phone:c.phone, by:BY, note:'Cancelled ('+reason+') → '+status }); } catch(_e){}
+  toast('Removed → '+status+' ✓','ok');
+  const el=document.getElementById(id); if(el) el.classList.add('gone');
 }
 function pushNote(phone, note){
   const k=last8(phone); STATE[k]=STATE[k]||{notes:[],snoozeUntil:''}; STATE[k].notes=STATE[k].notes||[];
