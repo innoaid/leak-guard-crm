@@ -49,6 +49,7 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .acts{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
 .abtn{flex:1;min-width:calc(50% - 4px);border:none;border-radius:9px;padding:10px 8px;font-size:13px;font-weight:700;cursor:pointer;color:#fff}
 .abtn.book{background:#10B981}.abtn.edit{background:#2563EB}.abtn.fu{background:#F59E0B}.abtn.nt{background:#6B7280}
+.abtn.book.alt{background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7}
 .panel{display:none;margin-top:9px;border-radius:10px;padding:10px}
 .panel.open{display:block}
 .edit-p{background:#EFF6FF;border:1px solid #BFDBFE}
@@ -246,7 +247,12 @@ function cardHtml(c){
       (tel ? '<a href="tel:'+tel+'">📞 Call '+esc(c.phone)+'</a>' : '<span style="font-size:12px;color:#991B1B">no phone on file</span>')+
     '</div>'+
     '<div class="acts">'+
-      (hasPhone ? '<button class="abtn book" onclick="bookLead(\''+id+'\')">📅 Book site visit</button>' : '')+
+      (hasPhone ? (function(){
+        var jb=leadIsJB(c);
+        var kl='<button class="abtn book'+(jb?' alt':'')+'" onclick="bookLead(\''+id+'\',\'KL\')">📅 Book KL</button>';
+        var jbb='<button class="abtn book'+(jb?'':' alt')+'" onclick="bookLead(\''+id+'\',\'JB\')">📅 Book JB</button>';
+        return jb ? (jbb+kl) : (kl+jbb);   // likely team (solid) first
+      })() : '')+
       (hasPhone ? '<button class="abtn edit" onclick="toggleP(\''+id+'\',\'ed\')">✏️ Complete details</button>' : '')+
       (hasPhone ? '<button class="abtn fu" onclick="toggleP(\''+id+'\',\'fu\')">📅 Follow-up</button>' : '')+
       (hasPhone ? '<button class="abtn nt" onclick="toggleP(\''+id+'\',\'nt\')">📝 Note</button>' : '')+
@@ -271,11 +277,19 @@ function cardHtml(c){
   '</div>';
 }
 
-function bookLead(id){
+// Likely team from the lead's own text — used to pre-highlight KL vs JB.
+function leadIsJB(c){
+  const s=(c.location||'')+' '+(c.fullAddress||'');
+  return /(?:^|[^A-Za-z])(JB|JOHOR)(?:[^A-Za-z]|$)/i.test(s);
+}
+// Open the real booking page with an explicit team so it uses the right
+// calendar/slots even when the lead has no Johor address on file yet
+// (server would otherwise default to KL). team = 'KL' | 'JB'.
+function bookLead(id, team){
   const c=window['C_'+id]; if(!c) return;
   const tel=String(c.phone||'').replace(/\D/g,'');
-  window.open(BOOK_URL+'?p='+encodeURIComponent(tel), '_blank');
-  toast('Opened booking page — pick the slot, then Re-scan when done', 'ok');
+  window.open(BOOK_URL+'?p='+encodeURIComponent(tel)+'&team='+encodeURIComponent(team), '_blank');
+  toast('Opened '+team+' booking — pick the slot, then Re-scan when done', 'ok');
 }
 function toggleP(id, which){
   ['ed','fu','nt'].forEach(function(k){ const p=document.getElementById(id+'_'+k); if(p && k!==which) p.classList.remove('open'); });
