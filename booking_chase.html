@@ -51,6 +51,9 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .abtn.book{background:#10B981}.abtn.edit{background:#2563EB}.abtn.fu{background:#F59E0B}.abtn.nt{background:#6B7280}.abtn.cancel{background:#EF4444}
 .abtn.book.alt{background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7}
 .cancel-p{background:#FEF2F2;border:1px solid #FECACA}
+.mv{margin-top:6px;display:flex;gap:8px}
+.mv select{flex:1;border:1px solid #D1D5DB;border-radius:9px;padding:9px;font-size:13.5px;background:#fff;font-family:inherit}
+.mv button{border:none;border-radius:9px;padding:9px 16px;font-size:13.5px;font-weight:700;color:#fff;background:#7C3AED;cursor:pointer}
 .panel{display:none;margin-top:9px;border-radius:10px;padding:10px}
 .panel.open{display:block}
 .edit-p{background:#EFF6FF;border:1px solid #BFDBFE}
@@ -101,6 +104,9 @@ const BY = (new URLSearchParams(location.search).get('by') || 'Chase').trim();
 // Only these pre-booking statuses need chasing (booked / dead are excluded).
 const OPEN_STATUSES = ['New Lead','Pending Invitation','Pending Site Visit'];
 const AGE_MIN_H = 24;
+// Forward phases a chase lead can be shifted to when the client skips the site
+// inspection (Pending QT = go straight to quotation). All leave the chase list.
+const MOVE_PHASES = ['Pending QT','Quotation Sent','Pending I.Date','Pending Downpayment'];
 
 let DATA = [];      // actionable (has phone)
 let NOPHONE = [];   // matched but no phone — can't call/book
@@ -265,6 +271,9 @@ function cardHtml(c){
       (hasPhone ? '<button class="abtn nt" onclick="toggleP(\''+id+'\',\'nt\')">📝 Note</button>' : '')+
       '<button class="abtn cancel" onclick="toggleP(\''+id+'\',\'cx\')">❌ Cancel</button>'+
     '</div>'+
+    (hasPhone ? '<div style="font-size:11px;color:#6b7280;margin-top:10px">Client skips site visit → move to:</div>'+
+      '<div class="mv"><select id="'+id+'_mv">'+MOVE_PHASES.map(function(p){ return '<option value="'+esc(p)+'">→ '+esc(p)+'</option>'; }).join('')+'</select>'+
+      '<button onclick="moveCard(\''+id+'\')">Move</button></div>' : '')+
     '<div class="panel cancel-p" id="'+id+'_cx">'+
       '<label>Remove this card — why?</label>'+
       '<button class="go" style="background:#EF4444" onclick="cancelCard(\''+id+'\',\'Lost\',\'wrong enquiry\')">🚫 Wrong enquiry / junk → Lost</button>'+
@@ -311,6 +320,19 @@ function toggleP(id, which){
 // Cancel a card off the chase list — 'Lost' (wrong enquiry) or 'Rejected'
 // (already done). Sets the status (removes it from the open funnel) and logs
 // the reason as a traceable note. Card greys out and drops on the next re-scan.
+// Shift a card to a forward phase (e.g. Pending QT when the client skips the
+// site inspection). Sets the status via the live updateStatus; the card then
+// leaves the chase list.
+async function moveCard(id){
+  const c=window['C_'+id]; if(!c) return;
+  const phase=document.getElementById(id+'_mv').value;
+  if(!confirm('Move '+(c.name||'this lead')+' → '+phase+'?\n\n(Use when the client skips the site inspection.)')) return;
+  const r=await api('updateStatus', { phone:c.phone, status:phase, changedBy:'Chase:'+BY });
+  if(!r || r.status!=='ok'){ toast('Failed: '+((r&&r.message)||'error'),'err'); return; }
+  suppress(c.phone);
+  toast('Moved → '+phase+' ✓','ok');
+  const el=document.getElementById(id); if(el) el.classList.add('gone');
+}
 async function cancelCard(id, status, reason){
   const c=window['C_'+id]; if(!c) return;
   if(!confirm('Remove '+(c.name||'this lead')+' from the chase list?\n\nReason: '+reason+'\nStatus → '+status)) return;
