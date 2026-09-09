@@ -70,6 +70,32 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
 .toast.on{opacity:1}
 .toast.err{background:#DC2626}.toast.ok{background:#059669}
+/* Report view */
+.rep-ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.rep-ctrl button{background:#EEF2FF;color:#2D2A6E;border:1px solid #C7D2FE;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer}
+.rep-ctrl button.on{background:#2D2A6E;color:#fff;border-color:#2D2A6E}
+.rep-ctrl input[type=date]{border:1px solid #D1D5DB;border-radius:8px;padding:6px 9px;font-size:13px;font-family:inherit;background:#fff}
+.tiles{display:flex;gap:10px;margin-bottom:16px}
+.tile{flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 10px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.tile .n{font-size:26px;font-weight:800;line-height:1}
+.tile .l{font-size:11.5px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.3px;margin-top:5px}
+.tile.call .n{color:#2563EB}.tile.book .n{color:#059669}.tile.conf .n{color:#7C3AED}
+.rtbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:18px}
+.rtbl th,.rtbl td{padding:9px 10px;font-size:13px;text-align:left;border-top:1px solid #F3F4F6}
+.rtbl th{background:#F9FAFB;font-size:11px;font-weight:800;color:#6b7280;text-transform:uppercase;letter-spacing:.3px;border-top:none}
+.rtbl td.num,.rtbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+.rtbl tr td:first-child{font-weight:700}
+.day-h{font-size:13px;font-weight:800;color:#374151;margin:16px 2px 8px;display:flex;justify-content:space-between;align-items:baseline}
+.day-h .s{font-size:12px;font-weight:600;color:#6b7280}
+.evt{display:flex;gap:8px;align-items:flex-start;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:9px 11px;margin-bottom:7px}
+.evt .t{font-size:12px;font-weight:700;color:#6b7280;font-variant-numeric:tabular-nums;min-width:38px}
+.evt .k{font-size:15px;min-width:20px;text-align:center}
+.evt .b{flex:1;min-width:0}
+.evt .nm{display:block;font-size:13.5px;font-weight:700;color:#111827}
+.evt .sub{display:block;font-size:12px;color:#6b7280;margin-top:2px;word-break:break-word}
+.evt .who{font-size:11px;font-weight:700;color:#2D2A6E;background:#EEF2FF;border-radius:6px;padding:1px 7px;white-space:nowrap}
+.evt.b-book{border-left:3px solid #10B981}.evt.b-call{border-left:3px solid #2563EB}
+.conf-tag{display:inline-block;font-size:10.5px;font-weight:700;color:#5B21B6;background:#EDE9FE;border-radius:6px;padding:1px 6px;margin-left:6px}
 </style>
 </head>
 <body>
@@ -81,11 +107,13 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
     <button data-win="14" class="on" onclick="setWin(14)">≤14d</button>
     <button data-win="30" onclick="setWin(30)">≤30d</button>
     <button data-win="999" onclick="setWin(999)">All</button>
-    <button onclick="load()">↻</button>
+    <button onclick="refreshView()">↻</button>
+    <button id="repBtn" onclick="setView('report')" style="margin-left:auto">📊 Report</button>
   </div>
   <input class="search" id="q" type="search" placeholder="🔍 Search name, phone, area…" oninput="setSearch(this.value)">
 </div>
 <div class="wrap" id="list"><div class="spin">Scanning…</div></div>
+<div class="wrap" id="report" style="display:none"></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -257,7 +285,7 @@ function cardHtml(c){
     (c.problem||c.fullAddress ? '<div class="meta">'+(c.problem?'<b>Problem:</b> '+esc(c.problem):'')+(c.problem&&c.fullAddress?'<br>':'')+(c.fullAddress?'<b>Addr:</b> '+esc(c.fullAddress):'')+'</div>' : '')+
     histHtml+
     '<div class="links">'+
-      (tel ? '<a href="tel:'+tel+'">📞 Call '+esc(c.phone)+'</a>' : '<span style="font-size:12px;color:#991B1B">no phone on file</span>')+
+      (tel ? '<a href="tel:'+tel+'" onclick="logCall(\''+id+'\')">📞 Call '+esc(c.phone)+'</a>' : '<span style="font-size:12px;color:#991B1B">no phone on file</span>')+
     '</div>'+
     '<div class="acts">'+
       (hasPhone ? (function(){
@@ -311,8 +339,20 @@ function bookLead(id, team){
   const c=window['C_'+id]; if(!c) return;
   const tel=String(c.phone||'').replace(/\D/g,'');
   window.open(BOOK_URL+'?p='+encodeURIComponent(tel)+'&team='+encodeURIComponent(team), '_blank');
+  logChaseAct(c.phone, 'book', team);
   toast('Opened '+team+' booking — pick the slot, then Re-scan when done', 'ok');
 }
+// Log a call/book action to the Calls sheet for the daily report. Fire-and-
+// forget; a small dedupe window swallows accidental double-taps on the same
+// card. Attribution = BY (open the page as ?by=<name> per caller).
+const _actSeen={};
+function logChaseAct(phone, kind, team){
+  const k=last8(phone)+'|'+kind;
+  if(_actSeen[k] && Date.now()-_actSeen[k] < 8000) return;   // ignore double-tap
+  _actSeen[k]=Date.now();
+  api('logChaseAct', { phone:phone, by:BY, kind:kind, team:team||'' }).catch(function(){});
+}
+function logCall(id){ const c=window['C_'+id]; if(c) logChaseAct(c.phone, 'call'); }
 function toggleP(id, which){
   ['ed','fu','nt','cx'].forEach(function(k){ const p=document.getElementById(id+'_'+k); if(p && k!==which) p.classList.remove('open'); });
   const t=document.getElementById(id+'_'+which); if(t) t.classList.toggle('open');
@@ -375,6 +415,108 @@ async function saveNote(id){
   const res=await api('logScanNote', { phone:c.phone, by:BY, note:note });
   if(res && res.status==='ok'){ toast('Note saved ✓','ok'); pushNote(c.phone, note); render(); }
   else { toast('Failed: '+((res&&res.message)||'error'),'err'); }
+}
+
+// ===== Report view — daily calls/bookings performance monitor =====
+let VIEW='chase';
+let RDAYS=1;                 // 1 = single day, 7 = last week
+let RDATE=todayStr();        // 'to' date (MYT)
+
+function setView(v){
+  VIEW=v;
+  const isRep=(v==='report');
+  document.getElementById('list').style.display=isRep?'none':'';
+  document.getElementById('report').style.display=isRep?'':'none';
+  document.getElementById('q').style.display=isRep?'none':'';
+  document.querySelectorAll('.hdr .tools button[data-win]').forEach(function(b){ b.style.display=isRep?'none':''; });
+  const rb=document.getElementById('repBtn');
+  rb.textContent=isRep?'📞 Chase list':'📊 Report';
+  rb.onclick=function(){ setView(isRep?'chase':'report'); };
+  if(isRep) loadReport(); else load();
+}
+function refreshView(){ VIEW==='report'?loadReport():load(); }
+function setRDays(d){ RDAYS=d; loadReport(); }
+function setRDate(v){ if(v){ RDATE=v; loadReport(); } }
+
+async function loadReport(){
+  const el=document.getElementById('report');
+  el.innerHTML='<div class="spin">Loading report…</div>';
+  document.getElementById('hSub').textContent='Report';
+  try{
+    const r=await api('chaseReport', { date:RDATE, days:RDAYS });
+    if(!r || r.status!=='ok'){ el.innerHTML='<div class="allclear" style="color:#DC2626">⚠ '+esc((r&&r.message)||'report failed')+'</div>'; return; }
+    renderReport(r);
+  }catch(e){ el.innerHTML='<div class="allclear" style="color:#DC2626">⚠ '+esc(e.message||e)+'</div>'; }
+}
+
+function kicon(k){ return k==='book'?'📅':'📞'; }
+function renderReport(r){
+  const el=document.getElementById('report');
+  const T=r.totals||{calls:0,books:0,confirmed:0};
+  document.getElementById('hSub').textContent = 'Report · '+(RDAYS>1?(r.from+' → '+r.to):r.to);
+
+  // aggregate people across the range
+  const pmap={};
+  (r.days||[]).forEach(function(d){ (d.byPersonList||[]).forEach(function(p){
+    const a=pmap[p.name]||(pmap[p.name]={name:p.name,calls:0,books:0,confirmed:0});
+    a.calls+=p.calls; a.books+=p.books; a.confirmed+=p.confirmed;
+  }); });
+  const people=Object.keys(pmap).map(function(k){return pmap[k];}).sort(function(a,b){return b.books-a.books||b.calls-a.calls;});
+
+  let h='';
+  h+='<div class="rep-ctrl">'+
+       '<button class="'+(RDAYS===1?'on':'')+'" onclick="setRDays(1)">Single day</button>'+
+       '<button class="'+(RDAYS===7?'on':'')+'" onclick="setRDays(7)">Last 7 days</button>'+
+       '<input type="date" value="'+esc(RDATE)+'" max="'+esc(todayStr())+'" onchange="setRDate(this.value)">'+
+       '<button onclick="loadReport()">↻</button>'+
+     '</div>';
+
+  h+='<div class="tiles">'+
+       '<div class="tile call"><div class="n">'+T.calls+'</div><div class="l">Calls made</div></div>'+
+       '<div class="tile book"><div class="n">'+T.books+'</div><div class="l">Bookings</div></div>'+
+       '<div class="tile conf"><div class="n">'+T.confirmed+'</div><div class="l">Confirmed</div></div>'+
+     '</div>';
+
+  if(!T.calls && !T.books){
+    h+='<div class="allclear" style="padding:30px 20px;color:#6b7280">No call or booking activity logged for this '+(RDAYS>1?'period':'day')+'.</div>';
+    if(BY==='Chase') h+=attrNote();
+    el.innerHTML=h; return;
+  }
+
+  // per-person
+  h+='<table class="rtbl"><tr><th>Team member</th><th class="num">📞 Calls</th><th class="num">📅 Bookings</th><th class="num">✅ Confirmed</th></tr>';
+  h+=people.map(function(p){ return '<tr><td>'+esc(p.name)+'</td><td class="num">'+p.calls+'</td><td class="num">'+p.books+'</td><td class="num">'+p.confirmed+'</td></tr>'; }).join('');
+  h+='</table>';
+
+  // per-day breakdown (only when range)
+  if(RDAYS>1 && (r.days||[]).length){
+    h+='<table class="rtbl"><tr><th>Day</th><th class="num">Calls</th><th class="num">Bookings</th><th class="num">Confirmed</th></tr>';
+    h+=r.days.map(function(d){ return '<tr><td>'+esc(d.date)+'</td><td class="num">'+d.calls+'</td><td class="num">'+d.books+'</td><td class="num">'+d.confirmed+'</td></tr>'; }).join('');
+    h+='</table>';
+  }
+
+  // detail listing grouped by day
+  (r.days||[]).forEach(function(d){
+    h+='<div class="day-h"><span>'+esc(d.date)+'</span><span class="s">'+d.calls+' calls · '+d.books+' bookings · '+d.confirmed+' confirmed</span></div>';
+    h+=(d.items||[]).map(function(it){
+      const sub=[esc(it.phone)]; if(it.note) sub.push(esc(it.note));
+      return '<div class="evt b-'+it.kind+'">'+
+        '<span class="t">'+esc(it.time||'')+'</span>'+
+        '<span class="k">'+kicon(it.kind)+'</span>'+
+        '<span class="b"><span class="nm">'+esc(it.name||'(no name)')+(it.kind==='book'&&it.confirmed?'<span class="conf-tag">appt set ✓</span>':'')+'</span>'+
+        '<span class="sub">'+sub.join(' · ')+'</span></span>'+
+        '<span class="who">'+esc(it.by)+'</span>'+
+      '</div>';
+    }).join('');
+  });
+
+  if(BY==='Chase') h+=attrNote();
+  el.innerHTML=h;
+}
+function attrNote(){
+  return '<div style="font-size:12px;color:#6b7280;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;padding:10px 12px;margin-top:8px;line-height:1.5">'+
+    '💡 Activity is showing as <b>“Chase”</b> because the page was opened without a name. Give each team member a link like '+
+    '<code>?by=Ken</code> (e.g. <code>…/booking_chase.html?by=Ken</code>) so calls &amp; bookings are credited per person.</div>';
 }
 
 load();

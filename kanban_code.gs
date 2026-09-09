@@ -60,6 +60,8 @@ function doPost(e) {
       case 'logCall':            return handleLogCall(body);     // round 90 — caller logs an outcome
       case 'phaseScanState':     return handlePhaseScanState(body);  // round 134 — phase-scan notes + snooze
       case 'logScanNote':        return handleLogScanNote(body);     // round 134 — phase-scan note / follow-up
+      case 'logChaseAct':        return handleLogChaseAct(body);     // round 139 — booking-chase call/book activity log
+      case 'chaseReport':        return handleChaseReport(body);     // round 139 — booking-chase daily performance report
       case 'callerReport':       return handleCallerReport(body);  // round 90 — caller performance report
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
@@ -3891,6 +3893,136 @@ function handleLogScanNote(body) {
     } catch (_e) {}
   }
   return jsonResponse({ status: 'ok', outcome: fu ? 'scan_followup' : 'scan_note', followUpDate: fu, groupMsgSent: groupMsgSent });
+}
+
+// ================================================================
+// Round 139 — Booking Chase activity tracking (booking_chase.html).
+// The chase page logs two caller actions so we can monitor daily effort:
+//   • chase_call — the caller tapped "📞 Call" on a card.
+//   • chase_book — the caller tapped "📅 Book KL/JB" (opened the booking page).
+// Both are appended to the same append-only Calls sheet (NO new columns); the
+// team member is the 'by' param (page opened as ?by=<name>, same as caller.html).
+// ================================================================
+
+// action 'logChaseAct' — append one chase activity row.
+// body: { phone, by?, kind: 'call'|'book', team? ('KL'|'JB'), note? }
+function handleLogChaseAct(body) {
+  const phone = String(body.phone || '').trim();
+  if (!phone) return jsonResponse({ status: 'error', message: 'phone required' });
+  const kind = String(body.kind || '').trim().toLowerCase();
+  if (kind !== 'call' && kind !== 'book') return jsonResponse({ status: 'error', message: 'kind must be call or book' });
+  const by = String(body.by || 'Chase').trim();
+  const team = String(body.team || '').trim().toUpperCase();
+  let note = String(body.note || '').slice(0, 200);
+  if (kind === 'book' && !note) note = 'Booking page opened' + (team ? ' (' + team + ')' : '');
+
+  const sheet = getSheet();
+  const row = findRowByPhone(sheet, phone);
+  let name = '';
+  if (row) { try { name = String(sheet.getRange(row, getHeaders(sheet).colByName['Name']).getValue() || '').trim(); } catch (_e) {} }
+
+  _callsSheet_().appendRow([ new Date().toISOString(), phone, name, by, 'chase_' + kind, '', note ]);
+  return jsonResponse({ status: 'ok', kind: kind });
+}
+
+// action 'chaseReport' — daily performance monitor for the Booking Chase page.
+// body: { date?: 'YYYY-MM-DD' (MYT, default today), days?: N (1..31, default 1) }
+// Reads the Calls sheet for chase_call / chase_book rows over the last `days`
+// (ending at `date`), grouped by MYT day and by person. Each chase_book is
+// cross-checked against the lead sheet — if that phone now has a
+// 'Date Appt Confirmed', the booking is counted as confirmed (landed).
+function handleChaseReport(body) {
+  const todayStr = _mytDateStr();
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || '')) ? String(body.date).trim() : todayStr;
+  let days = parseInt(body.days, 10); if (isNaN(days) || days < 1) days = 1; if (days > 31) days = 31;
+  const fromD = new Date(to + 'T00:00:00+08:00'); fromD.setUTCDate(fromD.getUTCDate() - (days - 1));
+  const from = fromD.toISOString().slice(0, 10);
+
+  // phone(last8) -> booked? — one lead-sheet pass (Date Appt Confirmed present).
+  const booked = {};
+  try {
+    const lead = getSheet();
+    const ld = lead.getDataRange().getValues();
+    const lh = getHeaders(lead);
+    const lPhone = (lh.colByName['Phone'] || 0) - 1;
+    const lAppt = (lh.colByName['Date Appt Confirmed'] || 0) - 1;
+    if (lPhone >= 0 && lAppt >= 0) {
+      for (let i = 1; i < ld.length; i++) {
+        if (String(ld[i][lAppt] || '').trim()) booked[_last8(ld[i][lPhone])] = 1;
+      }
+    }
+  } catch (_e) {}
+
+  const dayMap = {};   // 'YYYY-MM-DD' -> { date, calls, books, confirmed, byPerson:{}, items:[] }
+  const ensureDay = function(ds) {
+    if (!dayMap[ds]) dayMap[ds] = { date: ds, calls: 0, books: 0, confirmed: 0, byPerson: {}, items: [] };
+    return dayMap[ds];
+  };
+  const ensurePerson = function(day, name) {
+    const k = name || 'Unknown';
+    if (!day.byPerson[k]) day.byPerson[k] = { name: k, calls: 0, books: 0, confirmed: 0 };
+    return day.byPerson[k];
+  };
+
+  const calls = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(CALLS_SHEET);
+  if (calls) {
+    const cd = calls.getDataRange().getValues();
+    const ch = getHeaders(calls);
+    const cTs = ch.colByName['Timestamp'] - 1, cPhone = ch.colByName['Phone'] - 1,
+          cName = ch.colByName['Name'] - 1, cBy = ch.colByName['Caller'] - 1,
+          cOut = ch.colByName['Outcome'] - 1, cNote = ch.colByName['Note'] - 1;
+    for (let i = 1; i < cd.length; i++) {
+      const o = String(cd[i][cOut] || '').trim();
+      if (o !== 'chase_call' && o !== 'chase_book') continue;
+      const ds = _mytDateOf(cd[i][cTs]);   // MYT calendar day (Timestamp is stored UTC)
+      if (!ds || ds < from || ds > to) continue;
+      const day = ensureDay(ds);
+      const person = ensurePerson(day, String(cd[i][cBy] || '').trim());
+      const isBook = (o === 'chase_book');
+      const conf = isBook && !!booked[_last8(cd[i][cPhone])];
+      if (isBook) { day.books++; person.books++; if (conf) { day.confirmed++; person.confirmed++; } }
+      else { day.calls++; person.calls++; }
+      day.items.push({
+        ts: String(cd[i][cTs] || ''),
+        time: _mytTimeStr(cd[i][cTs]),
+        by: String(cd[i][cBy] || '').trim() || 'Unknown',
+        kind: isBook ? 'book' : 'call',
+        name: String(cd[i][cName] || '').trim(),
+        phone: String(cd[i][cPhone] || '').trim(),
+        note: String(cd[i][cNote] || '').trim(),
+        confirmed: conf
+      });
+    }
+  }
+
+  const daysOut = Object.keys(dayMap).sort().reverse().map(function(ds) {
+    const d = dayMap[ds];
+    d.items.sort(function(a, b) { return a.ts < b.ts ? 1 : -1; });   // newest first
+    d.byPersonList = Object.keys(d.byPerson).map(function(k) { return d.byPerson[k]; })
+      .sort(function(a, b) { return b.books - a.books || b.calls - a.calls; });
+    delete d.byPerson;
+    return d;
+  });
+  const totals = daysOut.reduce(function(t, d) { t.calls += d.calls; t.books += d.books; t.confirmed += d.confirmed; return t; },
+    { calls: 0, books: 0, confirmed: 0 });
+
+  return jsonResponse({ status: 'ok', from: from, to: to, days: daysOut, totals: totals });
+}
+
+// MYT calendar day 'YYYY-MM-DD' from an ISO/Date cell (Timestamp is stored UTC).
+function _mytDateOf(v) {
+  const ms = _scanToMs(v); if (!ms) return '';
+  const d = new Date(ms + 8 * 3600 * 1000);
+  return d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+}
+
+// MYT HH:MM from an ISO/Date cell (for report detail rows).
+function _mytTimeStr(v) {
+  let ms = _scanToMs(v); if (!ms) { const p = Date.parse(String(v || '')); ms = isNaN(p) ? 0 : p; }
+  if (!ms) return '';
+  const d = new Date(ms + 8 * 3600 * 1000);
+  const hh = ('0' + d.getUTCHours()).slice(-2), mm = ('0' + d.getUTCMinutes()).slice(-2);
+  return hh + ':' + mm;
 }
 
 // ── Reminders: 3x/day (8am, 3pm, 7pm MYT) per caller ──
