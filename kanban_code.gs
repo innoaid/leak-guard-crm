@@ -1359,6 +1359,20 @@ function handleExpressLead(body) {
   if (body.problemType) setCellByHeader(sheet, rowNum, 'Problem Type', body.problemType);
   if (state)            setCellByHeader(sheet, rowNum, 'Location', state);
 
+  // Round 140 — staff express link. The public link has no 'by' (Booked By stays
+  // blank = self-serve); the telemarketer link is express/?by=<name>, which
+  // records who booked on the lead. Lazily creates the 'Booked By' column the
+  // first time a staff booking needs it, so no separate bootstrap is required.
+  const _bookedBy = String(body.by || '').trim().slice(0, 40);
+  if (_bookedBy) {
+    try {
+      let bcol = getHeaders(sheet).colByName['Booked By'];
+      if (!bcol) { bcol = sheet.getLastColumn() + 1; sheet.getRange(1, bcol).setValue('Booked By'); }
+      sheet.getRange(rowNum, bcol).setValue(_bookedBy);
+      setCellByHeader(sheet, rowNum, 'Changed By', 'Express:' + _bookedBy);
+    } catch (_e) {}
+  }
+
   // Append the right tag (merge, don't clobber): serviceable leads go on to
   // booking → 'pending_group_creation'; out-of-coverage leads need manual
   // contact → 'manual_booking'. Skip 'pending_group_creation' if a WA group
@@ -1406,7 +1420,7 @@ function handleExpressLead(body) {
   }
 
   return jsonResponse({status: 'ok', rowNum: rowNum, phone: phone,
-    created: created, serviceable: serviceable, team: team});
+    created: created, serviceable: serviceable, team: team, bookedBy: _bookedBy});
 }
 
 // ================================================================
