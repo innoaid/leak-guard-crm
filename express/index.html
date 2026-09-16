@@ -13,7 +13,7 @@
 // Cache self-heal: even if a stale cached copy was served, fetch the TRUE current
 // page (no-store) and hard-reload ONCE if a newer version is deployed — so customers
 // never submit an out-of-date form. Bump APP_VERSION on every meaningful change.
-var APP_VERSION = '2026-07-14';
+var APP_VERSION = '2026-09-16';
 (function(){
   try {
     if (sessionStorage.getItem('lg_express_ver') === APP_VERSION) return;
@@ -69,6 +69,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
         <div style="color:#fff;font-size:15px;font-weight:500">Express Site Visit Booking</div>
       </div>
     </div>
+  </div>
+
+  <!-- Staff banner (only shown on the ?by= telemarketer link) -->
+  <div id="staffBanner" style="display:none;background:#EEF2FF;border-bottom:1px solid #C7D2FE;color:#2D2A6E;padding:9px 20px;font-size:12.5px;font-weight:500">
+    🎧 Staff booking — recorded as <b><span id="staffName"></span></b>
   </div>
 
   <!-- Form -->
@@ -155,6 +160,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
 var WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
 var SHARED_SECRET = 'ABC';
 
+// Round 140 — staff/telemarketer link: express/?by=<name> records who booked
+// on the lead ('Booked By'). Public link has no 'by' → blank (self-serve).
+var BY = (new URLSearchParams(location.search).get('by') || '').trim();
+if (BY) {
+  document.getElementById('staffName').textContent = BY;
+  document.getElementById('staffBanner').style.display = 'block';
+}
+
 function showError(msg){
   var e = document.getElementById('formError');
   e.textContent = msg; e.style.display = 'block';
@@ -188,7 +201,8 @@ async function submitExpress(){
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' }, // text/plain avoids CORS preflight
       body: JSON.stringify({ action: 'expressLead', secret: SHARED_SECRET,
-        name: name, phone: digits, address: address, state: state, problemType: problem })
+        name: name, phone: digits, address: address, state: state, problemType: problem,
+        by: BY })
     });
     var data = await r.json();
     if (data && data.status === 'ok') {
@@ -196,7 +210,8 @@ async function submitExpress(){
         // Serviceable state → straight to booking (prefilled by phone + name; team for JB/KL routing).
         window.location.href = '../appointment/?p=' + encodeURIComponent(data.phone || digits) +
           '&name=' + encodeURIComponent(name) + '&state=' + encodeURIComponent(state) +
-          '&team=' + encodeURIComponent(data.team || 'KL');
+          '&team=' + encodeURIComponent(data.team || 'KL') +
+          (BY ? '&by=' + encodeURIComponent(BY) : '');
       } else {
         // Out-of-coverage → thank-you; team contacts them directly.
         var fn = (name.split(/\s+/)[0] || '');
