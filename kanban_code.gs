@@ -1371,6 +1371,16 @@ function handleExpressLead(body) {
       sheet.getRange(rowNum, bcol).setValue(_bookedBy);
       setCellByHeader(sheet, rowNum, 'Changed By', 'Express:' + _bookedBy);
     } catch (_e) {}
+    // Immutable, append-only booking event so the daily staff-performance
+    // report can count bookings per person per day. Only serviceable leads
+    // proceed to slot-picking; the report cross-checks each phone against
+    // Date Appt Confirmed to show which actually booked a site visit.
+    if (serviceable) {
+      try {
+        _callsSheet_().appendRow([ new Date().toISOString(), phone, String(body.name || '').trim(),
+          _bookedBy, 'express_book', '', 'Express booking (' + team + ')' ]);
+      } catch (_e) {}
+    }
   }
 
   // Append the right tag (merge, don't clobber): serviceable leads go on to
@@ -3987,12 +3997,12 @@ function handleChaseReport(body) {
           cOut = ch.colByName['Outcome'] - 1, cNote = ch.colByName['Note'] - 1;
     for (let i = 1; i < cd.length; i++) {
       const o = String(cd[i][cOut] || '').trim();
-      if (o !== 'chase_call' && o !== 'chase_book') continue;
+      if (o !== 'chase_call' && o !== 'chase_book' && o !== 'express_book') continue;
       const ds = _mytDateOf(cd[i][cTs]);   // MYT calendar day (Timestamp is stored UTC)
       if (!ds || ds < from || ds > to) continue;
       const day = ensureDay(ds);
       const person = ensurePerson(day, String(cd[i][cBy] || '').trim());
-      const isBook = (o === 'chase_book');
+      const isBook = (o === 'chase_book' || o === 'express_book');
       const conf = isBook && !!booked[_last8(cd[i][cPhone])];
       if (isBook) { day.books++; person.books++; if (conf) { day.confirmed++; person.confirmed++; } }
       else { day.calls++; person.calls++; }
@@ -4001,6 +4011,7 @@ function handleChaseReport(body) {
         time: _mytTimeStr(cd[i][cTs]),
         by: String(cd[i][cBy] || '').trim() || 'Unknown',
         kind: isBook ? 'book' : 'call',
+        src: o === 'express_book' ? 'express' : 'chase',
         name: String(cd[i][cName] || '').trim(),
         phone: String(cd[i][cPhone] || '').trim(),
         note: String(cd[i][cNote] || '').trim(),

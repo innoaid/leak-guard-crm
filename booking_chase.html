@@ -96,6 +96,9 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .evt .who{font-size:11px;font-weight:700;color:#2D2A6E;background:#EEF2FF;border-radius:6px;padding:1px 7px;white-space:nowrap}
 .evt.b-book{border-left:3px solid #10B981}.evt.b-call{border-left:3px solid #2563EB}
 .conf-tag{display:inline-block;font-size:10.5px;font-weight:700;color:#5B21B6;background:#EDE9FE;border-radius:6px;padding:1px 6px;margin-left:6px}
+.src-tag{display:inline-block;font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;margin-left:6px}
+.src-tag.express{color:#065F46;background:#D1FAE5}.src-tag.chase{color:#3730A3;background:#E0E7FF}
+.rep-legend{font-size:12px;color:#6b7280;margin:-6px 2px 14px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -475,7 +478,8 @@ function renderReport(r){
        '<div class="tile call"><div class="n">'+T.calls+'</div><div class="l">Calls made</div></div>'+
        '<div class="tile book"><div class="n">'+T.books+'</div><div class="l">Bookings</div></div>'+
        '<div class="tile conf"><div class="n">'+T.confirmed+'</div><div class="l">Confirmed</div></div>'+
-     '</div>';
+     '</div>'+
+     '<div class="rep-legend">📅 <b>Bookings</b> = site-visit bookings made via the Chase page + Express staff links · ✅ <b>Confirmed</b> = lead now has a site-visit appointment on the calendar.</div>';
 
   if(!T.calls && !T.books){
     h+='<div class="allclear" style="padding:30px 20px;color:#6b7280">No call or booking activity logged for this '+(RDAYS>1?'period':'day')+'.</div>';
@@ -503,7 +507,9 @@ function renderReport(r){
       return '<div class="evt b-'+it.kind+'">'+
         '<span class="t">'+esc(it.time||'')+'</span>'+
         '<span class="k">'+kicon(it.kind)+'</span>'+
-        '<span class="b"><span class="nm">'+esc(it.name||'(no name)')+(it.kind==='book'&&it.confirmed?'<span class="conf-tag">appt set ✓</span>':'')+'</span>'+
+        '<span class="b"><span class="nm">'+esc(it.name||'(no name)')+
+          (it.kind==='book'&&it.src?'<span class="src-tag '+it.src+'">'+(it.src==='express'?'Express':'Chase')+'</span>':'')+
+          (it.kind==='book'&&it.confirmed?'<span class="conf-tag">appt set ✓</span>':'')+'</span>'+
         '<span class="sub">'+sub.join(' · ')+'</span></span>'+
         '<span class="who">'+esc(it.by)+'</span>'+
       '</div>';
