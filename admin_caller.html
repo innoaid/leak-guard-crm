@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Caller Review (Admin)</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 48px}
+.hdr{background:#2D2A6E;color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:10}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .sub{font-size:12px;opacity:.85;margin-top:2px}
+.hdr .tools{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.hdr .tools button{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.hdr .tools button.on{background:#fff;color:#2D2A6E;border-color:#fff}
+.wrap{max-width:600px;margin:0 auto;padding:14px}
+.caller-sec{margin-bottom:22px}
+.caller-bar{background:#fff;border:1px solid #e5e7eb;border-left:4px solid #2D2A6E;border-radius:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer;position:sticky;top:106px;z-index:4}
+.caller-bar .row1{display:flex;align-items:center;justify-content:space-between}
+.caller-name{font-size:16px;font-weight:800}
+.caller-name .caret{display:inline-block;font-size:12px;color:#9CA3AF;margin-right:6px;transition:transform .15s}
+.caller-sec.collapsed .caret{transform:rotate(-90deg)}
+.prog{font-size:12px;font-weight:700;color:#6B7280}
+.stats{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.stat{font-size:11.5px;font-weight:700;border-radius:8px;padding:3px 9px;background:#F3F4F6;color:#374151}
+.stat b{font-size:13px}
+.stat.acc{background:#ECFDF5;color:#065F46}.stat.rej{background:#FEF2F2;color:#991B1B}
+.stat.fu{background:#FFFBEB;color:#92400E}.stat.q{background:#EEF2FF;color:#2D2A6E}
+.stat.rate{background:#F5F3FF;color:#6D28D9}
+.cards{margin-top:11px}
+.caller-sec.collapsed .cards{display:none}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:13px;margin-bottom:11px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.card.reviewed{opacity:.55;border-left:4px solid #10B981}
+.card.gone{opacity:.4;pointer-events:none}
+.crow{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.cname{font-size:16px;font-weight:800}
+.rev-btn{flex-shrink:0;font-size:12px;font-weight:700;border:1px solid #D1D5DB;background:#fff;color:#374151;border-radius:8px;padding:5px 9px;cursor:pointer}
+.card.reviewed .rev-btn{background:#10B981;color:#fff;border-color:#10B981}
+.meta{font-size:12.5px;color:#6b7280;margin-top:3px;line-height:1.5}
+.meta b{color:#374151}
+.rmtag{display:inline-block;background:#EEF2FF;color:#2D2A6E;font-weight:700;font-size:12px;padding:2px 9px;border-radius:9px;margin-top:5px}
+.hist{margin-top:8px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px}
+.hist-h{font-size:11px;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px}
+.hist-row{font-size:12px;color:#374151;line-height:1.5;padding:2px 0;border-top:.5px solid #F3F4F6}
+.hist-row:first-of-type{border-top:none}
+.hist-d{font-weight:700;color:#6B7280}
+.links{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:13px;color:#2563EB;text-decoration:none;border:1px solid #BFDBFE;border-radius:8px;padding:6px 12px;background:#EFF6FF}
+.links a.est{color:#065F46;border-color:#A7F3D0;background:#ECFDF5}
+.btns{display:flex;gap:8px;margin-top:12px}
+.btn{flex:1;border:none;border-radius:10px;padding:11px 8px;font-size:13.5px;font-weight:700;cursor:pointer;color:#fff}
+.btn-acc{background:#10B981}.btn-rej{background:#EF4444}.btn-fu{background:#F59E0B}
+.fu-panel,.acc-panel{margin-top:10px;display:none;border-radius:10px;padding:10px}
+.fu-panel{background:#FFFBEB;border:1px solid #FDE68A}
+.acc-panel{background:#ECFDF5;border:1px solid #A7F3D0}
+.fu-panel.open,.acc-panel.open{display:block}
+.fu-panel label,.acc-panel label{font-size:12px;font-weight:700;color:#92400E;display:block;margin-bottom:4px}
+.acc-panel label{color:#065F46}
+.fu-panel input,.fu-panel textarea,.acc-panel select{width:100%;border:1px solid #D1D5DB;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;margin-bottom:8px;background:#fff}
+.go{color:#fff;border:none;border-radius:8px;padding:10px;width:100%;font-weight:700;font-size:14px;cursor:pointer}
+.fu-panel .go{background:#F59E0B}
+.acc-panel .go-acc{background:#10B981}
+.empty{text-align:center;color:#9CA3AF;padding:14px;font-size:13px}
+.spin,.allclear{text-align:center;color:#6b7280;padding:60px 20px;font-size:15px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:30;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+.toast.on{opacity:1}
+.toast.err{background:#DC2626}.toast.ok{background:#059669}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>🎧 Caller Review — Admin</h1>
+  <div class="sub" id="hSub">Loading…</div>
+  <div class="tools">
+    <button data-d="7" onclick="setWin(7)">7d</button>
+    <button data-d="30" class="on" onclick="setWin(30)">30d</button>
+    <button data-d="90" onclick="setWin(90)">90d</button>
+    <button onclick="load()">↻ Refresh</button>
+  </div>
+</div>
+<div class="wrap" id="list"><div class="spin">Loading…</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// Admin review of every caller's Quotation-Sent follow-up queue. Read-only
+// scoreboard (from the append-only Calls sheet) + each caller's due job cards
+// with note history; the same Accepted/Rejected/Follow-up actions as the
+// caller page, attributed to the card's own caller. One server call: callerAdmin.
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SECRET = 'ABC';
+const LEADS_SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+const FOCUS = (new URLSearchParams(location.search).get('caller') || '').trim();  // optional: one caller only
+const ACCEPT_PHASES = ['Pending Downpayment','Pending I.Date','I.Date Confirmed','Job In Progress','Pending Balance','Job Complete','Receipt Sent','Completed'];
+
+let WIN = 30;
+let DATA = [];            // callers[]
+let CARDS = [];           // flat list of {caller, job} indexed by card id
+let REVIEWED = {};        // cardId -> true (in-session review progress)
+
+function toast(msg, kind){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast on '+(kind||''); setTimeout(function(){ t.className='toast '+(kind||''); },2600); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
+function todayStr(){ return new Date(Date.now()+8*3600*1000).toISOString().slice(0,10); }
+function last8(p){ return String(p||'').replace(/\D/g,'').slice(-8); }
+function setWin(d){ WIN=d; document.querySelectorAll('.hdr .tools button[data-d]').forEach(function(b){ b.classList.toggle('on', +b.dataset.d===d); }); load(); }
+
+async function api(action, payload){
+  const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify(Object.assign({action:action, secret:SECRET}, payload)) });
+  return r.json();
+}
+
+let PDFMAP = {};
+async function loadPdfMap(){
+  try {
+    const url = 'https://docs.google.com/spreadsheets/d/'+LEADS_SHEET_ID+'/gviz/tq?tqx=out:json&sheet=Leak%20Guard%20Leads&nocache='+Date.now();
+    const txt = await (await fetch(url)).text();
+    const m = txt.match(/setResponse\(([\s\S]*)\)/); if (!m) return;
+    const j = JSON.parse(m[1]);
+    const cols = j.table.cols.map(function(c){ return (c.label||'').trim(); });
+    const pi = cols.indexOf('Phone'), ui = cols.indexOf('Quotation PDF URL');
+    if (pi < 0 || ui < 0) return;
+    (j.table.rows||[]).forEach(function(r){
+      const pc=r.c[pi], uc=r.c[ui];
+      const ph=pc?String(pc.v!=null?pc.v:(pc.f||'')):''; const u=uc?String(uc.v!=null?uc.v:(uc.f||'')):'';
+      const k=last8(ph); if(k&&u) PDFMAP[k]=u;
+    });
+  } catch(_e){}
+}
+
+function winDates(){
+  const to = todayStr();
+  const d = new Date(Date.now()+8*3600*1000); d.setUTCDate(d.getUTCDate()-(WIN-1));
+  return { from: d.toISOString().slice(0,10), to: to };
+}
+
+async function load(){
+  const list=document.getElementById('list'); list.innerHTML='<div class="spin">Loading…</div>';
+  document.getElementById('hSub').textContent='Loading…';
+  const w = winDates();
+  const [res] = await Promise.all([ api('callerAdmin', { from:w.from, to:w.to }), loadPdfMap() ]);
+  if (!res || res.status!=='ok'){ list.innerHTML='<div class="allclear" style="color:#DC2626">⚠ '+esc((res&&res.message)||'Load failed')+'</div>'; document.getElementById('hSub').textContent='Load failed.'; return; }
+  DATA = (res.callers||[]).filter(function(c){ return !FOCUS || c.caller.toLowerCase()===FOCUS.toLowerCase(); });
+  render(res.from, res.to);
+}
+
+function render(from, to){
+  const list=document.getElementById('list');
+  CARDS = [];
+  const totalQ = DATA.reduce(function(s,c){ return s + c.jobs.length; }, 0);
+  document.getElementById('hSub').textContent = DATA.length+' caller'+(DATA.length===1?'':'s')+' · '+totalQ+' open card'+(totalQ===1?'':'s')+' · stats '+from+' → '+to;
+  if (!DATA.length){ list.innerHTML='<div class="allclear">No callers found.</div>'; return; }
+  list.innerHTML = DATA.map(sectionHtml).join('');
+}
+
+function sectionHtml(c){
+  const s = c.stats || {};
+  const secId = 'sec_'+c.caller.replace(/\W/g,'');
+  const cardsHtml = c.jobs.length ? c.jobs.map(function(j){ return cardHtml(c.caller, j); }).join('')
+    : '<div class="empty">✅ No open cards in the queue.</div>';
+  const rate = (s.accepted+s.rejected) ? s.closingRate+'%' : '—';
+  return '<div class="caller-sec" id="'+secId+'">'+
+    '<div class="caller-bar" onclick="toggleSec(\''+secId+'\')">'+
+      '<div class="row1">'+
+        '<div class="caller-name"><span class="caret">▼</span>'+esc(c.caller)+'</div>'+
+        '<div class="prog" id="prog_'+secId+'">0/'+c.jobs.length+' reviewed</div>'+
+      '</div>'+
+      '<div class="stats">'+
+        '<span class="stat q">Queue <b>'+s.openQueue+'</b></span>'+
+        '<span class="stat"><b>'+s.calls+'</b> calls</span>'+
+        '<span class="stat acc"><b>'+s.accepted+'</b> won</span>'+
+        '<span class="stat rej"><b>'+s.rejected+'</b> lost</span>'+
+        '<span class="stat fu"><b>'+s.followUps+'</b> follow-ups</span>'+
+        '<span class="stat rate">Close <b>'+rate+'</b></span>'+
+      '</div>'+
+    '</div>'+
+    '<div class="cards">'+cardsHtml+'</div>'+
+  '</div>';
+}
+
+function cardHtml(caller, j){
+  const id = 'c'+CARDS.length; CARDS.push({ caller: caller, job: j, secId: 'sec_'+caller.replace(/\W/g,'') });
+  const tel = String(j.phone||'').replace(/\D/g,'');
+  const pdf = PDFMAP[last8(j.phone)] || '';
+  const bits = [];
+  if (j.daysSinceQs >= 0) bits.push('<b>'+j.daysSinceQs+'d</b> since QT');
+  if (j.callCount) bits.push(j.callCount+' call'+(j.callCount>1?'s':'')+' so far');
+  if (j.lastOutcome === 'follow_up') bits.push('follow-up'+(j.nextCallDate?' due '+esc(j.nextCallDate):''));
+  let histHtml='';
+  if (j.noteHistory && j.noteHistory.length){
+    histHtml = '<div class="hist"><div class="hist-h">📝 Notes history</div>'+
+      j.noteHistory.map(function(n){ return '<div class="hist-row"><span class="hist-d">'+esc(n.date)+'</span> '+esc(n.note)+'</div>'; }).join('')+'</div>';
+  }
+  const phaseOpts = ACCEPT_PHASES.map(function(p){ return '<option value="'+esc(p)+'">'+esc(p)+'</option>'; }).join('');
+  return '<div class="card" id="'+id+'">'+
+    '<div class="crow">'+
+      '<div class="cname">'+esc(j.name||'(no name)')+'</div>'+
+      '<button class="rev-btn" onclick="toggleReviewed(\''+id+'\')">✓ Reviewed</button>'+
+    '</div>'+
+    '<div class="meta">'+bits.join(' · ')+'</div>'+
+    (j.quotationRm ? '<div class="rmtag">RM '+Number(j.quotationRm).toLocaleString()+'</div>' : '')+
+    histHtml+
+    '<div class="links">'+
+      (tel ? '<a href="tel:'+tel+'">📞 '+esc(j.phone)+'</a>' : '')+
+      (pdf ? '<a class="est" href="'+esc(pdf)+'" target="_blank" rel="noopener">📄 Estimation</a>' : '')+
+      (j.groupLink ? '<a href="'+esc(j.groupLink)+'" target="_blank">💬 WA group</a>' : '')+
+    '</div>'+
+    '<div class="btns">'+
+      '<button class="btn btn-acc" onclick="toggleAcc(\''+id+'\')">✅ Accepted</button>'+
+      '<button class="btn btn-rej" onclick="logOutcome(\''+id+'\',\'rejected\')">❌ Rejected</button>'+
+      '<button class="btn btn-fu" onclick="toggleFu(\''+id+'\')">📅 Follow-up</button>'+
+    '</div>'+
+    '<div class="acc-panel" id="acc'+id+'">'+
+      '<label>Move job card to phase</label>'+
+      '<select id="accp'+id+'">'+phaseOpts+'</select>'+
+      '<button class="go go-acc" onclick="logAccepted(\''+id+'\')">Confirm accepted</button>'+
+    '</div>'+
+    '<div class="fu-panel" id="fu'+id+'">'+
+      '<label>Next follow-up date</label>'+
+      '<input type="date" id="fud'+id+'" min="'+todayStr()+'" value="'+todayStr()+'">'+
+      '<label>📝 Internal note (our reference — not sent to customer)</label>'+
+      '<textarea id="fun'+id+'" rows="2" placeholder="e.g. asked for discount, comparing quotes, call back after payday"></textarea>'+
+      '<label>💬 Message to customer\'s WA group (optional — sent now)</label>'+
+      '<textarea id="fug'+id+'" rows="2" placeholder="e.g. Hi, just following up on your waterproofing quotation — any questions?"></textarea>'+
+      '<button class="go" onclick="logFollowUp(\''+id+'\')">Save follow-up</button>'+
+    '</div>'+
+  '</div>';
+}
+
+function toggleSec(secId){ document.getElementById(secId).classList.toggle('collapsed'); }
+function toggleFu(id){ document.getElementById('fu'+id).classList.toggle('open'); document.getElementById('acc'+id).classList.remove('open'); }
+function toggleAcc(id){ document.getElementById('acc'+id).classList.toggle('open'); document.getElementById('fu'+id).classList.remove('open'); }
+
+function toggleReviewed(id){
+  REVIEWED[id] = !REVIEWED[id];
+  const el = document.getElementById(id); if (el) el.classList.toggle('reviewed', !!REVIEWED[id]);
+  updateProgress(id);
+}
+function updateProgress(id){
+  const rec = CARDS[+id.slice(1)]; if (!rec) return;
+  const secId = rec.secId;
+  const mates = CARDS.map(function(c,i){ return {i:i, sec:c.secId}; }).filter(function(x){ return x.sec===secId; });
+  const done = mates.filter(function(x){ return REVIEWED['c'+x.i]; }).length;
+  const p = document.getElementById('prog_'+secId);
+  if (p) p.textContent = done+'/'+mates.length+' reviewed';
+}
+
+async function logOutcome(id, outcome){
+  const rec = CARDS[+id.slice(1)]; if (!rec) return;
+  if (!confirm('Mark '+(rec.job.name||'this customer')+' as REJECTED?  (as '+rec.caller+')')) return;
+  await send(id, { caller: rec.caller, phone: rec.job.phone, outcome: outcome });
+}
+async function logAccepted(id){
+  const rec = CARDS[+id.slice(1)]; if (!rec) return;
+  const phase = document.getElementById('accp'+id).value;
+  if (!confirm('Mark '+(rec.job.name||'this customer')+' as ACCEPTED → "'+phase+'"?  (as '+rec.caller+')')) return;
+  await send(id, { caller: rec.caller, phone: rec.job.phone, outcome: 'accepted', targetPhase: phase });
+}
+async function logFollowUp(id){
+  const rec = CARDS[+id.slice(1)]; if (!rec) return;
+  const date = document.getElementById('fud'+id).value;
+  const note = document.getElementById('fun'+id).value;
+  const groupMsg = document.getElementById('fug'+id).value;
+  if (!date){ toast('Pick a date','err'); return; }
+  await send(id, { caller: rec.caller, phone: rec.job.phone, outcome: 'follow_up', nextDate: date, note: note, groupMsg: groupMsg });
+}
+async function send(id, payload){
+  const res = await api('logCall', payload);
+  if (res && res.status === 'ok'){
+    toast('Saved ✓','ok');
+    const c = document.getElementById(id); if (c) c.classList.add('gone');
+  } else {
+    toast('Failed: '+((res&&res.message)||'error'),'err');
+  }
+}
+
+load();
+</script>
+</body>
+</html>

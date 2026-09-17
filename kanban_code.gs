@@ -63,6 +63,7 @@ function doPost(e) {
       case 'logChaseAct':        return handleLogChaseAct(body);     // round 139 — booking-chase call/book activity log
       case 'chaseReport':        return handleChaseReport(body);     // round 139 — booking-chase daily performance report
       case 'callerReport':       return handleCallerReport(body);  // round 90 — caller performance report
+      case 'callerAdmin':        return handleCallerAdmin(body);   // round 141 — admin review: all callers' queues + stats + note history
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
@@ -4165,6 +4166,81 @@ function handleCallerReport(body) {
   }).sort(function(a, b) { return b.accepted - a.accepted || b.calls - a.calls; });
 
   return jsonResponse({status: 'ok', from: from, to: to, people: people });
+}
+
+// ================================================================
+// Round 141 — Caller admin review (admin_caller.html). One call returns every
+// caller's current open queue (each job with its note history) PLUS their
+// performance stats over [from,to], so a supervisor can sit with a caller and
+// go through their job cards while seeing the scoreboard. Reuses _callerQueues
+// (due jobs) + the Calls sheet (history + outcome tallies).
+// body: { from?: 'YYYY-MM-DD', to?: 'YYYY-MM-DD' (default: last 30 days) }
+// ================================================================
+function handleCallerAdmin(body) {
+  _ensureCallersAssigned();
+  const todayStr = _mytDateStr();
+  let from = String(body.from || '').trim();
+  const to = String(body.to || '').trim() || todayStr;
+  if (!from) { const d = new Date(Date.now() + 8 * 3600 * 1000); d.setUTCDate(d.getUTCDate() - 30); from = d.toISOString().slice(0, 10); }
+
+  const queues = _callerQueues();   // { caller: [ due jobs ] }
+
+  // One Calls-sheet read → note history (per phone) + per-caller outcome tallies.
+  const hist = {};
+  const agg = {};
+  const ensure = function(name) {
+    const k = name || 'Unknown';
+    if (!agg[k]) agg[k] = { calls: 0, cards: {}, accepted: 0, rejected: 0, followUps: 0 };
+    return agg[k];
+  };
+  const calls = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(CALLS_SHEET);
+  if (calls) {
+    const cd = calls.getDataRange().getValues();
+    const ch = getHeaders(calls);
+    const cTs = ch.colByName['Timestamp'] - 1, cPhone = ch.colByName['Phone'] - 1,
+          cCaller = ch.colByName['Caller'] - 1, cOut = ch.colByName['Outcome'] - 1,
+          cNote = ch.colByName['Note'] - 1;
+    for (let i = 1; i < cd.length; i++) {
+      const note = String(cd[i][cNote] || '').trim();
+      if (note) { const k = _last8(cd[i][cPhone]); (hist[k] = hist[k] || []).push({ date: _normalizeDateStr(cd[i][cTs]), note: note, by: String(cd[i][cCaller] || '').trim() }); }
+      const ds = _normalizeDateStr(cd[i][cTs]);
+      if (!ds || ds < from || ds > to) continue;
+      const o = String(cd[i][cOut] || '').trim();
+      if (o !== 'accepted' && o !== 'rejected' && o !== 'follow_up') continue;  // telesales outcomes only
+      const a = ensure(String(cd[i][cCaller] || '').trim());
+      a.calls++; a.cards[_last8(cd[i][cPhone])] = 1;
+      if (o === 'accepted') a.accepted++; else if (o === 'rejected') a.rejected++; else a.followUps++;
+    }
+  }
+
+  Object.keys(queues).forEach(function(c) {
+    queues[c].forEach(function(j) { const l = (hist[_last8(j.phone)] || []).slice().reverse(); j.noteHistory = l.slice(0, 8); });
+  });
+
+  // Caller roster = configured callers ∪ queue owners ∪ anyone with activity.
+  const names = {};
+  CALLERS.forEach(function(n) { names[n] = 1; });
+  Object.keys(queues).forEach(function(n) { names[n] = 1; });
+  Object.keys(agg).forEach(function(n) { if (n && n !== 'Unknown') names[n] = 1; });
+
+  const callers = Object.keys(names).sort().map(function(name) {
+    const a = agg[name] || { calls: 0, cards: {}, accepted: 0, rejected: 0, followUps: 0 };
+    const jobs = queues[name] || [];
+    const cardsCalled = Object.keys(a.cards).length;
+    const decided = a.accepted + a.rejected;
+    return {
+      caller: name,
+      stats: {
+        calls: a.calls, cardsCalled: cardsCalled,
+        accepted: a.accepted, rejected: a.rejected, followUps: a.followUps,
+        openQueue: jobs.length,
+        closingRate: decided ? Math.round(100 * a.accepted / decided) : 0
+      },
+      jobs: jobs
+    };
+  });
+
+  return jsonResponse({ status: 'ok', from: from, to: to, callers: callers });
 }
 
 // ── One-time bootstraps (run from the editor) ──
