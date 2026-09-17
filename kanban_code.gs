@@ -3978,14 +3978,17 @@ function handleChaseReport(body) {
     }
   } catch (_e) {}
 
+  // Bookings are counted by DISTINCT customer (phone), not raw events: a staff
+  // who books the same client twice in a day (re-submit / reschedule) = 1
+  // booking. _bp/_cp are per-phone seen-sets used to dedupe books/confirmed.
   const dayMap = {};   // 'YYYY-MM-DD' -> { date, calls, books, confirmed, byPerson:{}, items:[] }
   const ensureDay = function(ds) {
-    if (!dayMap[ds]) dayMap[ds] = { date: ds, calls: 0, books: 0, confirmed: 0, byPerson: {}, items: [] };
+    if (!dayMap[ds]) dayMap[ds] = { date: ds, calls: 0, books: 0, confirmed: 0, byPerson: {}, items: [], _bp: {}, _cp: {} };
     return dayMap[ds];
   };
   const ensurePerson = function(day, name) {
     const k = name || 'Unknown';
-    if (!day.byPerson[k]) day.byPerson[k] = { name: k, calls: 0, books: 0, confirmed: 0 };
+    if (!day.byPerson[k]) day.byPerson[k] = { name: k, calls: 0, books: 0, confirmed: 0, _bp: {}, _cp: {} };
     return day.byPerson[k];
   };
 
@@ -4005,8 +4008,13 @@ function handleChaseReport(body) {
       const person = ensurePerson(day, String(cd[i][cBy] || '').trim());
       const isBook = (o === 'chase_book' || o === 'express_book');
       const conf = isBook && !!booked[_last8(cd[i][cPhone])];
-      if (isBook) { day.books++; person.books++; if (conf) { day.confirmed++; person.confirmed++; } }
-      else { day.calls++; person.calls++; }
+      let dup = false;
+      if (isBook) {
+        const ph = _last8(cd[i][cPhone]);
+        dup = !!day._bp[ph];                                   // same client already booked today
+        if (!day._bp[ph])    { day._bp[ph] = 1;    day.books++;    if (conf) day.confirmed++; }
+        if (!person._bp[ph]) { person._bp[ph] = 1; person.books++; if (conf) person.confirmed++; }
+      } else { day.calls++; person.calls++; }
       day.items.push({
         ts: String(cd[i][cTs] || ''),
         time: _mytTimeStr(cd[i][cTs]),
@@ -4016,7 +4024,8 @@ function handleChaseReport(body) {
         name: String(cd[i][cName] || '').trim(),
         phone: String(cd[i][cPhone] || '').trim(),
         note: String(cd[i][cNote] || '').trim(),
-        confirmed: conf
+        confirmed: conf,
+        dup: dup                                                // duplicate booking of same client that day — not counted
       });
     }
   }
@@ -4024,9 +4033,9 @@ function handleChaseReport(body) {
   const daysOut = Object.keys(dayMap).sort().reverse().map(function(ds) {
     const d = dayMap[ds];
     d.items.sort(function(a, b) { return a.ts < b.ts ? 1 : -1; });   // newest first
-    d.byPersonList = Object.keys(d.byPerson).map(function(k) { return d.byPerson[k]; })
+    d.byPersonList = Object.keys(d.byPerson).map(function(k) { const p = d.byPerson[k]; delete p._bp; delete p._cp; return p; })
       .sort(function(a, b) { return b.books - a.books || b.calls - a.calls; });
-    delete d.byPerson;
+    delete d.byPerson; delete d._bp; delete d._cp;
     return d;
   });
   const totals = daysOut.reduce(function(t, d) { t.calls += d.calls; t.books += d.books; t.confirmed += d.confirmed; return t; },

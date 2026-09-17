@@ -98,6 +98,8 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .conf-tag{display:inline-block;font-size:10.5px;font-weight:700;color:#5B21B6;background:#EDE9FE;border-radius:6px;padding:1px 6px;margin-left:6px}
 .src-tag{display:inline-block;font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;margin-left:6px}
 .src-tag.express{color:#065F46;background:#D1FAE5}.src-tag.chase{color:#3730A3;background:#E0E7FF}
+.dup-tag{display:inline-block;font-size:10px;font-weight:700;color:#92400E;background:#FEF3C7;border-radius:6px;padding:1px 6px;margin-left:6px}
+.evt.dup{opacity:.55}
 .rep-legend{font-size:12px;color:#6b7280;margin:-6px 2px 14px;line-height:1.5}
 </style>
 </head>
@@ -504,12 +506,12 @@ function renderReport(r){
     h+='<div class="day-h"><span>'+esc(d.date)+'</span><span class="s">'+d.calls+' calls · '+d.books+' bookings · '+d.confirmed+' confirmed</span></div>';
     h+=(d.items||[]).map(function(it){
       const sub=[esc(it.phone)]; if(it.note) sub.push(esc(it.note));
-      return '<div class="evt b-'+it.kind+'">'+
+      return '<div class="evt b-'+it.kind+(it.dup?' dup':'')+'">'+
         '<span class="t">'+esc(it.time||'')+'</span>'+
         '<span class="k">'+kicon(it.kind)+'</span>'+
         '<span class="b"><span class="nm">'+esc(it.name||'(no name)')+
           (it.kind==='book'&&it.src?'<span class="src-tag '+it.src+'">'+(it.src==='express'?'Express':'Chase')+'</span>':'')+
-          (it.kind==='book'&&it.confirmed?'<span class="conf-tag">appt set ✓</span>':'')+'</span>'+
+          (it.dup?'<span class="dup-tag">duplicate · not counted</span>':(it.kind==='book'&&it.confirmed?'<span class="conf-tag">appt set ✓</span>':''))+'</span>'+
         '<span class="sub">'+sub.join(' · ')+'</span></span>'+
         '<span class="who">'+esc(it.by)+'</span>'+
       '</div>';
