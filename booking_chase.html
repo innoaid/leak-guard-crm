@@ -33,6 +33,7 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .b-wait.cold{background:#F3F4F6;color:#6B7280}
 .b-snz{background:#E0E7FF;color:#3730A3}
 .b-src{background:#F5F3FF;color:#6D28D9}
+.b-ret{background:#FEF3C7;color:#92400E}
 .comp{margin-top:8px;display:flex;gap:5px;flex-wrap:wrap}
 .chip{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:7px;border:1px solid}
 .chip.ok{background:#ECFDF5;border-color:#A7F3D0;color:#065F46}
@@ -211,6 +212,15 @@ async function load(){
         status: status,
         ageH: ts ? ageH : null
       };
+      // Returning enquiry: this same phone was cancelled in a PRIOR cycle (a
+      // Cancelled note dated before this lead's current lead-in). Notes are
+      // phone-keyed, so a re-enquiry would otherwise look like a stuck
+      // cancelled card — flag it so the caller knows it came back on its own.
+      const _leadDate = String(r['Timestamp']||'').slice(0,10);
+      const _notes = (STATE[last8(phone)]||{}).notes || [];
+      let _pc='';
+      _notes.forEach(function(n){ if(_leadDate && n.date && n.date < _leadDate && /cancel/i.test(n.note) && n.date>_pc) _pc=n.date; });
+      c.reCancel = _pc;
       if (last8(phone).length >= 8) DATA.push(c); else NOPHONE.push(c);
     });
     DATA.sort(function(a,b){ return (a.ageH||1e9)-(b.ageH||1e9); });   // freshest (hottest) first
@@ -282,6 +292,7 @@ function cardHtml(c){
       (c.ageH!=null ? '<span class="'+waitCls+'">'+waitLabel(c.ageH)+' waiting</span>' : '<span class="badge b-wait cold">age ?</span>')+
       (c.location ? '<span class="badge b-loc">'+esc(c.location)+'</span>' : '')+
       (c.source ? '<span class="badge b-src">'+esc(c.source)+'</span>' : '')+
+      (c.reCancel ? '<span class="badge b-ret">↩ returned · was cancelled '+esc(c.reCancel)+'</span>' : '')+
       (snz ? '<span class="badge b-snz">⏳ '+esc(snzUntil)+'</span>' : '')+
     '</div>'+
     '<div class="comp">'+
