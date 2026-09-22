@@ -38,6 +38,7 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .hist-row{font-size:12px;color:#374151;line-height:1.5;padding:2px 0;border-top:.5px solid #F3F4F6}
 .hist-row:first-of-type{border-top:none}
 .hist-d{font-weight:700;color:#6B7280}
+.hist-toggle{margin-top:6px;background:none;border:none;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;padding:2px 0;font-family:inherit}
 .empty{text-align:center;color:#6b7280;padding:60px 20px;font-size:15px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
 .toast.on{opacity:1}
@@ -123,8 +124,15 @@ function cardHtml(j, i){
   // Past internal notes (most recent first) for context before calling again.
   let histHtml = '';
   if (j.noteHistory && j.noteHistory.length) {
-    histHtml = '<div class="hist"><div class="hist-h">📝 Notes history</div>' +
-      j.noteHistory.map(function(n){ return '<div class="hist-row"><span class="hist-d">' + esc(n.date) + '</span> ' + esc(n.note) + '</div>'; }).join('') +
+    const notes = j.noteHistory, SHOWN = 3;
+    const rowHtml = function(n){ return '<div class="hist-row"><span class="hist-d">' + esc(n.date) + '</span> ' + esc(n.note) + '</div>'; };
+    const rest = notes.slice(SHOWN);
+    histHtml = '<div class="hist"><div class="hist-h">📝 Notes history (' + notes.length + ')</div>' +
+      notes.slice(0, SHOWN).map(rowHtml).join('') +
+      (rest.length ?
+        '<div id="more'+i+'" style="display:none">' + rest.map(rowHtml).join('') + '</div>' +
+        '<button class="hist-toggle" id="ht'+i+'" onclick="toggleHist('+i+','+notes.length+')">▾ Show all ' + notes.length + ' notes</button>'
+        : '') +
       '</div>';
   }
   const phaseOpts = ACCEPT_PHASES.map(function(p){ return '<option value="'+esc(p)+'">'+esc(p)+'</option>'; }).join('');
@@ -160,6 +168,13 @@ function cardHtml(j, i){
   '</div>';
 }
 
+function toggleHist(i, total){
+  const el = document.getElementById('more'+i), btn = document.getElementById('ht'+i);
+  if (!el || !btn) return;
+  const open = el.style.display === 'none';
+  el.style.display = open ? 'block' : 'none';
+  btn.textContent = open ? '▴ Show less' : ('▾ Show all ' + total + ' notes');
+}
 function toggleFu(i){ document.getElementById('fu'+i).classList.toggle('open'); document.getElementById('acc'+i).classList.remove('open'); }
 function toggleAcc(i){ document.getElementById('acc'+i).classList.toggle('open'); document.getElementById('fu'+i).classList.remove('open'); }
 

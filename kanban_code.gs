@@ -3760,7 +3760,7 @@ function handleCallerJobs(body) {
   jobs.forEach(function(j) {
     const list = hist[_last8(j.phone)] || [];
     list.reverse(); // newest first
-    j.noteHistory = list.slice(0, 5);
+    j.noteHistory = list.slice(0, 50);  // round 142 — full history; caller page shows 3, expands to all
   });
   return jsonResponse({status: 'ok', caller: key, jobs: jobs});
 }
