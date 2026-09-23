@@ -106,7 +106,7 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 </head>
 <body>
 <div class="hdr">
-  <h1>📞 Booking Chase</h1>
+  <h1 id="hTitle">📞 Booking Chase</h1>
   <div class="sub" id="hSub">Loading…</div>
   <div class="tools">
     <button data-win="7" onclick="setWin(7)">🔥 ≤7d</button>
@@ -135,9 +135,21 @@ const SHEET_NAME = 'Leak Guard Leads';
 const BOOK_URL = 'https://leakguard.my/appointment/';
 const BY = (new URLSearchParams(location.search).get('by') || 'Chase').trim();
 
+// Telemarketers who each get their OWN split of the un-booked pool (so they
+// never call the same customer). Open booking_chase.html?by=Ivan / ?by=Eric.
+// Any other 'by' (Manager, blank, Chase) sees EVERY un-booked lead (admin view).
+const TELEMARKETERS = ['Ivan','Eric'];
+function assignedTo(phone){
+  const d=last8(phone); if(!d) return '';
+  let s=0; for(let i=0;i<d.length;i++) s+=d.charCodeAt(i);   // stable per phone
+  return TELEMARKETERS[s % TELEMARKETERS.length];
+}
+function myIdx(){ return TELEMARKETERS.map(function(t){return t.toLowerCase();}).indexOf(BY.toLowerCase()); }
+function myLead(phone){ const i=myIdx(); return i===-1 ? true : (assignedTo(phone)===TELEMARKETERS[i]); }
+
 // Only these pre-booking statuses need chasing (booked / dead are excluded).
 const OPEN_STATUSES = ['New Lead','Pending Invitation','Pending Site Visit'];
-const AGE_MIN_H = 24;
+const AGE_MIN_H = 0;   // show ALL un-booked leads (no min age; fresh ones included)
 // Forward phases a chase lead can be shifted to when the client skips the site
 // inspection (Pending QT = go straight to quotation). All leave the chase list.
 const MOVE_PHASES = ['Pending QT','Quotation Sent','Pending I.Date','Pending Downpayment'];
@@ -186,6 +198,7 @@ function parseTs(r){
 }
 
 async function load(){
+  if(myIdx()!==-1) document.getElementById('hTitle').textContent='📞 '+TELEMARKETERS[myIdx()]+' — Booking Chase';
   const list=document.getElementById('list'); list.innerHTML='<div class="spin">Scanning…</div>';
   document.getElementById('hSub').textContent='Scanning…';
   try {
@@ -202,6 +215,7 @@ async function load(){
       if (ageH < AGE_MIN_H) return;                                    // too fresh, give them time
       const phone = String(r['Phone']||'').trim();
       if (isSuppressed(phone)) return;   // just cancelled here — hide while gviz catches up
+      if (!myLead(phone)) return;        // not this telemarketer's share of the pool
       const c = {
         name: String(r['Name']||'').trim(),
         phone: phone,
@@ -258,13 +272,14 @@ function render(){
   const active=cards.filter(function(c){return !snoozed(c);}).length;
   const np=NOPHONE.filter(inWin);
   const winLbl = WIN>=999 ? 'all ages' : ('≤'+WIN+'d');
-  document.getElementById('hSub').textContent = active+' to chase ('+winLbl+')'+(np.length?(' · '+np.length+' no-phone'):'')+' · '+DATA.length+' eligible total'+(SEARCH?' · filtered':'');
+  const who = myIdx()!==-1 ? (TELEMARKETERS[myIdx()]+' · ') : '';
+  document.getElementById('hSub').textContent = who+active+' to chase ('+winLbl+')'+(np.length?(' · '+np.length+' no-phone'):'')+' · '+DATA.length+' eligible total'+(SEARCH?' · filtered':'');
   CARDIDX=0;
   let html='';
   if(cards.length){
-    html += '<div class="sect-title">Un-booked &gt; 24h · '+winLbl+' · '+cards.length+'</div>' + cards.map(cardHtml).join('');
+    html += '<div class="sect-title">Un-booked · '+winLbl+' · '+cards.length+'</div>' + cards.map(cardHtml).join('');
   } else {
-    html += '<div class="allclear">'+(SEARCH?'No match for “'+esc(SEARCH)+'”.':'✅ All caught up — no un-booked leads over 24h.')+'</div>';
+    html += '<div class="allclear">'+(SEARCH?'No match for “'+esc(SEARCH)+'”.':'✅ All caught up — no un-booked leads.')+'</div>';
   }
   if(np.length){
     html += '<div class="nophone"><div class="sect-title">⚠ No phone — can’t call/book ('+np.length+')</div>' + np.map(cardHtml).join('') + '</div>';
