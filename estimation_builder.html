@@ -315,7 +315,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       <div id="openSvcList"></div>
       <div id="roofTilesList"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-        <button class="add-row" id="btnAddEgel" type="button">+ Toilet E-Gel</button>
+        <button class="add-row" id="btnAddEgel" type="button">+ E-Gel Injection</button>
         <button class="add-row" id="btnAddWallCrack" type="button">+ Wall Crack</button>
         <button class="add-row" id="btnAddOpenSvc" type="button">+ Open Service</button>
         <button class="add-row" id="btnAddRoofTile" type="button">+ Roof Tiles</button>
@@ -387,7 +387,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
       <div class="settings-section">
         <div class="settings-section-h"><span>Membrane installation rate</span></div>
         <div class="input-with-suffix">
-          <input class="input" type="number" inputmode="decimal" step="0.10" min="0" id="setMembraneRate" placeholder="8.50">
+          <input class="input" type="number" inputmode="decimal" step="0.10" min="0" id="setMembraneRate" placeholder="8.99">
           <span class="suffix">RM / sqft</span>
         </div>
         <div class="field-hint">Applies to all slabs. Inspector cannot override per-slab in v3.4.</div>
@@ -452,11 +452,11 @@ const MOQ_SQFT = 300;
 // preset seeds the base price and the inspector adjusts per band. Bump
 // PRESETS_VERSION whenever these defaults change — devices with older saved
 // settings get the new lists on next load (their membrane rate is kept).
-const PRESETS_VERSION = 3;
+const PRESETS_VERSION = 4;
 const DEFAULT_SETTINGS = {
-  membraneRate: 8.50,
+  membraneRate: 8.99,
   slabPresets: [
-    { label: 'Sanding — bubbled/peeled coating',                          qty: 1, unit: 'job',  price: 300  },
+    { label: 'Sanding — bubbled/peeled coating (on the affected area)',   qty: 1, unit: 'job',  price: 300  },
     { label: 'To remove & dispose existing Membrane (rorobin inclusive)', qty: 1, unit: 'job',  price: 300  },
     { label: 'Plumber — remove & reinstall water tank (2 trips)',         qty: 1, unit: 'unit', price: 650  },
     { label: 'Plumber — remove & reinstall water pump (2 trips)',         qty: 1, unit: 'unit', price: 200  },
@@ -487,7 +487,9 @@ function loadSettings(){
         // the device's membrane rate is preserved.
         if (Number(parsed.presetsVersion) !== PRESETS_VERSION) {
           return {
-            membraneRate: Number(parsed.membraneRate) || DEFAULT_SETTINGS.membraneRate,
+            // Round 144 — nudge devices still on the old RM8.50 default up to the
+            // new RM8.99; a device with a custom rate keeps it.
+            membraneRate: (Number(parsed.membraneRate) && Number(parsed.membraneRate) !== 8.50) ? Number(parsed.membraneRate) : DEFAULT_SETTINGS.membraneRate,
             slabPresets: deepClonePresets(DEFAULT_SETTINGS.slabPresets),
             sitePresets: deepClonePresets(DEFAULT_SETTINGS.sitePresets),
           };
@@ -777,7 +779,7 @@ function buildAutocountLineItems(){
       const sq = slabBillSqft(s);  // Round 105 — whole sqft, matches AutoCount
       if (sq > 0) {
         items.push({
-          desc: (s.name || 'Slab') + (s.mode === 'flashing' ? ' — flashing (torch-on membrane)' : ' — torch-on membrane'),
+          desc: (s.name || 'Slab') + (s.mode === 'flashing' ? ' — linear (torch-on membrane)' : ' — torch-on membrane'),
           qty: sq, unit: 'sqft', price: membraneRate(), furtherDescription: ''
         });
       }
@@ -798,7 +800,7 @@ function buildAutocountLineItems(){
   // Round 95 — service types: Toilet E-Gel + Wall Crack lines.
   (state.egel||[]).forEach(function(g){
     if ((Number(g.qty)||0) > 0 && (Number(g.price)||0) > 0) {
-      items.push({ desc: 'Toilet E-Gel Injection (3 yrs warranty)', qty: Number(g.qty)||0, unit: 'unit', price: Number(g.price)||0, furtherDescription: '' });
+      items.push({ desc: 'E-Gel Injection (3 yrs warranty)', qty: Number(g.qty)||0, unit: 'unit', price: Number(g.price)||0, furtherDescription: '' });
     }
   });
   (state.wallCracks||[]).forEach(function(w){
@@ -914,7 +916,7 @@ async function handleServicePhotoFiles(arrName, id, files){
   const ut = document.getElementById('uploadText');
   ov.classList.add('on');
   let added = 0;
-  const label = arrName === 'egel' ? 'Toilet E-Gel' : 'Wall Crack';
+  const label = arrName === 'egel' ? 'E-Gel' : 'Wall Crack';
   for (const f of Array.from(files)) {
     ut.textContent = 'Compressing… ('+(added+1)+'/'+files.length+')';
     try {
@@ -1124,7 +1126,7 @@ function renderEgel(){
     const div = document.createElement('div');
     div.className = 'row';
     div.innerHTML =
-      '<div class="row-label"><span>🚽 Toilet E-Gel Injection</span><button class="row-x" data-del-egel="'+g.id+'" type="button" aria-label="Remove">×</button></div>'+
+      '<div class="row-label"><span>💉 E-Gel Injection</span><button class="row-x" data-del-egel="'+g.id+'" type="button" aria-label="Remove">×</button></div>'+
       '<div class="extras-fields">'+
         '<input type="number" inputmode="numeric" step="1" min="0" placeholder="Toilets" value="'+(g.qty||'')+'" data-egel-field="qty" data-egel-id="'+g.id+'">'+
         '<input type="number" inputmode="decimal" step="50" min="0" placeholder="RM / toilet" value="'+(g.price||'')+'" data-egel-field="price" data-egel-id="'+g.id+'">'+
@@ -1266,7 +1268,7 @@ function renderSlabCollapsed(s){
   return '<div class="slab collapsed" data-slab-toggle="'+s.id+'">'+
     '<div class="slab-collapsed-row">'+
       '<span class="slab-collapsed-name">'+escapeHtml(s.name)+'</span>'+
-      '<span class="slab-collapsed-mode">'+(isFlashing?'Flashing':'Slab')+'</span>'+
+      '<span class="slab-collapsed-mode">'+(isFlashing?'Linear':'Slab')+'</span>'+
       '<span class="slab-collapsed-area">'+sqft(slabSqft(s))+'</span>'+
       '<span class="slab-collapsed-total">'+rm(slabTotal(s))+'</span>'+
       '<span class="slab-collapsed-chev">▾</span>'+
@@ -1311,7 +1313,7 @@ function renderSlabExpanded(s){
         '<div class="row-fields">'+
           '<input type="text" placeholder="e.g. Left wall" value="'+escapeHtml(u.label)+'" data-up-field="label" data-slab="'+s.id+'" data-up="'+u.id+'">'+
           '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Run ft" value="'+(u.runFt||'')+'" data-up-field="runFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
-          '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Upturn ft" value="'+(u.upturnFt||'')+'" data-up-field="upturnFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
+          '<input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Upturn/downturn ft" value="'+(u.upturnFt||'')+'" data-up-field="upturnFt" data-slab="'+s.id+'" data-up="'+u.id+'">'+
           '<span class="fld-out" data-up-out="'+u.id+'">'+(includeChecked ? '= '+sqft(upturnSqft(u)) : '<span style="text-decoration:line-through;color:#9ca3af">excluded</span>')+'</span>'+
         '</div>'+
       '</div>';
@@ -1367,7 +1369,7 @@ function renderSlabExpanded(s){
           '<button class="add-row" type="button" data-add-mfloor="'+s.id+'" style="width:100%;margin-top:0">+ Add section</button>'+
         '</div>'+
       '</div>'+
-      '<div style="margin-top:11px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt)">Upturns ('+s.upturns.length+')</div>';
+      '<div style="margin-top:11px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt)">Upturns / downturns ('+s.upturns.length+')</div>';
   } else {
     measBody += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mt);margin-bottom:5px">Linear sections ('+s.upturns.length+')</div>';
   }
@@ -1378,7 +1380,7 @@ function renderSlabExpanded(s){
     '<input type="file" accept="image/*" data-iscan-input="'+s.id+'" style="display:none">'+
     '<div style="font-size:10px;color:var(--mt);margin:-4px 0 6px;line-height:1.4">Upload your iScanner photo as-is — no marking needed. Each side becomes a row you can toggle on/off and adjust.</div>'+
     upturnsHtml +
-    '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn')+'</button>';
+    '<button class="add-row" type="button" data-add-upturn="'+s.id+'">+ Add '+(isFlashing?'section':'upturn/downturn')+'</button>';
 
   const measSummary = sqft(slabSqft(s)) + ' total';
 
@@ -1394,7 +1396,7 @@ function renderSlabExpanded(s){
       '<label>Mode:</label>'+
       '<select data-slab-mode="'+s.id+'">'+
         '<option value="slab"'+(isFlashing?'':' selected')+'>Slab + upturns</option>'+
-        '<option value="flashing"'+(isFlashing?' selected':'')+'>Flashing / linear only (no floor)</option>'+
+        '<option value="flashing"'+(isFlashing?' selected':'')+'>Linear only (no floor)</option>'+
       '</select>'+
     '</div>'+
 
@@ -1564,7 +1566,7 @@ function renderGrand(){
   // Round 95 — Toilet E-Gel + Wall Crack blocks (on-screen preview)
   (state.egel||[]).forEach(function(g, gi){
     if ((Number(g.qty)||0) <= 0) return;
-    html += '<div class="grand-block"><div class="grand-block-h">Toilet E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</div>'+
+    html += '<div class="grand-block"><div class="grand-block-h">E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</div>'+
       '<div class="grand-line"><span class="l-label">'+(Number(g.qty)||0)+' toilet(s) × '+rm(g.price)+'</span><span class="l-val">'+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span></div></div>';
   });
   (state.wallCracks||[]).forEach(function(w, wi){
@@ -2105,23 +2107,22 @@ async function runSubmit(doSend, clickedBtn){
     // Round 83.3 — archive the PDF to Drive (link lands in the Estimations
     // row + the lead's Quotation PDF URL column). Non-fatal: the customer
     // already has the PDF in WhatsApp.
+    // Round 144 — retry the PDF archive (writes the lead's 'Quotation PDF URL' =
+    // the card's ESTIMATE link). Previously a single un-retried fetch: a transient
+    // failure silently dropped the PDF link while the record + AutoCount QT still
+    // saved, so the card showed no PDF until a re-save. Now retried like the
+    // other save steps, with a visible warning if it truly fails.
     ut.textContent = 'Archiving PDF to Drive…';
-    try {
-      const upRes = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'uploadEstimationPdf', secret: SHARED_SECRET,
-          seNo: docNo,
-          phone: String(currentLead['Phone'] || '').trim(),
-          filename: docNo + '.pdf',
-          pdfBase64: pdfBase64
-        })
-      });
-      const upData = await upRes.json();
-      if (upData.status !== 'ok') console.warn('uploadEstimationPdf failed (non-fatal):', upData.message);
-    } catch (upErr) {
-      console.warn('uploadEstimationPdf failed (non-fatal)', upErr);
+    const upData = await postAppsScript({
+      action: 'uploadEstimationPdf', secret: SHARED_SECRET,
+      seNo: docNo,
+      phone: String(currentLead['Phone'] || '').trim(),
+      filename: docNo + '.pdf',
+      pdfBase64: pdfBase64
+    }, 4);
+    if (!upData || upData.status !== 'ok') {
+      console.warn('uploadEstimationPdf failed after retries:', upData && upData.message);
+      toast('⚠ PDF didn’t attach to the card — open Amend and Save again to retry.', 'warn');
     }
 
     // Round 83 — Trigger A: create the AutoCount quotation now (checkbox ON).
@@ -2353,11 +2354,11 @@ function buildPrintView(overrideRef) {
   (state.egel || []).forEach(function(g, gi){
     if ((Number(g.qty)||0) <= 0) return;
     html += '<div class="pv-slab">'+
-      '<div class="pv-slab-h"><span>Toilet E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</span><span class="pv-slab-mode">Per toilet</span></div>'+
+      '<div class="pv-slab-h"><span>E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</span><span class="pv-slab-mode">Per unit</span></div>'+
       ((g.photos&&g.photos.length) ? '<div class="pv-photos">'+g.photos.slice(0,6).map(function(p){return '<div class="pv-photo"><img src="'+p.dataUrl+'" alt=""></div>';}).join('')+'</div>' : '')+
       '<div class="pv-section">'+
         '<div class="pv-line"><span>E-Gel injection · '+(Number(g.qty)||0)+' toilet(s) @ '+rm(g.price)+'</span><span>'+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span></div>'+
-        '<div class="pv-line" style="font-size:10px;color:#6b7280">3-year warranty · non-hacking · non-dusty · resume use 1 hour after application</div>'+
+        '<div class="pv-line" style="font-size:10px;color:#6b7280">3-year warranty · non-hacking · non-dusty · resume use 3 hours after application</div>'+
         '<div class="pv-line" style="font-size:10px;color:#b45309;font-weight:700">⚠ Please stop using the toilet for 72 hours before work commences.</div>'+
       '</div></div>';
   });
@@ -2442,7 +2443,7 @@ function buildPrintView(overrideRef) {
   (state.egel || []).forEach(function(g, gi){
     if ((Number(g.qty)||0) <= 0) return;
     html += '<div class="pv-grand-block">'+
-      '<div class="pv-grand-block-h">Toilet E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</div>'+
+      '<div class="pv-grand-block-h">E-Gel Injection'+((state.egel.length>1)?(' #'+(gi+1)):'')+'</div>'+
       '<div class="pv-grand-line"><span>'+(Number(g.qty)||0)+' toilet(s) × '+rm(g.price)+'</span><span>'+rm((Number(g.qty)||0)*(Number(g.price)||0))+'</span></div>'+
       '</div>';
   });
