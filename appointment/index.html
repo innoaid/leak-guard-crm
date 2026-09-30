@@ -198,7 +198,15 @@ var SLOT_LABELS_JB = {
   2: {label:'1:00 PM', full:'1:00 PM - 2:00 PM'},
   3: {label:'3:00 PM', full:'3:00 PM - 4:00 PM'}
 };
-// Default to KL; switched to JB after availability response confirms team
+// Round 143 — KL Toilet team (?team=TOILET): dedicated KL-toilet-ad calendar,
+// Mon-Sat, 4 slots (same times as KL general, no hidden 12pm slot).
+var SLOT_LABELS_TOILET = {
+  1: {label:'9:00 AM', full:'9:00 AM - 10:00 AM'},
+  2: {label:'10:30 AM', full:'10:30 AM - 11:30 AM'},
+  3: {label:'2:00 PM', full:'2:00 PM - 3:00 PM'},
+  4: {label:'3:30 PM', full:'3:30 PM - 4:30 PM'}
+};
+// Default to KL; switched by team after the availability response confirms it
 var SLOT_LABELS = SLOT_LABELS_KL;
 var TEAM = 'KL';
 function buildSlotMap() {
@@ -298,7 +306,7 @@ function loadAvailability() {
       stripRescheduleOldSlot();
       // Team-aware slot rendering — server returns 'JB' or 'KL'
       TEAM = data.team || 'KL';
-      SLOT_LABELS = (TEAM === 'JB') ? SLOT_LABELS_JB : SLOT_LABELS_KL;
+      SLOT_LABELS = (TEAM === 'JB') ? SLOT_LABELS_JB : (TEAM === 'TOILET') ? SLOT_LABELS_TOILET : SLOT_LABELS_KL;
       // Fill in display name + group from CRM lookup if URL didn't supply them
       if (!resolvedName && data.name) resolvedName = data.name;
       if (!resolvedGroup && data.groupName) resolvedGroup = data.groupName;
