@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Toilet Bookings</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 48px}
+.hdr{background:#2D2A6E;color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:5}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .sub{font-size:12px;opacity:.85;margin-top:2px}
+.hdr .tools{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.hdr .tools button{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.hdr .tools button.on{background:#fff;color:#2D2A6E;border-color:#fff}
+.wrap{max-width:620px;margin:0 auto;padding:14px}
+.tiles{display:flex;gap:9px;margin-bottom:16px;flex-wrap:wrap}
+.tile{flex:1;min-width:calc(25% - 7px);background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:13px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.tile .n{font-size:24px;font-weight:800;line-height:1}
+.tile .l{font-size:10.5px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.2px;margin-top:5px}
+.tile.book .n{color:#2563EB}.tile.conf .n{color:#059669}.tile.qt .n{color:#7C3AED}.tile.cx .n{color:#DC2626}
+.legend{font-size:12px;color:#6b7280;margin:-6px 2px 14px;line-height:1.5}
+.card{background:#fff;border:1px solid #e5e7eb;border-left:4px solid #10B981;border-radius:12px;padding:12px 13px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.card.cx{border-left-color:#EF4444;opacity:.72}
+.card.test{border-left-color:#9CA3AF;opacity:.6}
+.crow{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.cname{font-size:15.5px;font-weight:800}
+.tag{display:inline-block;font-size:10px;font-weight:700;border-radius:6px;padding:1px 7px;margin-left:6px}
+.tag.src-ad{background:#D1FAE5;color:#065F46}.tag.src-staff{background:#EEF2FF;color:#2D2A6E}
+.tag.qt{background:#EDE9FE;color:#5B21B6}.tag.test{background:#F3F4F6;color:#6B7280}.tag.cx{background:#FEE2E2;color:#991B1B}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:#EEF2FF;color:#2D2A6E}
+.meta{font-size:12.5px;color:#6b7280;margin-top:6px;line-height:1.6}
+.meta b{color:#374151}
+.spin,.empty{text-align:center;color:#6b7280;padding:60px 20px;font-size:15px}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>🚽 Toilet Bookings</h1>
+  <div class="sub" id="hSub">Loading…</div>
+  <div class="tools">
+    <button data-win="1" onclick="setWin(1)">Today</button>
+    <button data-win="7" onclick="setWin(7)">7d</button>
+    <button data-win="30" onclick="setWin(30)">30d</button>
+    <button data-win="999" class="on" onclick="setWin(999)">All</button>
+    <button onclick="load()">↻</button>
+  </div>
+</div>
+<div class="wrap" id="list"><div class="spin">Loading toilet bookings…</div></div>
+
+<script>
+// Internal staff report of KL-Toilet-team bookings. A toilet booking is any lead
+// with Assigned To = 'Toilet Team' (set by LG-Booking when team=TOILET) — captures
+// both ad self-bookings (express/toilet/) and staff bookings (?by=). Read-only via
+// public gviz (internal tool, same pattern as caller/chase pages).
+const SHEET_ID = '1FnuiZcOSy5UMQpW81I7qtU6a7NGlnHtJbH2EkVM7PLQ';
+const SHEET_NAME = 'Leak Guard Leads';
+const QUOTED = ['Quotation Sent','Pending I.Date','I.Date Confirmed','Pending Downpayment','Job In Progress','Pending Balance','Job Complete','Receipt Sent','Completed'];
+const LOST = ['Rejected','Lost','Cold Lead','Out of Area','Other State','Human Handoff'];
+let ROWS = [];
+let WIN = 999;   // booking-in window in days (999 = all)
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
+function digits(s){ return String(s||'').replace(/\D/g,''); }
+function setWin(d){ WIN=d; document.querySelectorAll('.hdr .tools button[data-win]').forEach(function(b){ b.classList.toggle('on', +b.dataset.win===d); }); render(); }
+
+function parseDate(v){
+  if(v==null) return null;
+  let s=String(v);
+  let md=s.match(/Date\((\d+),(\d+),(\d+)/);
+  if(md) return new Date(+md[1], +md[2], +md[3]);
+  let m=s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  const t=Date.parse(s); return isNaN(t)?null:new Date(t);
+}
+function dstr(v){ const d=parseDate(v); if(!d) return ''; return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+
+async function load(){
+  const list=document.getElementById('list'); list.innerHTML='<div class="spin">Loading toilet bookings…</div>';
+  try{
+    const url='https://docs.google.com/spreadsheets/d/'+SHEET_ID+'/gviz/tq?tqx=out:json&sheet='+encodeURIComponent(SHEET_NAME)+'&nocache='+Date.now();
+    const txt=await (await fetch(url)).text();
+    const m=txt.match(/setResponse\(([\s\S]*)\)/); if(!m){ list.innerHTML='<div class="empty">Could not read sheet.</div>'; return; }
+    const j=JSON.parse(m[1]); const cols=j.table.cols.map(function(c){return (c.label||'').trim();});
+    const rows=(j.table.rows||[]).map(function(r){ const o={}; cols.forEach(function(lbl,i){ if(!lbl) return; const c=r.c[i]; o[lbl]= c ? (c.v!=null?c.v:(c.f!=null?c.f:'')) : ''; }); return o; });
+    // toilet bookings = Assigned To 'Toilet Team'
+    ROWS = rows.filter(function(r){ return String(r['Assigned To']||'').trim().toLowerCase()==='toilet team'; })
+      .map(function(r){
+        const st=String(r['Status']||'').trim();
+        const qt=String(r['AutoCount QT No']||'').trim() || ((String(r['Group Name (AE)']||'').match(/QT[A-Z]*-\d{4}-\d{3}/)||[''])[0]);
+        const by=String(r['Booked By']||'').trim();
+        return {
+          name:String(r['Name']||'').trim(), phone:digits(r['Phone']),
+          status:st, bookedDate:dstr(r['Timestamp']), visitDate:dstr(r['Date Appt Confirmed']),
+          by:by, source: by ? by : 'Ad (self)',
+          qt:qt, rm:Number(r['Quotation (RM)'])||0,
+          problem:String(r['Problem Type']||'').trim(),
+          converted: !!qt || QUOTED.indexOf(st)>=0,
+          cancelled: LOST.indexOf(st)>=0,
+          isTest: /test/i.test(String(r['Name']||''))
+        };
+      });
+    ROWS.sort(function(a,b){ return (a.bookedDate<b.bookedDate)?1:-1; });  // newest first
+    render();
+  }catch(e){ list.innerHTML='<div class="empty" style="color:#DC2626">⚠ '+esc(e.message||e)+'</div>'; }
+}
+
+function winMatch(r){
+  if(WIN>=999) return true;
+  if(!r.bookedDate) return false;
+  const d=new Date(r.bookedDate+'T00:00:00'); const now=new Date();
+  return (now - d)/86400000 <= WIN;
+}
+
+function render(){
+  const list=document.getElementById('list');
+  const rows=ROWS.filter(winMatch);
+  const real=rows.filter(function(r){return !r.isTest;});
+  const confirmed=real.filter(function(r){return !r.cancelled;});
+  const converted=real.filter(function(r){return r.converted && !r.cancelled;});
+  const cancelled=real.filter(function(r){return r.cancelled;});
+  const winLbl = WIN>=999?'all time':('last '+WIN+'d');
+  document.getElementById('hSub').textContent = real.length+' toilet booking'+(real.length===1?'':'s')+' · '+winLbl;
+
+  let h='<div class="tiles">'+
+    '<div class="tile book"><div class="n">'+real.length+'</div><div class="l">Bookings</div></div>'+
+    '<div class="tile conf"><div class="n">'+confirmed.length+'</div><div class="l">Active</div></div>'+
+    '<div class="tile qt"><div class="n">'+converted.length+'</div><div class="l">Quoted</div></div>'+
+    '<div class="tile cx"><div class="n">'+cancelled.length+'</div><div class="l">Cancelled</div></div>'+
+  '</div>'+
+  '<div class="legend">📅 <b>Bookings</b> = site visits booked to the toilet team (ad + staff). <b>Active</b> = not cancelled. <b>Quoted</b> = turned into a quotation. Source shows <b>Ad (self)</b> or the staff name.</div>';
+
+  if(!rows.length){ h+='<div class="empty">No toilet bookings '+(WIN>=999?'yet':'in this period')+'.</div>'; list.innerHTML=h; return; }
+
+  h += rows.map(function(r){
+    const cls='card'+(r.isTest?' test':(r.cancelled?' cx':''));
+    const srcTag='<span class="tag '+(r.by?'src-staff':'src-ad')+'">'+esc(r.source)+'</span>';
+    return '<div class="'+cls+'">'+
+      '<div class="crow"><div class="cname">'+esc(r.name||'(no name)')+
+        (r.isTest?'<span class="tag test">test</span>':'')+
+        (r.qt?'<span class="tag qt">'+esc(r.qt)+'</span>':'')+
+        (r.cancelled?'<span class="tag cx">cancelled</span>':'')+
+      '</div>'+srcTag+'</div>'+
+      '<div class="meta">'+
+        (r.phone?'📞 '+esc(r.phone)+' · ':'')+
+        '<b>'+esc(r.status)+'</b>'+
+        (r.visitDate?' · 🗓 visit '+esc(r.visitDate):'')+
+        (r.bookedDate?' · booked '+esc(r.bookedDate):'')+
+        (r.rm?' · RM'+Number(r.rm).toLocaleString():'')+
+        (r.problem?'<br>'+esc(r.problem):'')+
+      '</div>'+
+    '</div>';
+  }).join('');
+  list.innerHTML=h;
+}
+
+load();
+</script>
+</body>
+</html>
