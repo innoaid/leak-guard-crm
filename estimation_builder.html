@@ -364,6 +364,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
   <div class="submit-bar-inner">
     <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
     <button class="btn-clear" id="btnEditTnc" type="button" style="color:#0E7C86;border-color:#0E7C86">✏️ Edit T&amp;C</button>
+    <button class="btn-clear" id="btnNoMoq" type="button">🔓 No-min</button>
   </div>
   <!-- Round 116 — two actions: save+sync (no send) vs save+sync+send. Both create the AutoCount QT. -->
   <div class="submit-bar-inner" style="margin-top:6px">
@@ -541,7 +542,7 @@ let settings = loadSettings();
 
 // Round 95 — egel (toilet E-Gel) + wallCracks are top-level service types
 // alongside membrane slabs.
-let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0, tncHtml:'' };
+let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0, tncHtml:'', noMoq:false };
 // Round 120 — amend mode: when set (?amend=SE-…), regenerate re-uses this SE
 // instead of issuing a new one, and overwrites the same estimation record.
 let amendSe = '', amendQtNo = '';
@@ -660,6 +661,7 @@ function loadState(){
         state.discountType = (parsed.discountType === 'value') ? 'value' : 'percent';
         state.discountValue = Number(parsed.discountValue) || 0;
         state.tncHtml = parsed.tncHtml || '';
+        state.noMoq = !!parsed.noMoq;
       }
     }
   } catch(_){}
@@ -682,7 +684,7 @@ function saveState(){
       openSvc:(state.openSvc||[]).map(function(o){ return {id:o.id,desc:o.desc,qty:o.qty,price:o.price}; }),
       roofTiles:(state.roofTiles||[]).map(function(r){ return {id:r.id,desc:r.desc,qty:r.qty,price:r.price}; }),
       discountType:state.discountType||'percent', discountValue:Number(state.discountValue)||0,
-      tncHtml:state.tncHtml||''
+      tncHtml:state.tncHtml||'', noMoq:!!state.noMoq
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
   } catch(_){}
@@ -713,7 +715,9 @@ function siteExtrasRm(){ return state.siteExtras.reduce(function(sum,e){ return 
 // rounding, so the MOQ check + saved Total Sqft match the AutoCount QT.
 function grandMembraneSqft(){ return state.slabs.reduce(function(sum,s){ return sum+slabBillSqft(s); },0); }
 // Round 75 — MOQ adjustment: if total membrane area < MOQ_SQFT, bill the shortfall × rate.
+// Round 144 — PIN-gated override: state.noMoq (admin-only) bills the actual area even under 300.
 function moqAdjustment(){
+  if (state.noMoq) return 0;
   const total = grandMembraneSqft();
   if (total > 0 && total < MOQ_SQFT) {
     return (MOQ_SQFT - total) * membraneRate();
@@ -724,7 +728,7 @@ function moqAdjustment(){
 // presentation then hides per-slab membrane pricing entirely and shows a
 // single "Minimum order — 300 sqft × rate" line instead (measurements stay
 // visible in the slab detail for transparency).
-function moqMode(){ const t = grandMembraneSqft(); return t > 0 && t < MOQ_SQFT; }
+function moqMode(){ if (state.noMoq) return false; const t = grandMembraneSqft(); return t > 0 && t < MOQ_SQFT; }
 function allSlabExtras(){ return state.slabs.reduce(function(arr,s){ return arr.concat(s.extras||[]); },[]); }
 
 // Round 95 — service-type totals (outside the membrane MOQ).
@@ -1056,6 +1060,7 @@ async function runOcrOnPhoto(slab, photo) {
 // ========= RENDER =========
 function renderAll(){
   renderSlabs(); renderEgel(); renderWallCracks(); renderOpenSvc(); renderRoofTiles(); renderSiteExtras(); renderSiteChips(); renderGrand(); renderStepSummaries(); updateSubmitState();
+  if (typeof updateNoMoqBtn === 'function') updateNoMoqBtn();
 }
 
 // Round 97 — Open Service + Roof Tiles rows (qty × price, free-form desc, photos).
@@ -2922,7 +2927,7 @@ function buildStateJson(){
     wallCracks: (state.wallCracks||[]).map(function(w){ return { id:w.id, desc:w.desc, price:w.price, photos: photoRefs(w.photos) }; }),
     openSvc: (state.openSvc||[]).map(function(o){ return { id:o.id, desc:o.desc, qty:o.qty, price:o.price, photos: photoRefs(o.photos) }; }),
     roofTiles: (state.roofTiles||[]).map(function(r){ return { id:r.id, desc:r.desc, qty:r.qty, price:r.price, photos: photoRefs(r.photos) }; }),
-    tncHtml: state.tncHtml || ''
+    tncHtml: state.tncHtml || '', noMoq: !!state.noMoq
   });
 }
 // Rebuild the editable state from a saved stateJson (photos start with empty dataUrl → hydrated from Drive).
@@ -2941,7 +2946,7 @@ function applyStateJson(jsonStr){
     wallCracks: (d.wallCracks||[]).map(function(w){ return { id:w.id||uuid(), desc:w.desc||'', price:Number(w.price)||0, photos: photos(w.photos) }; }),
     openSvc: (d.openSvc||[]).map(function(o){ return { id:o.id||uuid(), desc:o.desc||'', qty:Number(o.qty)||0, price:Number(o.price)||0, photos: photos(o.photos) }; }),
     roofTiles: (d.roofTiles||[]).map(function(r){ return { id:r.id||uuid(), desc:r.desc||'', qty:Number(r.qty)||0, price:Number(r.price)||0, photos: photos(r.photos) }; }),
-    tncHtml: d.tncHtml || ''
+    tncHtml: d.tncHtml || '', noMoq: !!d.noMoq
   };
   saveState();
 }
@@ -2963,6 +2968,29 @@ function resetTncEditor(){ state.tncHtml = ''; saveState(); document.getElementB
   if ((b=document.getElementById('btnTncCancel'))) b.onclick = closeTncEditor;
   if ((b=document.getElementById('btnTncSave'))) b.onclick = saveTncEditor;
   if ((b=document.getElementById('btnTncReset'))) b.onclick = resetTncEditor;
+})();
+
+// Round 144 — PIN-gated "under-300 (no minimum)" override. When ON, a job below
+// MOQ_SQFT is quoted at its actual area instead of the 300 sqft minimum. The PIN
+// is a soft gate (it lives in the page source) — it stops casual/accidental use
+// by inspectors, not a determined one.
+const NOMOQ_PIN = '8657';
+function updateNoMoqBtn(){
+  const b = document.getElementById('btnNoMoq'); if (!b) return;
+  if (state.noMoq){ b.textContent = '✅ No-min ON'; b.style.color = '#065F46'; b.style.borderColor = '#10B981'; }
+  else { b.textContent = '🔓 No-min'; b.style.color = ''; b.style.borderColor = ''; }
+}
+(function(){
+  const b = document.getElementById('btnNoMoq'); if (!b) return;
+  b.onclick = function(){
+    if (state.noMoq){ state.noMoq = false; saveState(); updateNoMoqBtn(); renderAll(); toast('Minimum order re-enabled', 'info'); return; }
+    const pin = prompt('Enter PIN to allow a quote below the '+MOQ_SQFT+' sqft minimum:');
+    if (pin === null) return;
+    if (String(pin).trim() !== NOMOQ_PIN){ toast('Wrong PIN — minimum stays', 'error'); return; }
+    state.noMoq = true; saveState(); updateNoMoqBtn(); renderAll();
+    toast('No-minimum override ON — billing actual area', 'success');
+  };
+  updateNoMoqBtn();
 })();
 
 // Re-fetch each Drive photo as base64 so the amended PDF keeps its original site photos.
