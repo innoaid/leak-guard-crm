@@ -363,6 +363,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 <div class="submit-bar">
   <div class="submit-bar-inner">
     <button class="btn-clear" id="btnClear" type="button">↺ Reset</button>
+    <button class="btn-clear" id="btnEditTnc" type="button" style="color:#0E7C86;border-color:#0E7C86">✏️ Edit T&amp;C</button>
   </div>
   <!-- Round 116 — two actions: save+sync (no send) vs save+sync+send. Both create the AutoCount QT. -->
   <div class="submit-bar-inner" style="margin-top:6px">
@@ -372,6 +373,25 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 </div>
 
 <div id="printView"></div>
+
+<!-- Round 144 — editable Terms & Conditions (WYSIWYG, per-estimate) -->
+<div id="tncModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center;padding:14px">
+  <div style="background:#fff;border-radius:14px;max-width:680px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:16px;font-weight:800">Edit Terms &amp; Conditions</div>
+      <button id="btnTncClose" type="button" style="background:none;border:none;font-size:22px;cursor:pointer;color:#6b7280">×</button>
+    </div>
+    <div style="padding:8px 18px 0;font-size:12px;color:#6b7280">Edits apply to <b>this estimate only</b> and appear in the PDF. Formatting (bold, lists) is kept.</div>
+    <div id="tncEditBody" contenteditable="true" style="flex:1;overflow:auto;margin:10px 18px 12px;padding:14px;border:1px solid #d1d5db;border-radius:10px;font-size:12px;line-height:1.5;color:#111"></div>
+    <div style="padding:12px 18px;border-top:1px solid #e5e7eb;display:flex;gap:8px;justify-content:space-between">
+      <button id="btnTncReset" type="button" style="background:#f3f4f6;color:#374151;border:none;border-radius:9px;padding:10px 14px;font-weight:700;font-size:13px;cursor:pointer">↺ Reset to default</button>
+      <div style="display:flex;gap:8px">
+        <button id="btnTncCancel" type="button" style="background:#fff;color:#6b7280;border:1px solid #d1d5db;border-radius:9px;padding:10px 14px;font-weight:700;font-size:13px;cursor:pointer">Cancel</button>
+        <button id="btnTncSave" type="button" style="background:#0E7C86;color:#fff;border:none;border-radius:9px;padding:10px 18px;font-weight:800;font-size:13px;cursor:pointer">Save T&amp;C</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="toast-container" id="toastContainer"></div>
 <div class="upload-overlay" id="uploadOverlay"><div class="spinner"></div><div id="uploadText">Compressing photos…</div></div>
@@ -521,7 +541,7 @@ let settings = loadSettings();
 
 // Round 95 — egel (toilet E-Gel) + wallCracks are top-level service types
 // alongside membrane slabs.
-let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0 };
+let state = { submittedBy:'', notes:'', slabs:[], siteExtras:[], egel:[], wallCracks:[], openSvc:[], roofTiles:[], discountType:'percent', discountValue:0, tncHtml:'' };
 // Round 120 — amend mode: when set (?amend=SE-…), regenerate re-uses this SE
 // instead of issuing a new one, and overwrites the same estimation record.
 let amendSe = '', amendQtNo = '';
@@ -639,6 +659,7 @@ function loadState(){
         // Round 74 — discount on grand total
         state.discountType = (parsed.discountType === 'value') ? 'value' : 'percent';
         state.discountValue = Number(parsed.discountValue) || 0;
+        state.tncHtml = parsed.tncHtml || '';
       }
     }
   } catch(_){}
@@ -660,7 +681,8 @@ function saveState(){
       wallCracks:(state.wallCracks||[]).map(function(w){ return {id:w.id,desc:w.desc,price:w.price}; }),
       openSvc:(state.openSvc||[]).map(function(o){ return {id:o.id,desc:o.desc,qty:o.qty,price:o.price}; }),
       roofTiles:(state.roofTiles||[]).map(function(r){ return {id:r.id,desc:r.desc,qty:r.qty,price:r.price}; }),
-      discountType:state.discountType||'percent', discountValue:Number(state.discountValue)||0
+      discountType:state.discountType||'percent', discountValue:Number(state.discountValue)||0,
+      tncHtml:state.tncHtml||''
     };
     localStorage.setItem(LS_KEY, JSON.stringify(slim));
   } catch(_){}
@@ -808,10 +830,13 @@ function buildAutocountLineItems(){
       items.push({ desc: 'External Wall Crack Repair Service', qty: 1, unit: 'unit', price: Number(w.price)||0, furtherDescription: String(w.desc||'').slice(0,200) });
     }
   });
-  // Round 97 — Open Service + Roof Tiles (qty × price).
+  // Round 97 — Open Service + Roof Tiles (qty × price). Round 144 — an Open
+  // Service with a description but RM0 is a FOC/complimentary item: still list
+  // it (price 0), tagged "(F.O.C)". Only a priced item needs no description.
   (state.openSvc||[]).forEach(function(o){
-    if ((Number(o.qty)||0) > 0 && (Number(o.price)||0) > 0) {
-      items.push({ desc: String(o.desc||'').trim() || 'Service', qty: Number(o.qty)||0, unit: 'unit', price: Number(o.price)||0, furtherDescription: '' });
+    const _q = Number(o.qty)||0, _p = Number(o.price)||0, _d = String(o.desc||'').trim();
+    if (_q > 0 && (_p > 0 || _d)) {
+      items.push({ desc: (_d || 'Service') + (_p > 0 ? '' : ' (F.O.C)'), qty: _q, unit: 'unit', price: _p, furtherDescription: '' });
     }
   });
   (state.roofTiles||[]).forEach(function(r){
@@ -1574,11 +1599,14 @@ function renderGrand(){
     html += '<div class="grand-block"><div class="grand-block-h">External Wall Crack'+((state.wallCracks.length>1)?(' #'+(wi+1)):'')+'</div>'+
       '<div class="grand-line"><span class="l-label">Subject to site condition</span><span class="l-val">'+rm(Number(w.price)||0)+'</span></div></div>';
   });
-  // Round 97 — Open Service + Roof Tiles (on-screen preview)
+  // Round 97 — Open Service + Roof Tiles (on-screen preview). Round 144 — FOC (RM0) items still show.
   (state.openSvc||[]).forEach(function(o){
-    if ((Number(o.qty)||0) <= 0 || (Number(o.price)||0) <= 0) return;
+    const _q = Number(o.qty)||0, _p = Number(o.price)||0;
+    if (_q <= 0 || (_p <= 0 && !String(o.desc||'').trim())) return;
+    const _left = _p > 0 ? (_q+' × '+rm(_p)) : (_q+' × F.O.C');
+    const _right = _p > 0 ? rm(_q*_p) : '<b>F.O.C</b>';
     html += '<div class="grand-block"><div class="grand-block-h">'+escapeHtml(o.desc||'Service')+'</div>'+
-      '<div class="grand-line"><span class="l-label">'+(Number(o.qty)||0)+' × '+rm(o.price)+'</span><span class="l-val">'+rm((Number(o.qty)||0)*(Number(o.price)||0))+'</span></div></div>';
+      '<div class="grand-line"><span class="l-label">'+_left+'</span><span class="l-val">'+_right+'</span></div></div>';
   });
   (state.roofTiles||[]).forEach(function(r, ri){
     if ((Number(r.qty)||0) <= 0 || (Number(r.price)||0) <= 0) return;
@@ -2265,7 +2293,7 @@ function buildPrintView(overrideRef) {
     slabHtml +=
       '<div class="pv-slab-h">'+
         '<span>'+escapeHtml(s.name)+'</span>'+
-        '<span class="pv-slab-mode">'+(isFlashing ? 'Flashing / Linear' : 'Slab + Upturns')+'</span>'+
+        '<span class="pv-slab-mode">'+(isFlashing ? 'Linear' : 'Slab + Upturns')+'</span>'+
       '</div>';
 
     // Round v3.4: cap photos at 2 per slab to keep canvas area below iPad's
@@ -2454,12 +2482,15 @@ function buildPrintView(overrideRef) {
       '<div class="pv-grand-line"><span>Wall crack repair (subject to site condition)</span><span>'+rm(Number(w.price)||0)+'</span></div>'+
       '</div>';
   });
-  // Round 97 — Open Service + Roof Tiles breakdown blocks
+  // Round 97 — Open Service + Roof Tiles breakdown blocks. Round 144 — FOC (RM0) items still print.
   (state.openSvc || []).forEach(function(o){
-    if ((Number(o.qty)||0) <= 0 || (Number(o.price)||0) <= 0) return;
+    const _q = Number(o.qty)||0, _p = Number(o.price)||0;
+    if (_q <= 0 || (_p <= 0 && !String(o.desc||'').trim())) return;
+    const _left = _p > 0 ? (_q+' × '+rm(_p)) : (_q+' × F.O.C');
+    const _right = _p > 0 ? rm(_q*_p) : 'F.O.C';
     html += '<div class="pv-grand-block">'+
       '<div class="pv-grand-block-h">'+escapeHtml(o.desc||'Service')+'</div>'+
-      '<div class="pv-grand-line"><span>'+(Number(o.qty)||0)+' × '+rm(o.price)+'</span><span>'+rm((Number(o.qty)||0)*(Number(o.price)||0))+'</span></div>'+
+      '<div class="pv-grand-line"><span>'+_left+'</span><span>'+_right+'</span></div>'+
       '</div>';
   });
   (state.roofTiles || []).forEach(function(r, ri){
@@ -2524,10 +2555,8 @@ function buildPrintView(overrideRef) {
       '</div>';
   }
 
-  // 8. T&C
-  html +=
-    '<div class="pv-tnc">'+
-      '<div class="pv-tnc-h">Terms &amp; Conditions</div>'+
+  // 8. T&C — Round 144: editable. state.tncHtml (set via "✏️ Edit T&C") overrides the default body below.
+  const _tncDefault =
       '<div class="pv-tnc-s">Definitions</div>'+
       '<ul>'+
         '<li>"Company" means the party (Innovation AID Sdn. Bhd.) who provides the services.</li>'+
@@ -2576,7 +2605,12 @@ function buildPrintView(overrideRef) {
         '<li>All down payment, advance payment or deposit paid by the Client shall be non-refundable; in the event of default on the part of the Client which results in the determination of this contract, or in the event the Client unilaterally terminates the contract, all such sums shall be forfeited by the Company absolutely as part of the damages, and the Company shall have the right to claim against the Client for the expenses, costs and losses incurred in respect of the Project.</li>'+
         '<li>If the Contract Sum or any part thereof is required to be recovered through the process of law, the Client shall be liable to pay to the Company (in addition to the moneys then due and payable) the solicitors\' fees (on a solicitor-and-client basis) and any other fees and expenses incurred in respect of such action.</li>'+
       '</ul>'+
-      '<div style="margin-top:10px;font-style:italic;color:#111">By signing below, I acknowledge that I have thoroughly read and fully understood the terms &amp; conditions above.</div>'+
+      '<div style="margin-top:10px;font-style:italic;color:#111">By signing below, I acknowledge that I have thoroughly read and fully understood the terms &amp; conditions above.</div>';
+  const _tncCustom = state.tncHtml && String(state.tncHtml).trim();
+  html +=
+    '<div class="pv-tnc">'+
+      '<div class="pv-tnc-h">Terms &amp; Conditions'+(_tncCustom ? ' <span style="font-size:9px;font-weight:600;color:#9ca3af">(edited)</span>' : '')+'</div>'+
+      '<div id="pvTncBody">'+ (_tncCustom ? state.tncHtml : _tncDefault) +'</div>'+
     '</div>';
 
   // 9. Signatures
@@ -2887,7 +2921,8 @@ function buildStateJson(){
     egel: (state.egel||[]).map(function(g){ return { id:g.id, qty:g.qty, price:g.price, photos: photoRefs(g.photos) }; }),
     wallCracks: (state.wallCracks||[]).map(function(w){ return { id:w.id, desc:w.desc, price:w.price, photos: photoRefs(w.photos) }; }),
     openSvc: (state.openSvc||[]).map(function(o){ return { id:o.id, desc:o.desc, qty:o.qty, price:o.price, photos: photoRefs(o.photos) }; }),
-    roofTiles: (state.roofTiles||[]).map(function(r){ return { id:r.id, desc:r.desc, qty:r.qty, price:r.price, photos: photoRefs(r.photos) }; })
+    roofTiles: (state.roofTiles||[]).map(function(r){ return { id:r.id, desc:r.desc, qty:r.qty, price:r.price, photos: photoRefs(r.photos) }; }),
+    tncHtml: state.tncHtml || ''
   });
 }
 // Rebuild the editable state from a saved stateJson (photos start with empty dataUrl → hydrated from Drive).
@@ -2905,10 +2940,31 @@ function applyStateJson(jsonStr){
     egel: (d.egel||[]).map(function(g){ return { id:g.id||uuid(), qty:Number(g.qty)||0, price:Number(g.price)||0, photos: photos(g.photos) }; }),
     wallCracks: (d.wallCracks||[]).map(function(w){ return { id:w.id||uuid(), desc:w.desc||'', price:Number(w.price)||0, photos: photos(w.photos) }; }),
     openSvc: (d.openSvc||[]).map(function(o){ return { id:o.id||uuid(), desc:o.desc||'', qty:Number(o.qty)||0, price:Number(o.price)||0, photos: photos(o.photos) }; }),
-    roofTiles: (d.roofTiles||[]).map(function(r){ return { id:r.id||uuid(), desc:r.desc||'', qty:Number(r.qty)||0, price:Number(r.price)||0, photos: photos(r.photos) }; })
+    roofTiles: (d.roofTiles||[]).map(function(r){ return { id:r.id||uuid(), desc:r.desc||'', qty:Number(r.qty)||0, price:Number(r.price)||0, photos: photos(r.photos) }; }),
+    tncHtml: d.tncHtml || ''
   };
   saveState();
 }
+// Round 144 — editable Terms & Conditions (per-estimate; WYSIWYG via contenteditable).
+// Seeds from the live rendered T&C (custom if state.tncHtml set, else the default).
+function _seedTnc(){
+  try { buildPrintView(); } catch(_e){}
+  const b = document.getElementById('pvTncBody');
+  return b ? b.innerHTML : (state.tncHtml || '');
+}
+function openTncEditor(){ document.getElementById('tncEditBody').innerHTML = _seedTnc(); document.getElementById('tncModal').style.display = 'flex'; }
+function closeTncEditor(){ document.getElementById('tncModal').style.display = 'none'; }
+function saveTncEditor(){ state.tncHtml = document.getElementById('tncEditBody').innerHTML; saveState(); renderAll(); closeTncEditor(); toast('T&C updated for this estimate', 'success'); }
+function resetTncEditor(){ state.tncHtml = ''; saveState(); document.getElementById('tncEditBody').innerHTML = _seedTnc(); }
+(function(){
+  var b;
+  if ((b=document.getElementById('btnEditTnc'))) b.onclick = openTncEditor;
+  if ((b=document.getElementById('btnTncClose'))) b.onclick = closeTncEditor;
+  if ((b=document.getElementById('btnTncCancel'))) b.onclick = closeTncEditor;
+  if ((b=document.getElementById('btnTncSave'))) b.onclick = saveTncEditor;
+  if ((b=document.getElementById('btnTncReset'))) b.onclick = resetTncEditor;
+})();
+
 // Re-fetch each Drive photo as base64 so the amended PDF keeps its original site photos.
 async function hydratePhotos(){
   const all = [];
