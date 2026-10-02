@@ -13,7 +13,7 @@
 // Cache self-heal: even if a stale cached copy was served, fetch the TRUE current
 // page (no-store) and hard-reload ONCE if a newer version is deployed — so customers
 // never submit an out-of-date form. Bump APP_VERSION on every meaningful change.
-var APP_VERSION = '2026-09-16';
+var APP_VERSION = '2026-10-02';
 (function(){
   try {
     if (sessionStorage.getItem('lg_express_ver') === APP_VERSION) return;
@@ -207,10 +207,15 @@ async function submitExpress(){
     var data = await r.json();
     if (data && data.status === 'ok') {
       if (data.serviceable) {
-        // Serviceable state → straight to booking (prefilled by phone + name; team for JB/KL routing).
+        // Round 146 — toilet-type problems (Toilet leaking / E-Gel injection) route
+        // to the dedicated KL Toilet team calendar; everything else uses the normal
+        // KL/JB routing. (Johor + toilet is non-serviceable server-side, so a Johor
+        // toilet lead never reaches here — no mis-routing to the KL toilet team.)
+        var isToilet = /toilet|e-?gel/i.test(problem);
+        var team = isToilet ? 'TOILET' : (data.team || 'KL');
         window.location.href = '../appointment/?p=' + encodeURIComponent(data.phone || digits) +
           '&name=' + encodeURIComponent(name) + '&state=' + encodeURIComponent(state) +
-          '&team=' + encodeURIComponent(data.team || 'KL') +
+          '&team=' + encodeURIComponent(team) +
           (BY ? '&by=' + encodeURIComponent(BY) : '');
       } else {
         // Out-of-coverage → thank-you; team contacts them directly.
