@@ -3,6 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<script>
+// Cache self-heal (same as the express page): WhatsApp/Chrome in-app browsers
+// can serve a stale copy, so a telemarketer keeps running old code (e.g. a
+// follow-up that looks like it didn't save). Fetch the true current page
+// (no-store) and hard-reload once if a newer version is deployed. Bump
+// BC_VERSION on every meaningful change.
+var BC_VERSION = '2026-10-29';
+(function(){
+  try {
+    if (sessionStorage.getItem('lg_chase_ver') === BC_VERSION) return;
+    fetch(location.pathname + '?_vc=' + Date.now(), { cache: 'no-store' })
+      .then(function(r){ return r.text(); })
+      .then(function(html){
+        var m = html.match(/BC_VERSION\s*=\s*'([^']+)'/);
+        if (m && m[1] !== BC_VERSION) { sessionStorage.setItem('lg_chase_ver', m[1]); location.reload(true); }
+      })
+      .catch(function(){});
+  } catch (e) {}
+})();
+</script>
 <title>Leak Guard — Booking Chase</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
