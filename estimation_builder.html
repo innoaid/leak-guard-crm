@@ -2465,8 +2465,8 @@ function buildPrintView(overrideRef) {
   if (state.slabs.some(function(s){ return slabSqft(s) > 0; })) {
     html += '<div class="pv-grand-block">'+
       '<div class="pv-grand-block-h">Method of Statement (Membrane)</div>'+
-      '<div class="pv-grand-line indent"><span>1. Surface preparation incl. cut &amp; repair crack and high-pressure water-jet cleaning</span><span></span></div>'+
-      '<div class="pv-grand-line indent"><span>2. Angle fillet on surrounding edge of the area</span><span></span></div>'+
+      '<div class="pv-grand-line indent"><span>1. Surface preparation incl. cut &amp; repair crack and high-pressure water-jet cleaning <span style="color:#9ca3af">(Only applicable for concrete slab)</span></span><span></span></div>'+
+      '<div class="pv-grand-line indent"><span>2. Angle fillet on surrounding edge of the area <span style="color:#9ca3af">(Only applicable for concrete slab)</span></span><span></span></div>'+
       '<div class="pv-grand-line indent"><span>3. First layer bitumen primer apply</span><span></span></div>'+
       '<div class="pv-grand-line indent"><span>4. Second layer torch-on membrane install</span><span></span></div>'+
       '</div>';
