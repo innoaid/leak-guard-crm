@@ -5,3 +5,9 @@
 secrets/
 *.secret
 *.key
+
+# Local working/reference files — not part of the site
+reference/
+*.pdf
+kanban code at *.txt
+backup *.txt
