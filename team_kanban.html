@@ -1295,8 +1295,8 @@ function renderCard(lead) {
   const apptShort = (status === 'Site Visit Confirmed' && apptDateStr) ? formatApptShort(apptDateStr) : '';
   // Ops dates: installation (set by coordinator on ops_confirm) + repair/warranty
   // visit (set when a customer books via the report link).
-  const instShort = formatApptShort(String(lead['Installation Date'] || '').slice(0, 10));
-  const repairShort = formatApptShort(String(lead['Repair Date'] || '').slice(0, 10));
+  const instShort = formatApptShort(gvizToISO(lead['Installation Date']));
+  const repairShort = formatApptShort(gvizToISO(lead['Repair Date']));
   const lastMsgRaw = String(lead['Last Customer Msg (AM)'] || '').trim();
   // Round 65.4: show last customer msg on EVERY phase, not just PSV. The
   // urgency flag (isUrgentPsv) and red-border match remain PSV-only — for
@@ -1690,6 +1690,18 @@ function toast(message, type) {
 const SHORT_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// Normalise a date cell to 'YYYY-MM-DD'. gviz returns date-typed cells as
+// "Date(2026,10,26)" (month 0-indexed); text cells come through as ISO strings.
+function gvizToISO(v) {
+  const s = String(v == null ? '' : v);
+  let m = s.match(/^Date\((\d+),(\d+),(\d+)/);
+  if (m) {
+    const y = +m[1], mo = +m[2] + 1, d = +m[3];
+    return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  }
+  m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
 function formatApptShort(yyyymmdd) {
   // "2026-04-30" → "Thu 30 Apr"
   if (!/^\d{4}-\d{2}-\d{2}$/.test(yyyymmdd)) return '';
