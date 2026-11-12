@@ -10,6 +10,8 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .hdr{background:#2D2A6E;color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:5}
 .hdr h1{font-size:18px;font-weight:800}
 .hdr .sub{font-size:12px;opacity:.85;margin-top:2px}
+.search{width:100%;max-width:560px;margin:10px auto 0;display:block;border:none;border-radius:9px;padding:10px 12px;font-size:14px;font-family:inherit;color:#111827;background:#fff}
+.search:focus{outline:2px solid #A5B4FC}
 .wrap{max-width:560px;margin:0 auto;padding:14px}
 .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .card.gone{opacity:.4;pointer-events:none}
@@ -45,6 +47,7 @@ input,select{width:100%;border:1px solid #D1D5DB;border-radius:8px;padding:10px;
 <div class="hdr">
   <h1 id="hTitle">Confirm Installation</h1>
   <div class="sub" id="hSub">Loading…</div>
+  <input id="q" class="search" type="search" placeholder="🔍 Search name, phone, location…" oninput="filter()" autocomplete="off">
 </div>
 <div class="wrap" id="list"></div>
 <div class="toast" id="toast"></div>
@@ -108,6 +111,25 @@ async function load(){
   document.getElementById('hSub').textContent = JOBS.length+' job'+(JOBS.length===1?'':'s')+' awaiting installation date';
   if(!JOBS.length){ list.innerHTML='<div class="empty">✅ Nothing waiting — no cards at Pending Installation Date.</div>'; return; }
   list.innerHTML = JOBS.map(function(j,i){ return cardHtml(j,i); }).join('');
+}
+
+// Live client-side filter across name / phone / location / problem / address.
+// Toggles card visibility only (never re-renders) so dates typed in other
+// cards survive; confirmed ('gone') cards are hidden while a query is active.
+function filter(){
+  const q=(document.getElementById('q').value||'').toLowerCase().trim();
+  let shown=0;
+  JOBS.forEach(function(j,i){
+    const card=document.getElementById('card'+i); if(!card) return;
+    const gone=card.classList.contains('gone');
+    const hay=((j.name||'')+' '+(j.phone||'')+' '+(j.location||'')+' '+(j.problem||'')+' '+(j.address||'')).toLowerCase();
+    const show=!gone && (!q || hay.indexOf(q)>=0);
+    card.style.display=show?'':(q?'none':(gone?'':'none'));
+    if(show) shown++;
+  });
+  const sub=document.getElementById('hSub');
+  sub.textContent = q ? (shown+' of '+JOBS.length+' match “'+q+'”')
+                      : (JOBS.length+' job'+(JOBS.length===1?'':'s')+' awaiting installation date');
 }
 
 function cardHtml(j,i){
