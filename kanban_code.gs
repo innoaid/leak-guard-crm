@@ -77,6 +77,7 @@ function doPost(e) {
       case 'updateStatusByGroup': return handleUpdateStatusByGroup(body);  // round 61 — auto phase-shift from template detection
       case 'addTagByGroup':      return handleAddTagByGroup(body);  // round 63 — auto-tag from template detection
       case 'addTagByPhone':      return handleAddTagByPhone(body);  // round 136 — idempotent tag append by phone (RollTrack "Flag repair")
+      case 'setRepairDate':      return handleSetRepairDate(body);  // report link — persist defect/warranty visit date (+team) for the kanban card
       case 'setSiNo':            return handleSetSiNo(body);        // round 137 — set/correct AutoCount SI No by phone (kanban badge)
       case 'addPaymentVerification':   return handleAddPaymentVerification(body);  // round 64 — payment-noted template
       case 'clearPaymentVerification': return handleClearPaymentVerification(body);  // round 64 — account tick verify
@@ -745,6 +746,33 @@ function handleAddTagByPhone(body) {
   } finally {
     try { lock.releaseLock(); } catch (_e) {}
   }
+}
+
+// ================================================================
+// Report link — persist the booked defect/warranty visit date (+ QC team)
+// so the kanban card can show "Repair visit: <date>". Lazily creates the
+// 'Repair Date' / 'Repair QC Team' columns. Called server-side from the n8n
+// LG-QC-Report booking workflow (phone matched robustly via findRowByPhone).
+// ================================================================
+function handleSetRepairDate(body) {
+  // body: {action, secret, phone, date, team?}
+  const phone = String(body.phone || '').trim();
+  const date  = String(body.date || '').trim();
+  if (!phone || !date) return jsonResponse({status: 'error', message: 'phone and date required'});
+  const sheet = getSheet();
+  const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({status: 'error', message: 'lead not found', phone: phone});
+
+  let col = getHeaders(sheet).colByName['Repair Date'];
+  if (!col) { col = sheet.getLastColumn() + 1; sheet.getRange(1, col).setValue('Repair Date'); }
+  sheet.getRange(row, col).setValue(date);
+
+  if (body.team) {
+    let tc = getHeaders(sheet).colByName['Repair QC Team'];
+    if (!tc) { tc = sheet.getLastColumn() + 1; sheet.getRange(1, tc).setValue('Repair QC Team'); }
+    sheet.getRange(row, tc).setValue(String(body.team));
+  }
+  return jsonResponse({status: 'ok', row: row, date: date});
 }
 
 // ================================================================

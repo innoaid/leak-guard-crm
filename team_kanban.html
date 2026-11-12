@@ -128,6 +128,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);font-s
 .cd-repair:hover{background:#E5E7EB}
 .cd-repair.tagged{background:#DC2626;color:#fff}
 .cd-repair.tagged:hover{background:#B91C1C}
+.cd-reportlink{font-size:10px;padding:1px 6px;border-radius:8px;background:#EEF2FF;color:#3730A3;border:none;cursor:pointer;font-family:inherit;font-weight:600;line-height:1.4}
+.cd-reportlink:hover{background:#E0E7FF}
+.cd-instdate{font-size:11px;color:#0F766E;margin-bottom:2px}
+.cd-repairdate{font-size:11px;color:#B91C1C;margin-bottom:2px;font-weight:600}
 /* Round 64: payment verification badge + button */
 .cd-verify-row{display:flex;align-items:center;gap:6px;margin:3px 0;padding:4px 6px;background:#FEF3C7;border:.5px solid #FDE68A;border-radius:6px}
 .cd-verify-badge{flex:1;font-size:11px;font-weight:700;color:#92400E}
@@ -1289,6 +1293,10 @@ function renderCard(lead) {
   const cardTeam = teamFromLead(lead);
   const apptDateStr = String(lead['Date Appt Confirmed'] || '').slice(0, 10);
   const apptShort = (status === 'Site Visit Confirmed' && apptDateStr) ? formatApptShort(apptDateStr) : '';
+  // Ops dates: installation (set by coordinator on ops_confirm) + repair/warranty
+  // visit (set when a customer books via the report link).
+  const instShort = formatApptShort(String(lead['Installation Date'] || '').slice(0, 10));
+  const repairShort = formatApptShort(String(lead['Repair Date'] || '').slice(0, 10));
   const lastMsgRaw = String(lead['Last Customer Msg (AM)'] || '').trim();
   // Round 65.4: show last customer msg on EVERY phase, not just PSV. The
   // urgency flag (isUrgentPsv) and red-border match remain PSV-only — for
@@ -1358,6 +1366,8 @@ function renderCard(lead) {
     '<span class="cd-phone" data-copy-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();copyPhone(this);">📞 ' + escapeHtml(phone) + '</span>' +
     (apptShort ? '<div class="cd-apptdate">📅 ' + apptShort + '</div>' : '') +
     (loc ? '<div class="cd-loc">📍 ' + escapeHtml(loc) + '</div>' : '') +
+    (instShort ? '<div class="cd-instdate">🧱 Install: ' + instShort + '</div>' : '') +
+    (repairShort ? '<div class="cd-repairdate">🔧 Repair visit: ' + repairShort + '</div>' : '') +
     (lastMsg ? '<div class="cd-lastmsg" title="' + escapeHtml(lastMsgRaw) + '">💬 ' + escapeHtml(lastMsg) + '</div>' : '') +
     (adminMsg ? '<div class="cd-adminmsg" title="' + escapeHtml(adminMsgRaw) + '">💼 ' + escapeHtml(adminMsg) + '</div>' : '') +
     (isPendingVerify
@@ -1390,6 +1400,9 @@ function renderCard(lead) {
           '<button class="cd-pause' + (tags.includes('fu_paused') ? ' paused' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();togglePauseFu(this);" title="' + (tags.includes('fu_paused') ? 'Resume bot (group + FU)' : 'Pause bot (silent in group + no FU)') + '">' + (tags.includes('fu_paused') ? '▶ Bot' : '⏸ Bot') + '</button>' +
           (['Pending Balance','Completed','Job Complete','Receipt Sent'].includes(status)
             ? '<button class="cd-repair' + (tags.includes('repair') ? ' tagged' : '') + '" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();toggleRepairTag(this);" title="' + (tags.includes('repair') ? 'Remove repair tag' : 'Tag as needing repair callback') + '">🔧 ' + (tags.includes('repair') ? 'Repair ✓' : 'Repair') + '</button>'
+            : '') +
+          (['Pending Balance','Completed','Job Complete','Receipt Sent'].includes(status)
+            ? '<button class="cd-reportlink" data-phone="' + escapeHtml(phone) + '" onclick="event.stopPropagation();copyReportLink(this);" title="Copy this customer\'s report-a-problem / warranty booking link">🔗 Report link</button>'
             : '') +
           // Round 137 — surface the invoice (SI) number on Pending Balance cards; blank is a signal. Click to set/edit.
           (status === 'Pending Balance'
@@ -1685,6 +1698,24 @@ function formatApptShort(yyyymmdd) {
   return SHORT_DAYS[dt.getDay()] + ' ' + dt.getDate() + ' ' + SHORT_MONTHS[dt.getMonth()];
 }
 
+function copyReportLink(el) {
+  const phone = String(el.dataset.phone || '').replace(/\D/g, '');
+  if (!phone) { toast('No phone on this card', 'warn'); return; }
+  const url = 'https://leakguard.my/report/?p=' + phone;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(
+      () => toast('Report link copied', 'success'),
+      () => toast('Copy failed — long-press to select', 'warn')
+    );
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = url; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('Report link copied', 'success'); }
+    catch (_e) { toast('Copy failed', 'error'); }
+    document.body.removeChild(ta);
+  }
+}
 function copyPhone(el) {
   const phone = el.dataset.copyPhone || '';
   if (!phone) return;
