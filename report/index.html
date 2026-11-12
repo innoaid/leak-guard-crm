@@ -51,6 +51,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
     <button onclick="loadAvailability()" style="background:var(--acc);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Try again</button>
   </div>
 
+  <!-- Step 0: existing booking (Keep / Reschedule) -->
+  <div id="s0" style="display:none;padding:20px">
+    <div style="text-align:center;margin-bottom:18px">
+      <div style="font-size:32px;margin-bottom:8px">🛠️</div>
+      <div style="font-size:17px;font-weight:600;margin-bottom:6px">You already have a visit booked</div>
+      <div style="font-size:13px;color:#6b6960">Would you like to keep it, or pick a new time?</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;border:1px solid #e5e3dc;overflow:hidden;margin-bottom:16px">
+      <div style="background:var(--pri);padding:16px 20px">
+        <div style="color:rgba(255,255,255,.6);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Your warranty visit</div>
+        <div style="color:#fff;font-size:16px;font-weight:600" id="exDate">—</div>
+        <div style="color:rgba(255,255,255,.75);font-size:13px" id="exTime">—</div>
+      </div>
+    </div>
+    <button onclick="keepBooking()" style="width:100%;background:#1D9E75;color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;margin-bottom:8px">Keep this time</button>
+    <button onclick="startReschedule()" style="width:100%;background:none;color:#2D2A6E;border:1.5px solid #2D2A6E;border-radius:12px;padding:14px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Reschedule to a new time</button>
+  </div>
+
   <!-- Step 1: Calendar -->
   <div id="s1" style="display:none;padding:16px 20px 0">
     <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:11px 13px;font-size:12.5px;color:#92400E;line-height:1.5;margin-bottom:14px">
@@ -128,8 +146,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
     <div style="width:64px;height:64px;border-radius:50%;background:#e1f5ee;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
-    <div style="font-size:20px;font-weight:700;margin-bottom:8px">Visit booked!</div>
-    <div style="color:#6b6960;font-size:13px;line-height:1.6;margin-bottom:20px">Thanks for letting us know.<br>Our inspection team will come at the time below.</div>
+    <div style="font-size:20px;font-weight:700;margin-bottom:8px" id="s4title">Visit booked!</div>
+    <div style="color:#6b6960;font-size:13px;line-height:1.6;margin-bottom:20px" id="s4sub">Thanks for letting us know.<br>Our inspection team will come at the time below.</div>
     <div style="background:#fff;border-radius:12px;border:1px solid #e5e3dc;padding:14px 16px;text-align:left;margin-bottom:16px">
       <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
         <div style="display:flex;justify-content:space-between"><span style="color:#6b6960">Date</span><span id="s4d" style="font-weight:500">—</span></div>
@@ -157,8 +175,9 @@ var QC_FULL={'9:00 AM':'9:00 AM - 10:00 AM','10:30 AM':'10:30 AM - 11:30 AM','1:
 var DATA=null, availability={}, SLOTS=[];
 var viewYear=new Date().getFullYear(), viewMonth=new Date().getMonth();
 var selDate=null, selSlot=null, NAME='';
+var RESCHED=false, OLD=null;   // reschedule state (set from existingRepair)
 
-function show(id){ ['loading','loadError','s1','s2','s3','s4'].forEach(function(s){ var el=document.getElementById(s); if(el) el.style.display=s===id?'block':'none'; }); }
+function show(id){ ['loading','loadError','s0','s1','s2','s3','s4'].forEach(function(s){ var el=document.getElementById(s); if(el) el.style.display=s===id?'block':'none'; }); }
 function toKey(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
 function slotLabel(sid){ return SLOTS[sid-1]||('Slot '+sid); }
 function slotFull(sid){ var l=slotLabel(sid); return QC_FULL[l]||l; }
@@ -173,11 +192,36 @@ async function loadAvailability(){
     NAME=DATA.name||'Our customer';
     document.getElementById('hdrName').textContent=NAME;
     availability=DATA.availability||{}; SLOTS=DATA.slots||[];
+    // If they already have an upcoming warranty visit, offer Keep / Reschedule first.
+    if(DATA.existingRepair && !RESCHED){ showExisting(DATA.existingRepair); return; }
     var keys=Object.keys(availability).filter(function(k){ return (availability[k]||[]).length>0; }).sort();
     if(keys.length){ var first=new Date(keys[0]+'T12:00:00'); viewYear=first.getFullYear(); viewMonth=first.getMonth(); }
     renderCal();
     show('s1');
   }catch(e){ document.getElementById('errMsg').textContent='Network error. Please try again.'; show('loadError'); }
+}
+
+function exTimeLabel(ex){ var l=ex.slotLabel||(SLOTS[ex.slot-1]||''); return QC_FULL[l]||l; }
+function showExisting(ex){
+  OLD={ eventId:ex.eventId, team:ex.team, date:ex.date, slot:ex.slot };
+  var dt=new Date(ex.date+'T12:00:00');
+  document.getElementById('exDate').textContent=FULL_DAYS[dt.getDay()]+', '+dt.getDate()+' '+SHORT_MONTHS[dt.getMonth()]+' '+dt.getFullYear();
+  document.getElementById('exTime').textContent=exTimeLabel(ex);
+  show('s0');
+}
+function keepBooking(){
+  if(OLD){ var dt=new Date(OLD.date+'T12:00:00'); document.getElementById('s4d').textContent=FULL_DAYS[dt.getDay()]+', '+dt.getDate()+' '+SHORT_MONTHS[dt.getMonth()]+' '+dt.getFullYear(); }
+  document.getElementById('s4t').textContent=document.getElementById('exTime').textContent;
+  document.getElementById('s4title').textContent='Your visit is confirmed';
+  document.getElementById('s4sub').innerHTML='No change made — we\'ll see you then!';
+  show('s4');
+}
+function startReschedule(){
+  RESCHED=true;
+  var keys=Object.keys(availability).filter(function(k){ return (availability[k]||[]).length>0; }).sort();
+  if(keys.length){ var first=new Date(keys[0]+'T12:00:00'); viewYear=first.getFullYear(); viewMonth=first.getMonth(); }
+  renderCal();
+  show('s1');
 }
 
 function renderCal(){
@@ -262,9 +306,13 @@ async function confirmBooking(){
   var btn=document.getElementById('btnConfirm'); var err=document.getElementById('confirmError');
   err.style.display='none'; btn.disabled=true; btn.textContent='Booking…';
   try{
-    var res=await fetch(BOOK_URL,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ phone:PHONE, date:selDate, slot:selSlot }) });
+    var payload={ phone:PHONE, date:selDate, slot:selSlot };
+    if(RESCHED && OLD){ payload.action='reschedule'; payload.oldEventId=OLD.eventId; payload.oldTeam=OLD.team; payload.oldDate=OLD.date; payload.oldSlot=OLD.slot; }
+    var res=await fetch(BOOK_URL,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
     var j=await res.json();
     if(j && j.status==='ok'){
+      document.getElementById('s4title').textContent=RESCHED?'Visit rescheduled!':'Visit booked!';
+      document.getElementById('s4sub').innerHTML=RESCHED?'Your new time is below.':'Thanks for letting us know.<br>Our inspection team will come at the time below.';
       document.getElementById('s4d').textContent=j.displayDate||'';
       document.getElementById('s4t').textContent=j.displayTime||slotFull(selSlot);
       show('s4'); return;
