@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — On-Site QC</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 40px}
+.hdr{background:#0F766E;color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:5}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .sub{font-size:12px;opacity:.9;margin-top:2px}
+.wrap{max-width:560px;margin:0 auto;padding:14px}
+.note{background:#ECFEFF;border:1px solid #A5F3FC;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#155E75;margin-bottom:12px;line-height:1.5}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.cname{font-size:16px;font-weight:800}
+.meta{font-size:12.5px;color:#6b7280;margin-top:3px;line-height:1.5}
+.meta b{color:#374151}
+.pill{display:inline-block;background:#F0FDFA;color:#0F766E;font-weight:700;font-size:11.5px;padding:2px 9px;border-radius:9px;margin:5px 5px 0 0;border:1px solid #99F6E4}
+.pill.sub{background:#FEF9C3;color:#854D0E;border-color:#FDE68A}
+.pill.st{background:#EEF2FF;color:#2D2A6E;border-color:#C7D2FE}
+.links{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:13px;color:#2563EB;text-decoration:none;border:1px solid #BFDBFE;border-radius:8px;padding:6px 12px;background:#EFF6FF}
+.btns{display:flex;gap:8px;margin-top:12px}
+.btn{flex:1;border:none;border-radius:10px;padding:11px 8px;font-size:13.5px;font-weight:700;cursor:pointer;color:#fff}
+.btn-done{background:#10B981}.btn-dur{background:#6366F1}
+.panel{margin-top:10px;display:none;border-radius:10px;padding:10px;background:#EEF2FF;border:1px solid #C7D2FE}
+.panel.open{display:block}
+.panel label{font-size:12px;font-weight:700;color:#3730A3;display:block;margin:6px 0 4px}
+.panel input{width:100%;border:1px solid #C7D2FE;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;margin-bottom:6px;background:#fff}
+.panel .hint{font-size:12px;color:#4338CA;margin:2px 0 8px}
+.go{color:#fff;border:none;border-radius:8px;padding:10px;width:100%;font-weight:700;font-size:14px;cursor:pointer;background:#6366F1}
+.result{margin-top:8px;font-size:12.5px;line-height:1.5;display:none}
+.result.on{display:block}
+.result.ok{color:#065F46}.result.warn{color:#9A3412}
+.empty{text-align:center;color:#6b7280;padding:60px 20px;font-size:15px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+.toast.on{opacity:1}
+.toast.err{background:#DC2626}.toast.ok{background:#059669}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1 id="hTitle">On-Site QC</h1>
+  <div class="sub" id="hSub">Loading…</div>
+</div>
+<div class="wrap">
+  <div class="note">📅 Your daily <b>schedule</b> lives in your team's Google Calendar — open it to see which sites to attend today. This page is for <b>actions</b>: mark a check done, or extend/shorten a job.</div>
+  <div id="list"></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SECRET = 'ABC';
+const TEAM = (new URLSearchParams(location.search).get('team') || '').trim();
+
+function toast(msg,kind){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast on '+(kind||''); setTimeout(function(){ t.className='toast '+(kind||''); },2600); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
+function todayStr(){ const d=new Date(Date.now()+8*3600*1000); return d.toISOString().slice(0,10); }
+async function api(action,payload){
+  const r=await fetch(APPS_SCRIPT_URL,{ method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify(Object.assign({action:action, secret:SECRET}, payload)) });
+  return r.json();
+}
+function parseD(s){ const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
+function fmtD(d){ const p=function(n){return(n<10?'0':'')+n;}; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+// working days (Sun skipped) from start to end inclusive
+function spanDays(startStr,endStr){ const a=parseD(startStr),b=parseD(endStr); if(!a||!b||b<a)return 0; let n=0; const d=new Date(a.getTime()); while(d<=b){ if(d.getDay()!==0)n++; d.setDate(d.getDate()+1);} return n; }
+
+let JOBS=[];
+async function load(){
+  if(!TEAM){ document.getElementById('hSub').textContent='No team in the link (add ?team=QC Team A).'; return; }
+  document.getElementById('hTitle').textContent='🛠️ '+TEAM;
+  const res=await api('opsOnsiteJobs',{ team:TEAM });
+  const list=document.getElementById('list');
+  if(!res||res.status!=='ok'){ document.getElementById('hSub').textContent=(res&&res.message)||'Load failed.'; return; }
+  JOBS=res.jobs||[];
+  document.getElementById('hSub').textContent=JOBS.length+' active job'+(JOBS.length===1?'':'s');
+  if(!JOBS.length){ list.innerHTML='<div class="empty">✅ No active jobs assigned to '+esc(TEAM)+'.</div>'; return; }
+  list.innerHTML=JOBS.map(function(j,i){ return cardHtml(j,i); }).join('');
+}
+
+function cardHtml(j,i){
+  const tel=String(j.phone||'').replace(/\D/g,'');
+  const curDays=spanDays(j.instDate,j.expComplete)||1;
+  return '<div class="card" id="card'+i+'">'+
+    '<div class="cname">'+esc(j.name||'(no name)')+'</div>'+
+    (j.address?'<div class="meta">📍 '+esc(j.address)+'</div>':'')+
+    '<div class="meta">🗓️ '+esc(j.instDate)+' → <b>'+esc(j.expComplete||'?')+'</b> ('+curDays+' day'+(curDays>1?'s':'')+')</div>'+
+    '<div>'+
+      '<span class="pill sub">👷 '+esc(j.subcon||'—')+'</span>'+
+      '<span class="pill st">'+esc(j.status)+'</span>'+
+    '</div>'+
+    '<div class="links">'+
+      (tel?'<a href="tel:'+tel+'">📞 '+esc(j.phone)+'</a>':'')+
+      (j.groupLink?'<a href="'+esc(j.groupLink)+'" target="_blank" rel="noopener">💬 WA group</a>':'')+
+    '</div>'+
+    '<div class="btns">'+
+      '<button class="btn btn-done" onclick="markDone('+i+')">✓ Check done today</button>'+
+      '<button class="btn btn-dur" onclick="togglePanel('+i+')">⏱ Extend / shorten</button>'+
+    '</div>'+
+    '<div class="panel" id="p'+i+'">'+
+      '<label>New completion date</label>'+
+      '<input type="date" id="cd'+i+'" min="'+esc(j.instDate)+'" value="'+esc(j.expComplete||'')+'">'+
+      '<div class="hint">Shorten → frees the later check-slots. Extend → adds checks; a full day is still allowed (flagged [OVERFLOW], red on calendar) and you can drag it in Google Calendar.</div>'+
+      '<button class="go" onclick="updateDur('+i+')">Update schedule</button>'+
+    '</div>'+
+    '<div class="result" id="r'+i+'"></div>'+
+  '</div>';
+}
+
+function togglePanel(i){ document.getElementById('p'+i).classList.toggle('open'); }
+
+async function markDone(i){
+  const j=JOBS[i]; if(!j) return;
+  if(!confirm('Mark today\'s check done for '+(j.name||'this site')+'?')) return;
+  const res=await api('opsMarkCheck',{ phone:j.phone, date:todayStr(), by:TEAM });
+  const r=document.getElementById('r'+i);
+  if(res&&res.status==='ok'){ r.className='result ok on'; r.innerHTML='✅ Check logged for '+esc(res.date)+'.'; toast('Check logged','ok'); }
+  else { r.className='result warn on'; r.innerHTML='⚠ '+esc((res&&res.message)||'Failed'); toast('Failed','err'); }
+}
+
+async function updateDur(i){
+  const j=JOBS[i]; if(!j) return;
+  const nd=document.getElementById('cd'+i).value;
+  if(!nd){ toast('Pick a completion date','err'); return; }
+  const newN=spanDays(j.instDate,nd);
+  if(!newN){ toast('Date must be on/after the install date','err'); return; }
+  if(!confirm('Set completion to '+nd+' ('+newN+' working day'+(newN>1?'s':'')+')?')) return;
+  const res=await api('opsEditCompletion',{ phone:j.phone, newCompletionDate:nd, by:TEAM });
+  const r=document.getElementById('r'+i);
+  if(res&&res.status==='ok'){
+    const parts=[];
+    if(res.added&&res.added.length) parts.push('added '+res.added.length+' check'+(res.added.length>1?'s':''));
+    if(res.deleted) parts.push('removed '+res.deleted);
+    if(res.overflowDays&&res.overflowDays.length) parts.push('⚠ overflow: '+esc(res.overflowDays.join(', ')));
+    r.className='result '+((res.overflowDays&&res.overflowDays.length)?'warn':'ok')+' on';
+    r.innerHTML='✅ Now '+res.newDays+' day'+(res.newDays>1?'s':'')+' → '+esc(res.expectedCompletion)+(parts.length?' ('+parts.join(' · ')+')':'');
+    j.expComplete=res.expectedCompletion;
+    toast('Schedule updated','ok');
+  } else { r.className='result warn on'; r.innerHTML='⚠ '+esc((res&&res.message)||'Failed'); toast('Update failed','err'); }
+}
+
+load();
+</script>
+</body>
+</html>

@@ -64,6 +64,12 @@ function doPost(e) {
       case 'chaseReport':        return handleChaseReport(body);     // round 139 — booking-chase daily performance report
       case 'callerReport':       return handleCallerReport(body);  // round 90 — caller performance report
       case 'callerAdmin':        return handleCallerAdmin(body);   // round 141 — admin review: all callers' queues + stats + note history
+      case 'opsConfirmQueue':    return handleOpsConfirmQueue(body);   // ops P1 — coordinator: jobs awaiting installation scheduling (ops.gs)
+      case 'opsConfirmSave':     return handleOpsConfirmSave(body);    // ops P1 — coordinator confirms date+subcon → QC assign + calendar block (ops.gs)
+      case 'opsOnsiteJobs':      return handleOpsOnsiteJobs(body);     // ops P1 — on-site QC team: active jobs (ops.gs)
+      case 'opsEditCompletion':  return handleOpsEditCompletion(body); // ops P1 — extend/shorten → reflow check-slots (ops.gs)
+      case 'opsMarkCheck':       return handleOpsMarkCheck(body);      // ops P1 — on-site team marks a daily check done (ops.gs)
+      case 'qcCalCheck':         return handleQcCalCheck(body);        // ops P1 — diagnostic: can the script see both QC calendars? (ops.gs)
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Confirm Installation</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 40px}
+.hdr{background:#2D2A6E;color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:5}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .sub{font-size:12px;opacity:.85;margin-top:2px}
+.wrap{max-width:560px;margin:0 auto;padding:14px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card.gone{opacity:.4;pointer-events:none}
+.cname{font-size:16px;font-weight:800}
+.meta{font-size:12.5px;color:#6b7280;margin-top:3px;line-height:1.5}
+.meta b{color:#374151}
+.rmtag{display:inline-block;background:#EEF2FF;color:#2D2A6E;font-weight:700;font-size:12px;padding:2px 9px;border-radius:9px;margin-top:5px}
+.links{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:13px;color:#2563EB;text-decoration:none;border:1px solid #BFDBFE;border-radius:8px;padding:6px 12px;background:#EFF6FF}
+.form{margin-top:12px;border-top:1px dashed #E5E7EB;padding-top:12px}
+.row{display:flex;gap:8px}
+.row>div{flex:1}
+label{font-size:12px;font-weight:700;color:#374151;display:block;margin:8px 0 4px}
+input,select{width:100%;border:1px solid #D1D5DB;border-radius:8px;padding:10px;font-size:14px;font-family:inherit;background:#fff}
+.hint{font-size:12px;color:#6B7280;margin-top:6px;line-height:1.5}
+.hint b{color:#2D2A6E}
+.go{color:#fff;border:none;border-radius:8px;padding:12px;width:100%;font-weight:700;font-size:14px;cursor:pointer;background:#2D2A6E;margin-top:12px}
+.go:disabled{opacity:.5}
+.result{margin-top:10px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:10px;font-size:13px;color:#065F46;display:none}
+.result.on{display:block}
+.err{margin-top:10px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px;font-size:13px;color:#991B1B;display:none}
+.err.on{display:block}
+.empty{text-align:center;color:#6b7280;padding:60px 20px;font-size:15px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+.toast.on{opacity:1}
+.toast.err{background:#DC2626}.toast.ok{background:#059669}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1 id="hTitle">Confirm Installation</h1>
+  <div class="sub" id="hSub">Loading…</div>
+</div>
+<div class="wrap" id="list"></div>
+<div class="toast" id="toast"></div>
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SECRET = 'ABC';
+const BY = (new URLSearchParams(location.search).get('by') || '').trim();
+
+function toast(msg, kind){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast on '+(kind||''); setTimeout(function(){ t.className='toast '+(kind||''); },2600); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
+function todayStr(){ const d=new Date(Date.now()+8*3600*1000); return d.toISOString().slice(0,10); }
+async function api(action, payload){
+  const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain'},
+    body: JSON.stringify(Object.assign({action:action, secret:SECRET}, payload)) });
+  return r.json();
+}
+
+// 'YYYY-MM-DD' -> local Date; Sunday check + working-day completion preview.
+function parseD(s){ const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):null; }
+function fmtD(d){ const p=function(n){return(n<10?'0':'')+n;}; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+function isSunday(s){ const d=parseD(s); return d && d.getDay()===0; }
+function completionDate(startStr, nDays){
+  const d=parseD(startStr); if(!d||!(nDays>=1))return '';
+  let c=0; while(true){ if(d.getDay()!==0){ c++; if(c>=nDays) return fmtD(d); } d.setDate(d.getDate()+1); }
+}
+
+let JOBS=[], META={subconTeams:[],destStatuses:[]};
+async function load(){
+  document.getElementById('hTitle').textContent = '🗓️ Confirm Installation' + (BY?(' — '+BY):'');
+  const res = await api('opsConfirmQueue', {});
+  const list = document.getElementById('list');
+  if(!res || res.status!=='ok'){ document.getElementById('hSub').textContent='Load failed.'; return; }
+  JOBS = res.jobs||[]; META={subconTeams:res.subconTeams||[], destStatuses:res.destStatuses||[]};
+  document.getElementById('hSub').textContent = JOBS.length+' job'+(JOBS.length===1?'':'s')+' awaiting installation date';
+  if(!JOBS.length){ list.innerHTML='<div class="empty">✅ Nothing waiting — no cards at Pending Installation Date.</div>'; return; }
+  list.innerHTML = JOBS.map(function(j,i){ return cardHtml(j,i); }).join('');
+}
+
+function cardHtml(j,i){
+  const tel=String(j.phone||'').replace(/\D/g,'');
+  const bits=[];
+  if(j.location) bits.push(esc(j.location));
+  if(j.problem) bits.push(esc(j.problem));
+  if(j.changedAt) bits.push('waiting since '+esc(j.changedAt));
+  const subOpts = META.subconTeams.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
+  const destOpts = META.destStatuses.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
+  return '<div class="card" id="card'+i+'">'+
+    '<div class="cname">'+esc(j.name||'(no name)')+'</div>'+
+    '<div class="meta">'+bits.join(' · ')+'</div>'+
+    (j.address?'<div class="meta">📍 '+esc(j.address)+'</div>':'')+
+    (j.rm?'<div class="rmtag">RM '+esc(j.rm)+'</div>':'')+
+    '<div class="links">'+
+      (tel?'<a href="tel:'+tel+'">📞 '+esc(j.phone)+'</a>':'')+
+      (j.groupLink?'<a href="'+esc(j.groupLink)+'" target="_blank" rel="noopener">💬 WA group</a>':'')+
+    '</div>'+
+    '<div class="form">'+
+      '<div class="row">'+
+        '<div><label>Installation date</label><input type="date" id="d'+i+'" min="'+todayStr()+'" onchange="preview('+i+')"></div>'+
+        '<div><label>Days to complete</label><input type="number" id="n'+i+'" min="1" max="60" step="1" value="1" oninput="preview('+i+')"></div>'+
+      '</div>'+
+      '<div class="hint" id="pv'+i+'">Pick a date &amp; duration. Sundays are skipped.</div>'+
+      '<label>Subcon team</label><select id="s'+i+'">'+subOpts+'</select>'+
+      '<label>Move card to</label><select id="st'+i+'">'+destOpts+'</select>'+
+      '<button class="go" id="go'+i+'" onclick="confirmJob('+i+')">Confirm &amp; assign QC team</button>'+
+      '<div class="result" id="ok'+i+'"></div>'+
+      '<div class="err" id="er'+i+'"></div>'+
+    '</div>'+
+  '</div>';
+}
+
+function preview(i){
+  const d=document.getElementById('d'+i).value, n=Number(document.getElementById('n'+i).value);
+  const pv=document.getElementById('pv'+i);
+  if(!d||!(n>=1)){ pv.innerHTML='Pick a date &amp; duration. Sundays are skipped.'; return; }
+  if(isSunday(d)){ pv.innerHTML='⚠ That date is a <b>Sunday</b> (non-working) — pick Mon–Sat.'; return; }
+  const end=completionDate(d,n);
+  pv.innerHTML='Finishes approx <b>'+esc(end)+'</b> &middot; '+n+' working day'+(n>1?'s':'')+' (Sun skipped) &middot; '+n+' QC check-visit'+(n>1?'s':'');
+}
+
+async function confirmJob(i){
+  const j=JOBS[i]; if(!j) return;
+  const d=document.getElementById('d'+i).value, n=Number(document.getElementById('n'+i).value);
+  const sub=document.getElementById('s'+i).value, dest=document.getElementById('st'+i).value;
+  const ok=document.getElementById('ok'+i), er=document.getElementById('er'+i);
+  ok.className='result'; er.className='err';
+  if(!d){ toast('Pick an installation date','err'); return; }
+  if(isSunday(d)){ toast('Installation date is a Sunday — pick Mon–Sat','err'); return; }
+  if(!(n>=1&&n<=60)){ toast('Days to complete must be 1–60','err'); return; }
+  const end=completionDate(d,n);
+  if(!confirm('Confirm '+(j.name||'this job')+':\nInstall '+d+' → '+end+' ('+n+' day'+(n>1?'s':'')+')\nSubcon: '+sub+'\nMove to: '+dest+'\n\nThe system will assign a QC team and block its calendar.')) return;
+  const btn=document.getElementById('go'+i); btn.disabled=true; btn.textContent='Assigning…';
+  const res=await api('opsConfirmSave', { phone:j.phone, installDate:d, expectedDays:n, subcon:sub, destStatus:dest, by:BY });
+  btn.disabled=false; btn.textContent='Confirm & assign QC team';
+  if(res && res.status==='ok'){
+    const lines=(res.visits||[]).map(function(v){ return '&nbsp;&nbsp;'+esc(v.date)+' — '+esc(v.slot); }).join('<br>');
+    ok.innerHTML='✅ Assigned <b>'+esc(res.qcTeam)+'</b> &middot; subcon '+esc(res.subcon)+'<br>'+
+      'Finishes '+esc(res.expectedCompletion)+' &middot; moved to '+esc(res.destStatus)+'<br>'+
+      '<b>Check visits:</b><br>'+lines;
+    ok.className='result on';
+    toast('Confirmed — '+res.qcTeam+' assigned','ok');
+    document.getElementById('card'+i).classList.add('gone');
+  } else {
+    let msg = (res && res.message) ? res.message : 'Save failed';
+    if(res && res.fullDays){
+      const parts=[]; Object.keys(res.fullDays).forEach(function(t){ parts.push(t+': '+res.fullDays[t].join(', ')); });
+      if(parts.length) msg += '<br><span style="font-size:12px">Full days — '+esc(parts.join(' | '))+'</span>';
+    }
+    er.innerHTML='⚠ '+msg; er.className='err on';
+    toast('Could not assign — see details','err');
+  }
+}
+
+load();
+</script>
+</body>
+</html>
