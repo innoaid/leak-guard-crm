@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Report a Problem</title>
+<meta property="og:title" content="Leak Guard — Report a Problem / Warranty Visit">
+<meta property="og:description" content="Book a time for our team to inspect a problem at your completed job.">
+<meta property="og:url" content="https://leakguard.my/report/">
+<meta property="og:image" content="https://leakguard.my/appointment/logo.jpg">
+<meta property="og:type" content="website">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--pri:#2D2A6E;--acc:#1D9E75;--bg:#f7f6f2;--card:#fff;--bdr:#e5e3dc;--ink:#1a1a1a;--muted:#6b6960}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app" style="max-width:420px;margin:0 auto;padding-bottom:2rem">
+
+  <!-- Header -->
+  <div style="background:var(--pri);padding:18px 20px 20px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <div style="width:50px;height:50px;border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+        <img src="https://leakguard.my/appointment/logo.png" alt="Leak Guard" style="width:100%;height:100%;object-fit:contain;padding:5px" onerror="this.style.display='none'">
+      </div>
+      <div>
+        <div style="color:rgba(255,255,255,0.6);font-size:11px;letter-spacing:0.5px;text-transform:uppercase">Leak Guard</div>
+        <div style="color:#fff;font-size:15px;font-weight:600">Report a Problem · Warranty Visit</div>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,0.1);border-radius:9px;padding:10px 14px">
+      <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:2px">Booking for</div>
+      <div style="color:#fff;font-size:14px;font-weight:500" id="hdrName">—</div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" style="text-align:center;padding:48px 20px">
+    <div style="width:32px;height:32px;border:3px solid #e5e3dc;border-top-color:#1D9E75;border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px"></div>
+    <div style="font-size:13px;color:#6b6960">Loading available times…</div>
+  </div>
+
+  <!-- Error -->
+  <div id="loadError" style="display:none;padding:24px 20px;text-align:center">
+    <div style="font-size:32px;margin-bottom:10px">😕</div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px" id="errTitle">Unable to load</div>
+    <div style="font-size:13px;color:#6b6960;margin-bottom:16px" id="errMsg">Please try again or contact us on WhatsApp.</div>
+    <button onclick="loadAvailability()" style="background:var(--acc);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Try again</button>
+  </div>
+
+  <!-- Step 1: Calendar -->
+  <div id="s1" style="display:none;padding:16px 20px 0">
+    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:11px 13px;font-size:12.5px;color:#92400E;line-height:1.5;margin-bottom:14px">
+      🛠️ Noticed a leak or problem after your job? Pick a date and time below and our team will come to inspect it under your warranty.
+    </div>
+    <div style="background:#fff;border-radius:14px;border:1px solid #e5e3dc;overflow:hidden;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px">
+        <button id="btnPrev" style="background:none;border:1px solid #e5e3dc;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b6960;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style="font-size:15px;font-weight:600" id="monthLabel">—</div>
+        <button id="btnNext" style="background:none;border:1px solid #e5e3dc;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b6960;display:flex;align-items:center;justify-content:center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+      <div id="dayHeaders" style="display:grid;grid-template-columns:repeat(7,1fr);padding:0 10px;gap:2px"></div>
+      <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr);padding:4px 10px 12px;gap:2px"></div>
+      <div style="display:flex;gap:12px;padding:10px 16px;border-top:1px solid #e5e3dc;background:#fafaf8">
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6b6960">
+          <div style="width:8px;height:8px;border-radius:50%;background:#1D9E75"></div>Available
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6b6960">
+          <div style="width:8px;height:8px;border-radius:50%;background:#fde8e8;border:1px solid #f5c6c6"></div>Fully booked
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6b6960">
+          <div style="width:8px;height:8px;border-radius:50%;background:#eee"></div>Unavailable
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#6b6960;text-align:center">Tap an available date to see time slots</div>
+  </div>
+
+  <!-- Step 2: Time slots -->
+  <div id="s2" style="display:none;padding:16px 20px 0">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button onclick="show('s1')" style="background:none;border:1px solid #e5e3dc;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b6960;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div>
+        <div style="font-size:10px;color:#6b6960;text-transform:uppercase;letter-spacing:.4px">Selected date</div>
+        <div style="font-size:15px;font-weight:600" id="selDateLabel">—</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#6b6960;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px">Available time slots</div>
+    <div id="slotGrid" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+
+  <!-- Step 3: Confirm -->
+  <div id="s3" style="display:none;padding:16px 20px 0">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button onclick="show('s2')" style="background:none;border:1px solid #e5e3dc;border-radius:8px;width:32px;height:32px;cursor:pointer;color:#6b6960;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div style="font-size:15px;font-weight:600">Confirm your visit</div>
+    </div>
+    <div style="background:#fff;border-radius:14px;border:1px solid #e5e3dc;overflow:hidden;margin-bottom:14px">
+      <div style="background:var(--pri);padding:18px 20px">
+        <div style="color:rgba(255,255,255,.6);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Problem / warranty inspection</div>
+        <div style="color:#fff;font-size:18px;font-weight:600;margin-bottom:2px" id="c3date">—</div>
+        <div style="color:rgba(255,255,255,.75);font-size:13px" id="c3time">—</div>
+      </div>
+      <div style="padding:14px 20px">
+        <div style="display:flex;justify-content:space-between;font-size:13px">
+          <span style="color:#6b6960">Customer</span><span style="font-weight:500" id="c3name">—</span>
+        </div>
+      </div>
+    </div>
+    <div id="confirmError" style="display:none;background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+    <button id="btnConfirm" onclick="confirmBooking()" style="width:100%;background:var(--acc);color:#fff;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-bottom:8px">Confirm visit</button>
+    <button onclick="show('s2')" style="width:100%;background:none;color:#6b6960;border:none;padding:10px;font-size:13px;font-family:inherit;cursor:pointer">Change time</button>
+  </div>
+
+  <!-- Step 4: Success -->
+  <div id="s4" style="display:none;text-align:center;padding:32px 20px">
+    <div style="width:64px;height:64px;border-radius:50%;background:#e1f5ee;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div style="font-size:20px;font-weight:700;margin-bottom:8px">Visit booked!</div>
+    <div style="color:#6b6960;font-size:13px;line-height:1.6;margin-bottom:20px">Thanks for letting us know.<br>Our inspection team will come at the time below.</div>
+    <div style="background:#fff;border-radius:12px;border:1px solid #e5e3dc;padding:14px 16px;text-align:left;margin-bottom:16px">
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+        <div style="display:flex;justify-content:space-between"><span style="color:#6b6960">Date</span><span id="s4d" style="font-weight:500">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#6b6960">Time</span><span id="s4t" style="font-weight:500">—</span></div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#6b6960">You may close this page. We'll be in touch on WhatsApp.</div>
+  </div>
+
+</div>
+
+<script>
+var AVAIL_URL='https://leakguard.app.n8n.cloud/webhook/lg-qc-availability';
+var BOOK_URL ='https://leakguard.app.n8n.cloud/webhook/lg-qc-booking';
+var params=new URLSearchParams(location.search);
+var PHONE=(params.get('p')||params.get('phone')||'').trim();
+
+var DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+var FULL_DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var SHORT_MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// QC 1-hour check slots → full range labels (keyed by the short label the API returns)
+var QC_FULL={'9:00 AM':'9:00 AM - 10:00 AM','10:30 AM':'10:30 AM - 11:30 AM','1:00 PM':'1:00 PM - 2:00 PM','3:00 PM':'3:00 PM - 4:00 PM'};
+
+var DATA=null, availability={}, SLOTS=[];
+var viewYear=new Date().getFullYear(), viewMonth=new Date().getMonth();
+var selDate=null, selSlot=null, NAME='';
+
+function show(id){ ['loading','loadError','s1','s2','s3','s4'].forEach(function(s){ var el=document.getElementById(s); if(el) el.style.display=s===id?'block':'none'; }); }
+function toKey(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+function slotLabel(sid){ return SLOTS[sid-1]||('Slot '+sid); }
+function slotFull(sid){ var l=slotLabel(sid); return QC_FULL[l]||l; }
+
+async function loadAvailability(){
+  show('loading');
+  if(!PHONE){ document.getElementById('errTitle').textContent='Link not recognised'; document.getElementById('errMsg').textContent='Please use the booking link we sent you on WhatsApp.'; show('loadError'); return; }
+  try{
+    var res=await fetch(AVAIL_URL+'?p='+encodeURIComponent(PHONE));
+    DATA=await res.json();
+    if(!DATA || DATA.error){ document.getElementById('errMsg').textContent=(DATA&&DATA.message)||'Calendar unavailable. Please try again shortly.'; show('loadError'); return; }
+    NAME=DATA.name||'Our customer';
+    document.getElementById('hdrName').textContent=NAME;
+    availability=DATA.availability||{}; SLOTS=DATA.slots||[];
+    var keys=Object.keys(availability).filter(function(k){ return (availability[k]||[]).length>0; }).sort();
+    if(keys.length){ var first=new Date(keys[0]+'T12:00:00'); viewYear=first.getFullYear(); viewMonth=first.getMonth(); }
+    renderCal();
+    show('s1');
+  }catch(e){ document.getElementById('errMsg').textContent='Network error. Please try again.'; show('loadError'); }
+}
+
+function renderCal(){
+  document.getElementById('monthLabel').textContent=MONTHS[viewMonth]+' '+viewYear;
+  var headers=document.getElementById('dayHeaders'); headers.innerHTML='';
+  ['S','M','T','W','T','F','S'].forEach(function(d){ var el=document.createElement('div'); el.style.cssText='text-align:center;font-size:11px;color:#6b6960;font-weight:500;padding:4px 0'; el.textContent=d; headers.appendChild(el); });
+  var grid=document.getElementById('calGrid'); grid.innerHTML='';
+  var today=new Date(); today.setHours(0,0,0,0);
+  var firstDay=new Date(viewYear,viewMonth,1).getDay();
+  var daysInMonth=new Date(viewYear,viewMonth+1,0).getDate();
+  for(var i=0;i<firstDay;i++){ var b=document.createElement('div'); b.style.height='36px'; grid.appendChild(b); }
+  for(var d=1;d<=daysInMonth;d++){
+    var key=toKey(viewYear,viewMonth,d);
+    var cellDate=new Date(viewYear,viewMonth,d);
+    var isPast=cellDate<today;
+    var avail=availability[key];
+    var isFullyBooked=avail && avail.length===0;
+    var hasSlots=avail && avail.length>0;
+    var isSel=selDate===key;
+    var el=document.createElement('div');
+    el.style.cssText='height:36px;width:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;position:relative;margin:1px auto;';
+    if(isSel){ el.style.background='#2D2A6E'; el.style.color='#fff'; el.style.fontWeight='500'; el.textContent=d; }
+    else if(isPast||!avail){ el.style.color='#ccc'; el.textContent=d; }
+    else if(isFullyBooked){ el.style.background='#fde8e8'; el.style.color='#c0392b'; el.textContent=d; }
+    else if(hasSlots){
+      el.style.cursor='pointer'; el.style.fontWeight='500';
+      var span=document.createElement('span'); span.textContent=d; el.appendChild(span);
+      var dot=document.createElement('span');
+      dot.style.cssText='position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:#1D9E75';
+      el.appendChild(dot);
+      (function(k,day,elem){
+        elem.onmouseenter=function(){ if(selDate!==k) elem.style.background='#e1f5ee'; };
+        elem.onmouseleave=function(){ if(selDate!==k) elem.style.background='transparent'; };
+        elem.onclick=function(){ pickDate(k,day); };
+      })(key,d,el);
+    } else { el.style.color='#ccc'; el.textContent=d; }
+    grid.appendChild(el);
+  }
+}
+
+function pickDate(key,d){
+  selDate=key; selSlot=null; renderCal();
+  var dt=new Date(key+'T12:00:00');
+  document.getElementById('selDateLabel').textContent=DAYS[dt.getDay()]+', '+d+' '+SHORT_MONTHS[dt.getMonth()]+' '+dt.getFullYear();
+  var grid=document.getElementById('slotGrid'); grid.innerHTML='';
+  (availability[key]||[]).forEach(function(sid){
+    var el=document.createElement('div');
+    el.style.cssText='background:#fff;border:1.5px solid #e5e3dc;border-radius:12px;padding:13px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:border-color .15s';
+    var info=document.createElement('div');
+    var lbl=document.createElement('div'); lbl.style.cssText='font-size:15px;font-weight:500'; lbl.textContent=slotLabel(sid);
+    var sub=document.createElement('div'); sub.style.cssText='font-size:11px;color:#6b6960;margin-top:1px'; sub.textContent=slotFull(sid);
+    info.appendChild(lbl); info.appendChild(sub);
+    var dot=document.createElement('div'); dot.style.cssText='width:20px;height:20px;border-radius:50%;border:2px solid #e5e3dc;flex-shrink:0;transition:all .15s';
+    el.appendChild(info); el.appendChild(dot);
+    (function(s,elem,dotEl){
+      elem.onmouseenter=function(){ elem.style.borderColor='#1D9E75'; };
+      elem.onmouseleave=function(){ if(selSlot!==s){ elem.style.borderColor='#e5e3dc'; } };
+      elem.onclick=function(){ pickSlot(s,elem,dotEl); };
+    })(sid,el,dot);
+    grid.appendChild(el);
+  });
+  show('s2');
+}
+
+function pickSlot(sid,el,dot){
+  selSlot=sid;
+  document.querySelectorAll('#slotGrid>div').forEach(function(d){ d.style.borderColor='#e5e3dc'; var dd=d.querySelector('div:last-child'); if(dd){ dd.style.background='transparent'; dd.style.borderColor='#e5e3dc'; } });
+  el.style.borderColor='#1D9E75'; dot.style.background='#1D9E75'; dot.style.borderColor='#1D9E75';
+  setTimeout(showConfirm,180);
+}
+
+function showConfirm(){
+  var dt=new Date(selDate+'T12:00:00');
+  document.getElementById('c3date').textContent=FULL_DAYS[dt.getDay()]+', '+dt.getDate()+' '+SHORT_MONTHS[dt.getMonth()]+' '+dt.getFullYear();
+  document.getElementById('c3time').textContent=slotFull(selSlot);
+  document.getElementById('c3name').textContent=NAME;
+  document.getElementById('confirmError').style.display='none';
+  show('s3');
+}
+
+async function confirmBooking(){
+  var btn=document.getElementById('btnConfirm'); var err=document.getElementById('confirmError');
+  err.style.display='none'; btn.disabled=true; btn.textContent='Booking…';
+  try{
+    var res=await fetch(BOOK_URL,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ phone:PHONE, date:selDate, slot:selSlot }) });
+    var j=await res.json();
+    if(j && j.status==='ok'){
+      document.getElementById('s4d').textContent=j.displayDate||'';
+      document.getElementById('s4t').textContent=j.displayTime||slotFull(selSlot);
+      show('s4'); return;
+    }
+    err.textContent=(j&&j.message)||'Could not book that time. Please pick another.';
+    err.style.display='block'; btn.disabled=false; btn.textContent='Confirm visit';
+    if(j && j.error==='slot_taken'){ setTimeout(loadAvailability,1400); }
+  }catch(e){ err.textContent='Network error. Please try again.'; err.style.display='block'; btn.disabled=false; btn.textContent='Confirm visit'; }
+}
+
+document.getElementById('btnPrev').onclick=function(){ viewMonth--; if(viewMonth<0){viewMonth=11;viewYear--;} renderCal(); };
+document.getElementById('btnNext').onclick=function(){ viewMonth++; if(viewMonth>11){viewMonth=0;viewYear++;} renderCal(); };
+
+loadAvailability();
+</script>
+</body>
+</html>
