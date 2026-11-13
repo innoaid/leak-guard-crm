@@ -162,6 +162,8 @@ function cardHtml(j,i){
       '<div class="hint" id="pv'+i+'">Pick a date &amp; duration. Sundays are skipped.</div>'+
       '<label>Subcon team</label><select id="s'+i+'">'+subOpts+'</select>'+
       '<label>Move card to</label><select id="st'+i+'">'+destOpts+'</select>'+
+      '<label>WA group link <span style="font-weight:400;color:#9CA3AF">(optional — paste the site group invite)</span></label>'+
+      '<input type="url" id="wa'+i+'" placeholder="https://chat.whatsapp.com/..." autocomplete="off"'+(j.groupLink?(' value="'+esc(j.groupLink)+'"'):'')+'>'+
       '<button class="go" id="go'+i+'" onclick="confirmJob('+i+')">Confirm &amp; assign QC team</button>'+
       '<div class="result" id="ok'+i+'"></div>'+
       '<div class="err" id="er'+i+'"></div>'+
@@ -190,7 +192,8 @@ async function confirmJob(i){
   const end=completionDate(d,n);
   if(!confirm('Confirm '+(j.name||'this job')+':\nInstall '+d+' → '+end+' ('+n+' day'+(n>1?'s':'')+')\nSubcon: '+sub+'\nMove to: '+dest+'\n\nThe system will assign a QC team and block its calendar.')) return;
   const btn=document.getElementById('go'+i); btn.disabled=true; btn.textContent='Assigning…';
-  const res=await api('opsConfirmSave', { phone:j.phone, installDate:d, expectedDays:n, subcon:sub, destStatus:dest, by:BY });
+  const waEl=document.getElementById('wa'+i); const groupLink=waEl?waEl.value.trim():'';
+  const res=await api('opsConfirmSave', { phone:j.phone, installDate:d, expectedDays:n, subcon:sub, destStatus:dest, groupLink:groupLink, by:BY });
   btn.disabled=false; btn.textContent='Confirm & assign QC team';
   if(res && res.status==='ok'){
     const lines=(res.visits||[]).map(function(v){ return '&nbsp;&nbsp;'+esc(v.date)+' — '+esc(v.slot); }).join('<br>');

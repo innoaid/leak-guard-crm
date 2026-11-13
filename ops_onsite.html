@@ -30,6 +30,14 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .panel input{width:100%;border:1px solid #C7D2FE;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;margin-bottom:6px;background:#fff}
 .panel .hint{font-size:12px;color:#4338CA;margin:2px 0 8px}
 .go{color:#fff;border:none;border-radius:8px;padding:10px;width:100%;font-weight:700;font-size:14px;cursor:pointer;background:#6366F1}
+.btn-assess{width:100%;margin-top:8px;border:none;border-radius:10px;padding:11px;font-size:13.5px;font-weight:700;cursor:pointer;color:#fff;background:#0F766E}
+.panel.assess{background:#F0FDFA;border-color:#99F6E4}
+.panel.assess label{color:#0F766E}
+.panel.assess .go{background:#0F766E}
+.chks{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#374151}
+.chk input{width:auto;margin:0;flex-shrink:0}
+.panel textarea{width:100%;border:1px solid #99F6E4;border-radius:8px;padding:9px;font-size:14px;font-family:inherit;margin-bottom:6px;background:#fff;resize:vertical}
 .result{margin-top:8px;font-size:12.5px;line-height:1.5;display:none}
 .result.on{display:block}
 .result.ok{color:#065F46}.result.warn{color:#9A3412}
@@ -68,6 +76,8 @@ function fmtD(d){ const p=function(n){return(n<10?'0':'')+n;}; return d.getFullY
 function spanDays(startStr,endStr){ const a=parseD(startStr),b=parseD(endStr); if(!a||!b||b<a)return 0; let n=0; const d=new Date(a.getTime()); while(d<=b){ if(d.getDay()!==0)n++; d.setDate(d.getDate()+1);} return n; }
 
 let JOBS=[];
+// Day-1 substrate assessment conditions (value, label)
+const ASSESS=[['cracks','Cracks — needs crack repair'],['hollow','Hollow / drummy — needs hacking'],['honeycomb','Honeycomb / voids'],['ponding','Ponding / uneven fall'],['old_membrane','Old membrane to remove'],['grinding','Surface grinding / prep'],['substrate_ok','Substrate OK as-is']];
 async function load(){
   if(!TEAM){ document.getElementById('hSub').textContent='No team in the link (add ?team=QC Team A).'; return; }
   document.getElementById('hTitle').textContent='🛠️ '+TEAM;
@@ -99,6 +109,16 @@ function cardHtml(j,i){
       '<button class="btn btn-done" onclick="markDone('+i+')">✓ Check done today</button>'+
       '<button class="btn btn-dur" onclick="togglePanel('+i+')">⏱ Extend / shorten</button>'+
     '</div>'+
+    '<button class="btn-assess" onclick="toggleAssess('+i+')">📋 Day-1 substrate assessment</button>'+
+    '<div class="panel assess" id="a'+i+'">'+
+      '<label>Condition found on site (tick all that apply)</label>'+
+      '<div class="chks">'+ASSESS.map(function(f){ return '<label class="chk"><input type="checkbox" id="chk_'+i+'_'+f[0]+'"> '+esc(f[1])+'</label>'; }).join('')+'</div>'+
+      '<label>Notes for subcon / coordinator</label>'+
+      '<textarea id="an'+i+'" rows="2" placeholder="e.g. NE corner cracked ~2m, hollow along parapet base — hack & patch before prep"></textarea>'+
+      '<label>Scope impact</label>'+
+      '<div class="chks"><label class="chk"><input type="radio" name="sc'+i+'" value="none" checked> No change to plan</label><label class="chk"><input type="radio" name="sc'+i+'" value="extra"> ⚠ Extra remedial — may add days/cost</label></div>'+
+      '<button class="go" onclick="saveAssess('+i+')">Save assessment</button>'+
+    '</div>'+
     '<div class="panel" id="p'+i+'">'+
       '<label>New completion date</label>'+
       '<input type="date" id="cd'+i+'" min="'+esc(j.instDate)+'" value="'+esc(j.expComplete||'')+'">'+
@@ -110,6 +130,19 @@ function cardHtml(j,i){
 }
 
 function togglePanel(i){ document.getElementById('p'+i).classList.toggle('open'); }
+function toggleAssess(i){ document.getElementById('a'+i).classList.toggle('open'); }
+
+async function saveAssess(i){
+  const j=JOBS[i]; if(!j) return;
+  const flags=ASSESS.filter(function(f){ return document.getElementById('chk_'+i+'_'+f[0]).checked; }).map(function(f){ return f[0]; });
+  const notes=document.getElementById('an'+i).value.trim();
+  const scEl=document.querySelector('input[name="sc'+i+'"]:checked'); const scope=scEl?scEl.value:'none';
+  if(!flags.length && !notes){ toast('Tick a condition or add a note','err'); return; }
+  const res=await api('opsSaveAssessment',{ phone:j.phone, flags:flags, notes:notes, scope:scope, by:TEAM });
+  const r=document.getElementById('r'+i);
+  if(res&&res.status==='ok'){ r.className='result ok on'; r.innerHTML='✅ Assessment saved'+(scope==='extra'?' — ⚠ flagged extra remedial':'')+'.'; toast('Assessment saved','ok'); document.getElementById('a'+i).classList.remove('open'); }
+  else { r.className='result warn on'; r.innerHTML='⚠ '+esc((res&&res.message)||'Failed'); toast('Failed','err'); }
+}
 
 async function markDone(i){
   const j=JOBS[i]; if(!j) return;

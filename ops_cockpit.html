@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Ops Cockpit</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 48px}
+.hdr{background:#1E293B;color:#fff;padding:14px 16px 0;position:sticky;top:0;z-index:5}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .sub{font-size:12px;opacity:.8;margin-top:2px}
+.tabs{display:flex;gap:4px;margin-top:12px}
+.tab{flex:1;background:none;border:none;color:#CBD5E1;font-family:inherit;font-size:12.5px;font-weight:700;padding:10px 4px;cursor:pointer;border-bottom:3px solid transparent;position:relative}
+.tab.on{color:#fff;border-bottom-color:#38BDF8}
+.tab .cnt{display:inline-block;min-width:18px;background:#334155;color:#fff;border-radius:9px;font-size:11px;padding:0 5px;margin-left:3px}
+.tab.on .cnt{background:#38BDF8;color:#0C2535}
+.wrap{max-width:600px;margin:0 auto;padding:14px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card.red{border-left:3px solid #DC2626}
+.cname{font-size:16px;font-weight:800}
+.meta{font-size:12.5px;color:#6b7280;margin-top:3px;line-height:1.5}
+.meta b{color:#374151}
+.pill{display:inline-block;font-weight:700;font-size:11.5px;padding:2px 9px;border-radius:9px;margin:5px 5px 0 0;border:1px solid}
+.pill.qc{background:#F0FDFA;color:#0F766E;border-color:#99F6E4}
+.pill.sub{background:#FEF9C3;color:#854D0E;border-color:#FDE68A}
+.pill.flag{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
+.pill.ok{background:#ECFDF5;color:#065F46;border-color:#A7F3D0}
+.links{margin-top:9px;display:flex;gap:7px;flex-wrap:wrap}
+.lk{font-size:12.5px;text-decoration:none;border-radius:8px;padding:6px 11px;border:1px solid;cursor:pointer;font-family:inherit;background:#fff}
+.lk.wa{color:#166534;border-color:#BBF7D0;background:#F0FDF4}
+.lk.add{color:#B45309;border-color:#FDE68A;background:#FFFBEB}
+.lk.tel{color:#2563EB;border-color:#BFDBFE;background:#EFF6FF}
+.lk.nudge{color:#7C3AED;border-color:#DDD6FE;background:#F5F3FF}
+.sec{margin-top:11px;border-top:1px dashed #E5E7EB;padding-top:10px}
+.sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#9CA3AF;margin-bottom:7px}
+.phase{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid #F3F4F6}
+.phase:last-child{border-bottom:none}
+.pbox{width:26px;height:26px;border-radius:7px;border:2px solid #D1D5DB;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:800;color:#fff;background:#fff}
+.pbox.done{background:#10B981;border-color:#10B981}
+.plabel{flex:1;font-size:13.5px;font-weight:700}
+.plabel .psub{font-size:11px;font-weight:600;color:#9CA3AF;display:block;margin-top:1px}
+.plabel .need{font-size:11px;font-weight:700;color:#B91C1C;display:block;margin-top:1px}
+.pnudge{font-size:11px;color:#7C3AED;cursor:pointer;border:1px solid #DDD6FE;background:#F5F3FF;border-radius:7px;padding:4px 8px;font-family:inherit;font-weight:700}
+.sla{display:flex;gap:8px;margin-top:9px}
+.slabox{flex:1;border:1px solid #E5E7EB;border-radius:9px;padding:8px 10px;font-size:12px}
+.slabox .t{color:#9CA3AF;font-weight:700;text-transform:uppercase;font-size:10px;letter-spacing:.3px}
+.slabox .d{font-weight:800;font-size:14px;margin-top:2px;color:#111827}
+.slabox.over{background:#FEF2F2;border-color:#FECACA}
+.slabox.over .d{color:#B91C1C}
+.slabox.done{background:#ECFDF5;border-color:#A7F3D0}.slabox.done .d{color:#065F46}
+.act{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.btn{border:none;border-radius:9px;padding:9px 13px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-resp{background:#2563EB;color:#fff}.btn-rep{background:#10B981;color:#fff}.btn-alert{background:#DC2626;color:#fff}
+.notes{font-size:12px;color:#6B7280;margin-top:6px;background:#F9FAFB;border:1px solid #F3F4F6;border-radius:8px;padding:7px 9px;line-height:1.5}
+.empty{text-align:center;color:#6b7280;padding:54px 20px;font-size:14.5px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+.toast.on{opacity:1}.toast.err{background:#DC2626}.toast.ok{background:#059669}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1 id="hTitle">Ops Cockpit</h1>
+  <div class="sub" id="hSub">Loading…</div>
+  <div class="tabs" id="tabs"></div>
+</div>
+<div class="wrap" id="list"></div>
+<div class="toast" id="toast"></div>
+<script>
+const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SECRET='ABC';
+const BY=(new URLSearchParams(location.search).get('by')||'').trim();
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const ASSESS_LABEL={cracks:'crack repair',hollow:'hollow hacking',honeycomb:'honeycomb',ponding:'ponding/fall',old_membrane:'remove old membrane',grinding:'grinding/prep',substrate_ok:'substrate OK'};
+const PHASES=[['prep','① Surface Prep','water-jet, angle fillet, crack & hollow repair'],['primer','② Primer','1st layer bitumen'],['membrane','③ Membrane','2nd layer torch-on · lapping · upturn']];
+
+let DATA={starting:[],wip:[],defect:[],today:''}, TAB='starting';
+
+function toast(m,k){ const t=document.getElementById('toast'); t.textContent=m; t.className='toast on '+(k||''); setTimeout(function(){ t.className='toast '+(k||''); },2600); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
+function js(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/\n/g,' '); }
+function digits(p){ return String(p||'').replace(/\D/g,''); }
+function fmt(d){ const m=String(d||'').match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return d||''; return (+m[3])+' '+MONTHS[(+m[2])-1]; }
+async function api(action,payload){
+  const r=await fetch(APPS_SCRIPT_URL,{ method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(Object.assign({action:action,secret:SECRET},payload)) });
+  return r.json();
+}
+
+async function load(){
+  document.getElementById('hTitle').textContent='🎛️ Ops Cockpit'+(BY?(' — '+BY):'');
+  const res=await api('opsCockpit',{});
+  if(!res||res.status!=='ok'){ document.getElementById('hSub').textContent=(res&&res.message)||'Load failed.'; return; }
+  DATA=res;
+  document.getElementById('hSub').textContent='Today '+fmt(res.today)+' · '+(res.starting.length+res.wip.length+res.defect.length)+' jobs in view';
+  renderTabs(); renderPanel();
+}
+
+function renderTabs(){
+  const t=[['starting','Starting Today',DATA.starting.length],['wip','Active WIP',DATA.wip.length],['defect','Defect SLA',DATA.defect.length]];
+  document.getElementById('tabs').innerHTML=t.map(function(x){ return '<button class="tab'+(TAB===x[0]?' on':'')+'" onclick="switchTab(\''+x[0]+'\')">'+x[1]+'<span class="cnt">'+x[2]+'</span></button>'; }).join('');
+}
+function switchTab(t){ TAB=t; renderTabs(); renderPanel(); window.scrollTo(0,0); }
+
+function renderPanel(){
+  const list=document.getElementById('list');
+  const arr=DATA[TAB]||[];
+  if(!arr.length){ list.innerHTML='<div class="empty">✅ Nothing here right now.</div>'; return; }
+  list.innerHTML=arr.map(function(j,i){ return TAB==='starting'?cardStart(j,i):TAB==='wip'?cardWip(j,i):cardDefect(j,i); }).join('');
+}
+
+// shared bits
+function head(j){
+  return '<div class="cname">'+esc(j.name||'(no name)')+'</div>'+
+    (j.address?'<div class="meta">📍 '+esc(j.address)+'</div>':'')+
+    '<div>'+(j.qcTeam?'<span class="pill qc">🧰 '+esc(j.qcTeam)+'</span>':'')+(j.subcon?'<span class="pill sub">👷 '+esc(j.subcon)+'</span>':'')+'</div>';
+}
+function waLinks(j,nudgeMsg){
+  const tel=digits(j.phone);
+  let h='<div class="links">';
+  if(tel) h+='<a class="lk tel" href="tel:'+tel+'">📞 Call</a>';
+  if(j.groupLink) h+='<a class="lk wa" href="'+esc(j.groupLink)+'" target="_blank" rel="noopener">💬 WA group</a>';
+  else h+='<button class="lk add" onclick="addWa(\''+js(j.phone)+'\')">➕ Add WA link</button>';
+  if(nudgeMsg) h+='<button class="lk nudge" onclick="nudge(\''+js(nudgeMsg)+'\',\''+js(j.groupLink||'')+'\')">📣 Nudge</button>';
+  return h+'</div>';
+}
+
+// PANEL 1
+function cardStart(j,i){
+  const a=j.assessment;
+  let body;
+  if(a){
+    const chips=(a.flags||[]).map(function(f){ return '<span class="pill flag">'+esc(ASSESS_LABEL[f]||f)+'</span>'; }).join('')||'<span class="pill ok">substrate OK</span>';
+    body='<div class="sec"><h4>Day-1 assessment ✓ by '+esc(a.by||'QC')+'</h4>'+chips+
+      (a.scope==='extra'?'<div style="margin-top:6px"><span class="pill flag">⚠ extra remedial — may add days/cost</span></div>':'')+
+      (a.notes?'<div class="notes">'+esc(a.notes)+'</div>':'')+'</div>';
+  } else {
+    body='<div class="sec"><h4>Day-1 assessment</h4><span class="pill flag">⏳ pending — QC team to assess substrate on site</span></div>';
+  }
+  const msg='Hi, please share the Day-1 site condition photos for '+(j.name||'this site')+' so we can confirm the scope. Thanks!';
+  return '<div class="card">'+head(j)+body+waLinks(j,msg)+'</div>';
+}
+
+// PANEL 2
+function cardWip(j,i){
+  const flags=j.day1flags||[];
+  const needPrep=flags.filter(function(f){ return f!=='substrate_ok'&&f!=='grinding'; }).map(function(f){ return ASSESS_LABEL[f]||f; });
+  let rows='';
+  PHASES.forEach(function(p){
+    const key=p[0], done=j.phases&&j.phases[key];
+    const need=(key==='prep'&&needPrep.length)?'<span class="need">↳ confirm done: '+esc(needPrep.join(', '))+'</span>':'';
+    const nmsg=key==='prep'?('Hi, please share the *surface prep* proof photos (water-jet clean, angle fillet'+(needPrep.length?', '+needPrep.join(', '):'')+') for '+(j.name||'this site')+'.')
+      :key==='primer'?('Hi, please share the *primer (1st layer)* photo for '+(j.name||'this site')+'.')
+      :('Hi, please share the *membrane (2nd layer, upturn + lapping)* photo for '+(j.name||'this site')+'.');
+    rows+='<div class="phase">'+
+      '<div class="pbox'+(done?' done':'')+'" onclick="tickPhase(\''+js(j.phone)+'\',\''+key+'\','+(done?'false':'true')+')">'+(done?'✓':'')+'</div>'+
+      '<div class="plabel">'+esc(p[1])+'<span class="psub">'+esc(p[2])+'</span>'+need+'</div>'+
+      (done?'<span class="pill ok" style="margin:0">'+fmt(done.slice(0,10))+'</span>':'<button class="pnudge" onclick="nudge(\''+js(nmsg)+'\',\''+js(j.groupLink||'')+'\')">nudge</button>')+
+    '</div>';
+  });
+  return '<div class="card">'+head(j)+
+    '<div class="meta">🗓️ '+esc(j.instDate)+' → <b>'+esc(j.expComplete||'?')+'</b></div>'+
+    '<div class="sec"><h4>Proof photos</h4>'+rows+'</div>'+
+    waLinks(j,'')+'</div>';
+}
+
+// PANEL 3
+function cardDefect(j,i){
+  const over=(j.respondOverdue||j.repairOverdue);
+  let sla;
+  if(!j.inspectedAt){
+    sla='<div class="meta" style="margin-top:9px">🔎 Awaiting defect inspection'+(j.repairDate?(' on <b>'+esc(fmt(j.repairDate))+'</b>'):'')+' — SLA starts after the first QC visit.</div>';
+  } else {
+    sla='<div class="meta" style="margin-top:9px">🔎 Inspected '+esc(fmt(j.inspectedAt))+'</div><div class="sla">'+
+      '<div class="slabox'+(j.respondedAt?' done':(j.respondOverdue?' over':''))+'"><div class="t">Respond by</div><div class="d">'+(j.respondedAt?('✓ '+esc(fmt(j.respondedAt))):esc(fmt(j.respondBy)))+'</div></div>'+
+      '<div class="slabox'+(j.repairOverdue?' over':'')+'"><div class="t">Repair by</div><div class="d">'+esc(fmt(j.repairBy))+'</div></div>'+
+    '</div>';
+  }
+  let act='<div class="act">';
+  if(j.inspectedAt && !j.respondedAt) act+='<button class="btn btn-resp" onclick="markResponded(\''+js(j.phone)+'\')">✓ Responded</button>';
+  act+='<button class="btn btn-rep" onclick="markRepaired(\''+js(j.phone)+'\')">✓ Mark repaired</button>';
+  if(over) act+='<button class="btn btn-alert" onclick="alertStaff(\''+js(j.phone)+'\',\''+js(j.name||'')+'\')">⚠ Alert staff</button>';
+  act+='</div>';
+  const msg='Hi, following up on the repair for '+(j.name||'this site')+' — please share the progress / after-repair photos. Thanks!';
+  return '<div class="card'+(over?' red':'')+'">'+head(j)+sla+act+waLinks(j,msg)+'</div>';
+}
+
+// actions
+async function tickPhase(phone,phase,on){
+  const res=await api('opsTickPhase',{ phone:phone, phase:phase, on:on, by:BY });
+  if(res&&res.status==='ok'){ toast(on?'Photo marked received':'Unticked','ok'); await load(); }
+  else toast((res&&res.message)||'Failed','err');
+}
+async function markResponded(phone){
+  if(!confirm('Mark that you have responded to this customer?')) return;
+  const res=await api('opsMarkResponded',{ phone:phone, by:BY });
+  if(res&&res.status==='ok'){ toast('Marked responded','ok'); await load(); } else toast((res&&res.message)||'Failed','err');
+}
+async function markRepaired(phone){
+  if(!confirm('Mark this defect as repaired and close it? (removes the repair flag)')) return;
+  const res=await api('opsMarkRepaired',{ phone:phone, by:BY });
+  if(res&&res.status==='ok'){ toast('Defect closed','ok'); await load(); } else toast((res&&res.message)||'Failed','err');
+}
+async function alertStaff(phone,name){
+  const msg='⚠ Defect SLA overdue — '+(name||phone)+'. Please action.';
+  const res=await api('opsAlertStaff',{ phone:phone, message:msg });
+  if(res&&res.status==='ok') toast('Staff alerted on Telegram','ok'); else toast((res&&res.message)||'Failed','err');
+}
+async function addWa(phone){
+  const link=prompt('Paste the site WhatsApp group invite link:'); if(!link) return;
+  const res=await api('setGroupLink',{ phone:phone, link:link.trim(), by:BY });
+  if(res&&res.status==='ok'){ toast('WA link saved','ok'); await load(); } else toast((res&&res.message)||'Failed','err');
+}
+function nudge(msg,groupLink){
+  const text=String(msg||'').replace(/&quot;/g,'"');
+  const done=function(){ toast('Message copied — opening group…','ok'); if(groupLink) window.open(groupLink,'_blank','noopener'); else toast('No WA link — add one first','err'); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done,function(){ toast('Copy failed','err'); }); }
+  else { const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); done(); }catch(_e){ toast('Copy failed','err'); } document.body.removeChild(ta); }
+}
+
+load();
+</script>
+</body>
+</html>

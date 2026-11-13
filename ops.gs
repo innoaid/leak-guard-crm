@@ -282,6 +282,9 @@ function handleOpsConfirmSave(body) {
   _opsEnsureCol(sheet, OPS_COL.qcTeam);         setCellByHeader(sheet, row, OPS_COL.qcTeam, chosen.name);
   _opsEnsureCol(sheet, OPS_COL.subcon);         setCellByHeader(sheet, row, OPS_COL.subcon, subcon);
   _opsEnsureCol(sheet, OPS_COL.actualComplete);
+  // Phase 2 — capture the site WA group link at the natural point (confirmation),
+  // now that Whapi no longer auto-fills it. Optional; only writes when provided.
+  if (body.groupLink) { try { _opsEnsureCol(sheet, 'Group Invite Link (AJ)'); setCellByHeader(sheet, row, 'Group Invite Link (AJ)', String(body.groupLink).trim().slice(0, 300)); } catch (_e) {} }
 
   let prevStatus = '';
   try { prevStatus = String(sheet.getRange(row, getHeaders(sheet).colByName['Status']).getValue() || '').trim(); } catch (_e) {}
@@ -404,6 +407,20 @@ function handleOpsMarkCheck(body) {
 
   try { _callsSheet_().appendRow([new Date().toISOString(), phone, name, by, 'qc_check', date, note]); } catch (_e) {}
 
+  // Phase 2 — if this check IS the defect inspection (repair tag + Repair Date == this
+  // date), stamp 'Defect Inspected At' to start the warranty SLA clock (once).
+  try {
+    const h2 = getHeaders(sheet);
+    const tags = (row && h2.colByName['Tags']) ? String(sheet.getRange(row, h2.colByName['Tags']).getValue() || '').toLowerCase() : '';
+    const repDate = (row && h2.colByName['Repair Date']) ? _normalizeDateStr(sheet.getRange(row, h2.colByName['Repair Date']).getValue()) : '';
+    const inspCol = h2.colByName['Defect Inspected At'];
+    const alreadyInsp = inspCol ? String(sheet.getRange(row, inspCol).getValue() || '').trim() : '';
+    if (row && tags.indexOf('repair') !== -1 && repDate && repDate === date && !alreadyInsp) {
+      _opsEnsureCol(sheet, 'Defect Inspected At');
+      setCellByHeader(sheet, row, 'Defect Inspected At', date);
+    }
+  } catch (_e) {}
+
   // Green the matching day's event (best-effort, via proxy).
   try {
     const h = getHeaders(sheet);
@@ -421,4 +438,169 @@ function handleOpsMarkCheck(body) {
   } catch (_e) {}
 
   return jsonResponse({ status: 'ok', phone: phone, date: date });
+}
+
+// ================================================================
+// Phase 2 — Coordinator Cockpit
+// All handlers below are ADDITIVE (new router cases + lazily-created columns).
+// New columns: 'Day1 Assessment' (JSON), 'WIP Phases' (JSON), 'Defect Inspected At',
+// 'Defect Responded At'. Existing columns reused as-is.
+// ================================================================
+
+// +n working days (Sundays excluded) after a start date; n=0 returns start.
+function _opsAddWorkingDays(startStr, n) {
+  if (!startStr) return '';
+  const d = _opsParseDate(startStr); let c = 0;
+  if (n <= 0) return _opsFmtDate(d);
+  while (c < n) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) c++; }
+  return _opsFmtDate(d);
+}
+
+// Read-only snapshot for the 3 cockpit panels.
+function handleOpsCockpit(body) {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const h = getHeaders(sheet);
+  const C = function (n) { return h.colByName[n]; };
+  const cName=C('Name'), cPhone=C('Phone'), cAddr=C('Full Address'), cLoc=C('Location'),
+        cStatus=C('Status'), cTags=C('Tags'), cLink=C('Group Invite Link (AJ)'),
+        cInst=C(OPS_COL.instDate), cExp=C(OPS_COL.expComplete), cQc=C(OPS_COL.qcTeam),
+        cSub=C(OPS_COL.subcon), cActual=C(OPS_COL.actualComplete),
+        cA1=C('Day1 Assessment'), cWip=C('WIP Phases'),
+        cRepDate=C('Repair Date'), cRepTeam=C('Repair QC Team'),
+        cInsp=C('Defect Inspected At'), cResp=C('Defect Responded At');
+  const today = _mytDatePlus(0);
+  const V = function (row, c) { return c ? String(row[c-1]==null?'':row[c-1]).trim() : ''; };
+  const D = function (row, c) { return c ? _normalizeDateStr(row[c-1]) : ''; };
+  const J = function (s) { try { return JSON.parse(s); } catch (_e) { return null; } };
+  const starting = [], wip = [], defect = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const phone = V(row, cPhone); if (!phone) continue;
+    const status = V(row, cStatus);
+    const tags = V(row, cTags).split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+    const inst = D(row, cInst);
+    const actual = D(row, cActual);
+    const base = { name: V(row, cName), phone: phone, address: V(row, cAddr) || V(row, cLoc),
+                   groupLink: V(row, cLink), status: status, qcTeam: V(row, cQc), subcon: V(row, cSub) };
+    // Panel 1 — Starting Today
+    if (inst && inst === today && OPS_DEST_STATUSES.indexOf(status) !== -1 && !actual) {
+      starting.push(Object.assign({}, base, { instDate: inst, assessment: J(V(row, cA1)) }));
+    }
+    // Panel 2 — Active WIP (installed before today, not complete)
+    if (inst && inst < today && !actual && (status === 'Job In Progress' || status === 'Pending Downpayment')) {
+      const a = J(V(row, cA1)); const ph = J(V(row, cWip)) || {};
+      wip.push(Object.assign({}, base, { instDate: inst, expComplete: D(row, cExp),
+        phases: { prep: ph.prep || '', primer: ph.primer || '', membrane: ph.membrane || '' },
+        day1flags: (a && a.flags) ? a.flags : [] }));
+    }
+    // Panel 3 — Defect SLA
+    if (tags.indexOf('repair') !== -1) {
+      const insp = V(row, cInsp), resp = V(row, cResp);
+      let respBy = '', repBy = '', respOver = false, repOver = false;
+      if (insp) {
+        const inspDate = insp.slice(0, 10);
+        respBy = _opsAddWorkingDays(inspDate, 3);
+        repBy  = _opsAddWorkingDays(inspDate, 10);
+        respOver = !resp && respBy && respBy < today;
+        repOver  = repBy && repBy < today;
+      }
+      defect.push(Object.assign({}, base, { repairDate: D(row, cRepDate), repairTeam: V(row, cRepTeam),
+        inspectedAt: insp ? insp.slice(0, 10) : '', respondedAt: resp ? resp.slice(0, 10) : '',
+        respondBy: respBy, repairBy: repBy, respondOverdue: respOver, repairOverdue: repOver }));
+    }
+  }
+  starting.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+  wip.sort(function (a, b) { return String(a.expComplete).localeCompare(String(b.expComplete)); });
+  defect.sort(function (a, b) { return String(a.repairBy || '9999').localeCompare(String(b.repairBy || '9999')); });
+  return jsonResponse({ status: 'ok', today: today, starting: starting, wip: wip, defect: defect });
+}
+
+// QC on-site team records the day-1 substrate assessment.
+// body: {phone, flags:[...], notes, scope:'extra'|'none', by}
+function handleOpsSaveAssessment(body) {
+  const phone = _normMyPhone(body.phone || ''); const by = String(body.by || '').slice(0, 40);
+  if (!phone) return jsonResponse({ status: 'error', message: 'phone required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'lead not found' });
+  const flags = Array.isArray(body.flags) ? body.flags.map(function (f) { return String(f).slice(0, 30); }).slice(0, 20) : [];
+  const payload = { flags: flags, notes: String(body.notes || '').slice(0, 1000),
+                    scope: (body.scope === 'extra' ? 'extra' : 'none'), by: by, at: new Date().toISOString() };
+  _opsEnsureCol(sheet, 'Day1 Assessment');
+  setCellByHeader(sheet, row, 'Day1 Assessment', JSON.stringify(payload));
+  return jsonResponse({ status: 'ok', phone: phone, assessment: payload });
+}
+
+// Coordinator ticks a WIP phase proof-photo. body: {phone, phase:'prep'|'primer'|'membrane', on, by}
+function handleOpsTickPhase(body) {
+  const phone = _normMyPhone(body.phone || ''); const phase = String(body.phase || '');
+  const on = (body.on !== false);
+  if (!phone || ['prep', 'primer', 'membrane'].indexOf(phase) === -1) return jsonResponse({ status: 'error', message: 'phone and valid phase required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'lead not found' });
+  _opsEnsureCol(sheet, 'WIP Phases');
+  const c = getHeaders(sheet).colByName['WIP Phases'];
+  let cur = {}; try { cur = JSON.parse(String(sheet.getRange(row, c).getValue() || '') || '{}') || {}; } catch (_e) { cur = {}; }
+  cur[phase] = on ? new Date().toISOString() : '';
+  setCellByHeader(sheet, row, 'WIP Phases', JSON.stringify(cur));
+  return jsonResponse({ status: 'ok', phase: phase, on: on, phases: cur });
+}
+
+// Defect: coordinator marks they've responded to the customer. body: {phone, by}
+function handleOpsMarkResponded(body) {
+  const phone = _normMyPhone(body.phone || ''); const by = String(body.by || '').slice(0, 40);
+  if (!phone) return jsonResponse({ status: 'error', message: 'phone required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'lead not found' });
+  _opsEnsureCol(sheet, 'Defect Responded At');
+  const today = _mytDatePlus(0);
+  setCellByHeader(sheet, row, 'Defect Responded At', today);
+  return jsonResponse({ status: 'ok', phone: phone, respondedAt: today });
+}
+
+// Defect: mark repaired / close — drops it off the SLA panel (clears 'repair' tag). body: {phone, by, note?}
+function handleOpsMarkRepaired(body) {
+  const phone = _normMyPhone(body.phone || ''); const by = String(body.by || '').slice(0, 40);
+  if (!phone) return jsonResponse({ status: 'error', message: 'phone required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'lead not found' });
+  const h = getHeaders(sheet); const tc = h.colByName['Tags'];
+  if (tc) {
+    const cur = String(sheet.getRange(row, tc).getValue() || '').split(',').map(function (t) { return t.trim(); })
+      .filter(Boolean).filter(function (t) { return t !== 'repair'; });
+    setCellByHeader(sheet, row, 'Tags', cur.join(','));
+  }
+  const name = h.colByName['Name'] ? String(sheet.getRange(row, h.colByName['Name']).getValue() || '').trim() : '';
+  try { _callsSheet_().appendRow([new Date().toISOString(), phone, name, by, 'defect_repaired', _mytDatePlus(0), String(body.note || '').slice(0, 300)]); } catch (_e) {}
+  return jsonResponse({ status: 'ok', phone: phone });
+}
+
+// Manual: coordinator sets/updates the site WA group link. body: {phone, link, by}
+function handleSetGroupLink(body) {
+  const phone = _normMyPhone(body.phone || ''); const link = String(body.link || '').trim().slice(0, 300);
+  if (!phone || !link) return jsonResponse({ status: 'error', message: 'phone and link required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'lead not found' });
+  _opsEnsureCol(sheet, 'Group Invite Link (AJ)');
+  setCellByHeader(sheet, row, 'Group Invite Link (AJ)', link);
+  return jsonResponse({ status: 'ok', phone: phone, link: link });
+}
+
+// Manual: coordinator alerts staff on Telegram about an overdue SLA. body: {phone, message?}
+function handleOpsAlertStaff(body) {
+  const phone = _normMyPhone(body.phone || '');
+  if (!phone) return jsonResponse({ status: 'error', message: 'phone required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  const h = getHeaders(sheet);
+  const name = (row && h.colByName['Name']) ? String(sheet.getRange(row, h.colByName['Name']).getValue() || '').trim() : '';
+  const msg = String(body.message || ('⚠ Defect SLA overdue — ' + (name || phone))).slice(0, 500);
+  // Route via the n8n LG-Staff-Alert webhook so the Telegram bot token stays out
+  // of this (public) repo. The 'ABC' shared secret is already public on the pages.
+  try {
+    UrlFetchApp.fetch('https://leakguard.app.n8n.cloud/webhook/lg-staff-alert', {
+      method: 'post', contentType: 'application/json',
+      payload: JSON.stringify({ secret: 'ABC', text: msg }), muteHttpExceptions: true
+    });
+  } catch (_e) {}
+  return jsonResponse({ status: 'ok' });
 }

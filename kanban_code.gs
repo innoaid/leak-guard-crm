@@ -70,6 +70,13 @@ function doPost(e) {
       case 'opsEditCompletion':  return handleOpsEditCompletion(body); // ops P1 — extend/shorten → reflow check-slots (ops.gs)
       case 'opsMarkCheck':       return handleOpsMarkCheck(body);      // ops P1 — on-site team marks a daily check done (ops.gs)
       case 'qcCalCheck':         return handleQcCalCheck(body);        // ops P1 — diagnostic: can the script see both QC calendars? (ops.gs)
+      case 'opsCockpit':         return handleOpsCockpit(body);        // ops P2 — coordinator cockpit: 3-panel snapshot (ops.gs)
+      case 'opsSaveAssessment':  return handleOpsSaveAssessment(body); // ops P2 — QC day-1 substrate assessment (ops.gs)
+      case 'opsTickPhase':       return handleOpsTickPhase(body);      // ops P2 — tick a WIP phase proof photo (ops.gs)
+      case 'opsMarkResponded':   return handleOpsMarkResponded(body);  // ops P2 — defect: coordinator responded (ops.gs)
+      case 'opsMarkRepaired':    return handleOpsMarkRepaired(body);   // ops P2 — defect: mark repaired / close (ops.gs)
+      case 'opsAlertStaff':      return handleOpsAlertStaff(body);     // ops P2 — defect: Telegram staff about overdue SLA (ops.gs)
+      case 'setGroupLink':       return handleSetGroupLink(body);      // ops P2 — manual set site WA group link (ops.gs)
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups
