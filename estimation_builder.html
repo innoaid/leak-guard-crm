@@ -770,16 +770,23 @@ function totalPhotos(){ return state.slabs.reduce(function(sum,s){ return sum+s.
 // status==='ok', else retries (transient blips otherwise silently lose the
 // estimation record + break the AutoCount sync). Returns the last result on
 // give-up so the caller can detect failure.
-async function postAppsScript(payload, tries){
+async function postAppsScript(payload, tries, timeoutMs){
   tries = tries || 3;
+  timeoutMs = timeoutMs || 25000;   // Round 131 — hard per-try timeout so a slow/busy Apps Script can never hang the overlay forever
   let last = null;
   for (let i = 0; i < tries; i++){
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, timeoutMs) : null;
     try {
-      const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) });
+      const opts = { method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload) };
+      if (ctrl) opts.signal = ctrl.signal;
+      const r = await fetch(APPS_SCRIPT_URL, opts);
       const j = await r.json();
       if (j && j.status === 'ok') return j;
       last = j || { status:'error', message:'empty response' };
-    } catch(e){ last = { status:'error', message: (e && e.message) || String(e) }; }
+    } catch(e){
+      last = { status:'error', message: (e && e.name === 'AbortError') ? ('timeout after ' + timeoutMs + 'ms') : ((e && e.message) || String(e)) };
+    } finally { if (timer) clearTimeout(timer); }
     if (i < tries - 1) await new Promise(function(res){ setTimeout(res, 800); });
   }
   return last || { status:'error', message:'no response' };
@@ -3063,7 +3070,12 @@ async function loadAmendPicker(phone){
   try { res = await postAppsScript({ action:'listEstimations', secret:SHARED_SECRET, phone:phone }, 3); }
   catch(e){ res = null; }
   ov.classList.remove('on');
-  const list = (res && res.status==='ok' && res.estimations) ? res.estimations : [];
+  // Round 131 — a failed/timed-out lookup must NOT trap the user: fall through to a blank build so they can still save a fresh QT.
+  if (!res || res.status !== 'ok'){
+    toast('Couldn’t load existing estimations (server busy) — you can still build & save a fresh estimate below.', 'warn');
+    return;
+  }
+  const list = res.estimations || [];
   const amendable = list.filter(function(e){ return e.amendable; });
   if (!amendable.length){
     toast('No amendable estimation for this lead yet — generate one first (older ones must be regenerated once to become amendable).', 'warn');
