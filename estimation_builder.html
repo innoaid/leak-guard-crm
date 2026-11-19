@@ -3060,6 +3060,53 @@ async function loadAmend(phone, se){
   renderAll();
   toast('Loaded ' + amendSe + ' — edit, then Save to update it', 'success');
 }
+// Round 131 — read the amend list straight from the sheet via gviz (Google-
+// cached, server-FILTERED by phone) instead of the Apps Script web app. The
+// picker is a pure READ, so routing it through Apps Script only added load to
+// that web app's single execution queue — and reopening a stuck page piled up
+// no-timeout executions until the backend wedged (the "Loading estimations…"
+// freeze). gviz never touches that queue and scales independently, so the
+// picker can no longer contribute to a pileup. Apps Script is now hit only for
+// WRITES (save & sync). Returns the same {status, estimations[]} shape as the
+// old listEstimations handler.
+async function listEstimationsViaGviz(phone){
+  const digits = String(phone == null ? '' : phone).replace(/\D/g, '');
+  if (digits.length < 8) return { status:'error', message:'bad phone' };
+  // Phone is column B. Match it stored as a number OR as text.
+  const tq = "select * where B = " + digits + " or B = '" + digits + "'";
+  const url = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+    '/gviz/tq?tqx=out:json&sheet=' + encodeURIComponent('Estimations') +
+    '&tq=' + encodeURIComponent(tq) + '&nocache=' + Date.now();
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 15000) : null;
+  try {
+    const r = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+    const t = await r.text();
+    const m = t.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+    if (!m) throw new Error('gviz parse failed');
+    const j = JSON.parse(m[1]);
+    const cols = (j.table.cols || []).map(function(c){ return (c.label || '').trim(); });  // map by LABEL → robust to column moves
+    const ix = function(name){ return cols.indexOf(name); };
+    const iSe=ix('SE No'), iTs=ix('Timestamp'), iGt=ix('Grand Total'), iSt=ix('Sync Status'),
+          iQt=ix('AutoCount QT No'), iBy=ix('Submitted By'), iState=ix('Builder State JSON');
+    const cell = function(row, i){ if (i < 0) return ''; const c = row.c[i]; return c ? (c.v != null ? c.v : (c.f || '')) : ''; };
+    const rows = (j.table.rows || []).map(function(row){
+      return {
+        seNo:        String(cell(row,iSe) || '').trim(),
+        timestamp:   String(cell(row,iTs) || ''),
+        grandTotal:  Number(cell(row,iGt)) || 0,
+        syncStatus:  String(cell(row,iSt) || ''),
+        qtNo:        String(cell(row,iQt) || ''),
+        submittedBy: String(cell(row,iBy) || ''),
+        amendable:   iState >= 0 && String(cell(row,iState) || '').trim() !== '',
+      };
+    }).filter(function(e){ return e.seNo; });
+    rows.sort(function(a,b){ return String(b.timestamp).localeCompare(String(a.timestamp)); });  // newest first
+    return { status:'ok', estimations: rows };
+  } catch(e){
+    return { status:'error', message: (e && e.name === 'AbortError') ? 'timeout' : ((e && e.message) || String(e)) };
+  } finally { if (timer) clearTimeout(timer); }
+}
 // Round 121 — pick WHICH of the lead's estimations to amend.
 async function loadAmendPicker(phone){
   await loadLead(phone);
@@ -3067,10 +3114,8 @@ async function loadAmendPicker(phone){
   const ov=document.getElementById('uploadOverlay'), ut=document.getElementById('uploadText');
   ov.classList.add('on'); ut.textContent='Loading estimations…';
   let res;
-  // Round 131 — 2 tries, not 3: the picker is non-critical (on failure we fall
-  // through to a fresh build), and piling up no-timeout retries is what wedged
-  // the Apps Script execution queue in the first place.
-  try { res = await postAppsScript({ action:'listEstimations', secret:SHARED_SECRET, phone:phone }, 2, 20000); }
+  // Round 131 — read via gviz (off the Apps Script queue), not the web app.
+  try { res = await listEstimationsViaGviz(phone); }
   catch(e){ res = null; }
   ov.classList.remove('on');
   // Round 131 — a failed/timed-out lookup must NOT trap the user: fall through to a blank build so they can still save a fresh QT.
