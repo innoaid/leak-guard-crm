@@ -189,24 +189,43 @@ function handleListEstimations(body) {
   if (!body.phone) return jsonResponse({status: 'error', message: 'phone required'});
   const sheet = SpreadsheetApp.openById(LIVE_SHEET_ID).getSheetByName(ESTIMATIONS_SHEET);
   if (!sheet) return jsonResponse({status: 'error', message: 'Estimations sheet missing'});
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonResponse({status: 'ok', estimations: []});
   const h = getHeaders(sheet);
-  const data = sheet.getDataRange().getValues();
-  const idx = function(name) { return h.colByName[name] ? h.colByName[name] - 1 : -1; };
-  const iSe = idx('SE No'), iPh = idx('Phone'), iTs = idx('Timestamp'), iGt = idx('Grand Total'),
-        iSt = idx('Sync Status'), iQt = idx('AutoCount QT No'), iBy = idx('Submitted By'), iState = idx('Builder State JSON');
+  const n = lastRow - 1;   // data rows, excluding the header row
+  // Round 131 — read ONLY the columns the amend picker needs, not the whole row.
+  // The Estimations sheet carries two heavy JSON columns (Line Items JSON and
+  // Builder State JSON); getDataRange().getValues() used to pull BOTH for every
+  // row on every open, and this picker never uses Line Items JSON at all. Skip
+  // it entirely, and collapse Builder State JSON to a boolean the moment it is
+  // read so the big strings are never held or shipped back. Name-based lookups
+  // keep this robust to column reordering / self-healed columns.
+  const col = function(name) {
+    const c = h.colByName[name];
+    if (!c) return null;
+    return sheet.getRange(2, c, n, 1).getValues().map(function(r) { return r[0]; });
+  };
+  const se = col('SE No')   || [], ph = col('Phone')          || [],
+        ts = col('Timestamp') || [], gt = col('Grand Total')   || [],
+        st = col('Sync Status') || [], qt = col('AutoCount QT No') || [],
+        by = col('Submitted By') || [];
+  const stCol = h.colByName['Builder State JSON'];
+  const amend = stCol
+    ? sheet.getRange(2, stCol, n, 1).getValues().map(function(r) { return String(r[0] || '').trim() !== ''; })
+    : [];
   const rows = [];
-  for (let r = 1; r < data.length; r++) {
-    if (iPh < 0 || !_samePhone(data[r][iPh], body.phone)) continue;
-    const se = String(data[r][iSe] || '').trim();
-    if (!se) continue;
+  for (let i = 0; i < n; i++) {
+    if (!_samePhone(ph[i], body.phone)) continue;
+    const seNo = String(se[i] || '').trim();
+    if (!seNo) continue;
     rows.push({
-      seNo:        se,
-      timestamp:   String(data[r][iTs] || ''),
-      grandTotal:  Number(data[r][iGt]) || 0,
-      syncStatus:  String(data[r][iSt] || ''),
-      qtNo:        String(data[r][iQt] || ''),
-      submittedBy: String(data[r][iBy] || ''),
-      amendable:   !!(iState >= 0 && String(data[r][iState] || '').trim()),
+      seNo:        seNo,
+      timestamp:   String(ts[i] || ''),
+      grandTotal:  Number(gt[i]) || 0,
+      syncStatus:  String(st[i] || ''),
+      qtNo:        String(qt[i] || ''),
+      submittedBy: String(by[i] || ''),
+      amendable:   !!amend[i],
     });
   }
   rows.sort(function(a, b) { return String(b.timestamp).localeCompare(String(a.timestamp)); });  // newest first
