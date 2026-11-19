@@ -3067,7 +3067,10 @@ async function loadAmendPicker(phone){
   const ov=document.getElementById('uploadOverlay'), ut=document.getElementById('uploadText');
   ov.classList.add('on'); ut.textContent='Loading estimations…';
   let res;
-  try { res = await postAppsScript({ action:'listEstimations', secret:SHARED_SECRET, phone:phone }, 3); }
+  // Round 131 — 2 tries, not 3: the picker is non-critical (on failure we fall
+  // through to a fresh build), and piling up no-timeout retries is what wedged
+  // the Apps Script execution queue in the first place.
+  try { res = await postAppsScript({ action:'listEstimations', secret:SHARED_SECRET, phone:phone }, 2, 20000); }
   catch(e){ res = null; }
   ov.classList.remove('on');
   // Round 131 — a failed/timed-out lookup must NOT trap the user: fall through to a blank build so they can still save a fresh QT.
