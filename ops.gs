@@ -466,7 +466,7 @@ function handleOpsCockpit(body) {
         cStatus=C('Status'), cTags=C('Tags'), cLink=C('Group Invite Link (AJ)'),
         cInst=C(OPS_COL.instDate), cExp=C(OPS_COL.expComplete), cQc=C(OPS_COL.qcTeam),
         cSub=C(OPS_COL.subcon), cActual=C(OPS_COL.actualComplete),
-        cA1=C('Day1 Assessment'), cWip=C('WIP Phases'),
+        cA1=C('Day1 Assessment'), cWip=C('WIP Phases'), cPhotos=C('WIP Phase Photos'),
         cRepDate=C('Repair Date'), cRepTeam=C('Repair QC Team'),
         cInsp=C('Defect Inspected At'), cResp=C('Defect Responded At');
   const today = _mytDatePlus(0);
@@ -489,9 +489,10 @@ function handleOpsCockpit(body) {
     }
     // Panel 2 — Active WIP (installed before today, not complete)
     if (inst && inst < today && !actual && (status === 'Job In Progress' || status === 'Pending Downpayment')) {
-      const a = J(V(row, cA1)); const ph = J(V(row, cWip)) || {};
+      const a = J(V(row, cA1)); const ph = J(V(row, cWip)) || {}; const ps = J(V(row, cPhotos)) || {};
       wip.push(Object.assign({}, base, { instDate: inst, expComplete: D(row, cExp),
         phases: { prep: ph.prep || '', primer: ph.primer || '', membrane: ph.membrane || '' },
+        photos: { prep: ps.prep || '', primer: ps.primer || '', membrane: ps.membrane || '' },
         day1flags: (a && a.flags) ? a.flags : [] }));
     }
     // Panel 3 — Defect SLA
@@ -544,6 +545,61 @@ function handleOpsTickPhase(body) {
   cur[phase] = on ? new Date().toISOString() : '';
   setCellByHeader(sheet, row, 'WIP Phases', JSON.stringify(cur));
   return jsonResponse({ status: 'ok', phase: phase, on: on, phases: cur });
+}
+
+// Find-or-create the Drive folder for ops proof photos. Reuses the estimation
+// photos folder if its ID is already bootstrapped; otherwise lazily creates
+// 'Leak Guard Ops Photos' and remembers it — so no manual bootstrap is needed.
+function _opsPhotosFolder_() {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty('OPS_PHOTOS_FOLDER_ID') || props.getProperty('EST_PHOTOS_FOLDER_ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (_e) { /* stale — recreate below */ } }
+  const name = 'Leak Guard Ops Photos';
+  const it = DriveApp.getFoldersByName(name);
+  const folder = it.hasNext() ? it.next() : DriveApp.createFolder(name);
+  props.setProperty('OPS_PHOTOS_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+// Coordinator (or on-site team) uploads a WIP proof photo for a phase. Saves the
+// image to Drive, marks that phase done, and records the shareable URL so the
+// cockpit shows a view link. body: {phone, phase:'prep'|'primer'|'membrane', dataUrl, by}
+function handleOpsUploadPhoto(body) {
+  const phone = _normMyPhone(body.phone || ''); const phase = String(body.phase || '');
+  if (!phone || ['prep', 'primer', 'membrane'].indexOf(phase) === -1) return jsonResponse({ status: 'error', message: 'phone and valid phase required' });
+  if (!body.dataUrl) return jsonResponse({ status: 'error', message: 'dataUrl required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'lead not found' });
+
+  let folder; try { folder = _opsPhotosFolder_(); } catch (e) { return jsonResponse({ status: 'error', message: 'drive folder: ' + String(e && e.message || e) }); }
+  try {
+    const comma = String(body.dataUrl).indexOf(','); if (comma < 0) return jsonResponse({ status: 'error', message: 'malformed dataUrl' });
+    const meta = String(body.dataUrl).slice(0, comma); const b64 = String(body.dataUrl).slice(comma + 1);
+    const mime = (meta.match(/data:([^;]+);/) || [])[1] || 'image/jpeg';
+    const ext = mime.indexOf('png') >= 0 ? 'png' : 'jpg';
+    const ts = Utilities.formatDate(new Date(Date.now() + 8 * 60 * 60 * 1000), 'UTC', 'yyyyMMdd-HHmmss');
+    const filename = phone + '_' + phase + '_' + ts + '.' + ext;
+    const file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b64), mime, filename));
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_e) {}
+    const url = file.getUrl();
+
+    // tick the phase done
+    _opsEnsureCol(sheet, 'WIP Phases');
+    const pc = getHeaders(sheet).colByName['WIP Phases'];
+    let ph = {}; try { ph = JSON.parse(String(sheet.getRange(row, pc).getValue() || '') || '{}') || {}; } catch (_e) { ph = {}; }
+    ph[phase] = new Date().toISOString();
+    setCellByHeader(sheet, row, 'WIP Phases', JSON.stringify(ph));
+    // record the photo URL
+    _opsEnsureCol(sheet, 'WIP Phase Photos');
+    const fc = getHeaders(sheet).colByName['WIP Phase Photos'];
+    let ps = {}; try { ps = JSON.parse(String(sheet.getRange(row, fc).getValue() || '') || '{}') || {}; } catch (_e) { ps = {}; }
+    ps[phase] = url;
+    setCellByHeader(sheet, row, 'WIP Phase Photos', JSON.stringify(ps));
+
+    return jsonResponse({ status: 'ok', phase: phase, url: url, phases: ph, photos: ps });
+  } catch (e) {
+    return jsonResponse({ status: 'error', message: String(e && e.message || e) });
+  }
 }
 
 // Defect: coordinator marks they've responded to the customer. body: {phone, by}

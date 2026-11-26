@@ -73,6 +73,7 @@ function doPost(e) {
       case 'opsCockpit':         return handleOpsCockpit(body);        // ops P2 — coordinator cockpit: 3-panel snapshot (ops.gs)
       case 'opsSaveAssessment':  return handleOpsSaveAssessment(body); // ops P2 — QC day-1 substrate assessment (ops.gs)
       case 'opsTickPhase':       return handleOpsTickPhase(body);      // ops P2 — tick a WIP phase proof photo (ops.gs)
+      case 'opsUploadPhoto':     return handleOpsUploadPhoto(body);    // ops P2 — upload a WIP phase proof photo to Drive + tick (ops.gs)
       case 'opsMarkResponded':   return handleOpsMarkResponded(body);  // ops P2 — defect: coordinator responded (ops.gs)
       case 'opsMarkRepaired':    return handleOpsMarkRepaired(body);   // ops P2 — defect: mark repaired / close (ops.gs)
       case 'opsAlertStaff':      return handleOpsAlertStaff(body);     // ops P2 — defect: Telegram staff about overdue SLA (ops.gs)

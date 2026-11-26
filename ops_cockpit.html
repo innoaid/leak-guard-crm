@@ -56,11 +56,19 @@ body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;c
 .empty{text-align:center;color:#6b7280;padding:54px 20px;font-size:14.5px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
 .toast.on{opacity:1}.toast.err{background:#DC2626}.toast.ok{background:#059669}
+.rfs{background:#334155;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;flex-shrink:0}
+.rfs:disabled{opacity:.5;cursor:default}
+.pcam{font-size:12px;color:#2563EB;border:1px solid #BFDBFE;background:#EFF6FF;border-radius:7px;padding:4px 8px;font-family:inherit;font-weight:700;cursor:pointer}
+.pview{font-size:12px;text-decoration:none;color:#065F46;border:1px solid #A7F3D0;background:#ECFDF5;border-radius:7px;padding:4px 9px;font-weight:700}
+.pright{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 </style>
 </head>
 <body>
 <div class="hdr">
-  <h1 id="hTitle">Ops Cockpit</h1>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <h1 id="hTitle">Ops Cockpit</h1>
+    <button class="rfs" id="refreshBtn" onclick="load()">↻ Refresh</button>
+  </div>
   <div class="sub" id="hSub">Loading…</div>
   <div class="tabs" id="tabs"></div>
 </div>
@@ -87,12 +95,24 @@ async function api(action,payload){
 }
 
 async function load(){
+  const rb=document.getElementById('refreshBtn'); if(rb) rb.disabled=true;
   document.getElementById('hTitle').textContent='🎛️ Ops Cockpit'+(BY?(' — '+BY):'');
-  const res=await api('opsCockpit',{});
-  if(!res||res.status!=='ok'){ document.getElementById('hSub').textContent=(res&&res.message)||'Load failed.'; return; }
-  DATA=res;
-  document.getElementById('hSub').textContent='Today '+fmt(res.today)+' · '+(res.starting.length+res.wip.length+res.defect.length)+' jobs in view';
-  renderTabs(); renderPanel();
+  document.getElementById('hSub').textContent='Loading…';
+  try{
+    const res=await api('opsCockpit',{});
+    if(!res||res.status!=='ok'){ document.getElementById('hSub').textContent=(res&&res.message)||'Load failed.'; return; }
+    DATA=res;
+    document.getElementById('hSub').textContent='Today '+fmt(res.today)+' · '+(res.starting.length+res.wip.length+res.defect.length)+' jobs in view';
+    renderTabs(); renderPanel();
+  }catch(e){ document.getElementById('hSub').textContent='Load failed — tap ↻ Refresh.'; }
+  finally{ if(rb) rb.disabled=false; }
+}
+function repaint(){ renderTabs(); renderPanel(); }
+function findJob(phone){
+  const d=digits(phone);
+  const panels=['starting','wip','defect'];
+  for(let p=0;p<panels.length;p++){ const arr=DATA[panels[p]]||[]; for(let i=0;i<arr.length;i++){ if(digits(arr[i].phone)===d) return {job:arr[i],panel:panels[p],arr:arr,idx:i}; } }
+  return null;
 }
 
 function renderTabs(){
@@ -151,10 +171,23 @@ function cardWip(j,i){
     const nmsg=key==='prep'?('Hi, please share the *surface prep* proof photos (water-jet clean, angle fillet'+(needPrep.length?', '+needPrep.join(', '):'')+') for '+(j.name||'this site')+'.')
       :key==='primer'?('Hi, please share the *primer (1st layer)* photo for '+(j.name||'this site')+'.')
       :('Hi, please share the *membrane (2nd layer, upturn + lapping)* photo for '+(j.name||'this site')+'.');
+    const photo=j.photos&&j.photos[key];
+    const uploading=j.uploading&&j.uploading[key];
+    let right;
+    if(uploading){
+      right='<span class="psub">⏳ uploading…</span>';
+    } else {
+      right='<div class="pright">'+
+        '<button class="pcam" title="Upload / replace photo" onclick="pickPhoto(\''+js(j.phone)+'\',\''+key+'\')">📷</button>'+
+        (photo?'<a class="pview" href="'+esc(photo)+'" target="_blank" rel="noopener">view</a>':'')+
+        (done?'<span class="pill ok" style="margin:0">'+fmt(done.slice(0,10))+'</span>'
+             :'<button class="pnudge" onclick="nudge(\''+js(nmsg)+'\',\''+js(j.groupLink||'')+'\')">nudge</button>')+
+      '</div>';
+    }
     rows+='<div class="phase">'+
       '<div class="pbox'+(done?' done':'')+'" onclick="tickPhase(\''+js(j.phone)+'\',\''+key+'\','+(done?'false':'true')+')">'+(done?'✓':'')+'</div>'+
       '<div class="plabel">'+esc(p[1])+'<span class="psub">'+esc(p[2])+'</span>'+need+'</div>'+
-      (done?'<span class="pill ok" style="margin:0">'+fmt(done.slice(0,10))+'</span>':'<button class="pnudge" onclick="nudge(\''+js(nmsg)+'\',\''+js(j.groupLink||'')+'\')">nudge</button>')+
+      right+
     '</div>';
   });
   return '<div class="card">'+head(j)+
@@ -184,21 +217,80 @@ function cardDefect(j,i){
   return '<div class="card'+(over?' red':'')+'">'+head(j)+sla+act+waLinks(j,msg)+'</div>';
 }
 
-// actions
+// actions — update the UI instantly, persist in the background, revert on failure.
 async function tickPhase(phone,phase,on){
-  const res=await api('opsTickPhase',{ phone:phone, phase:phase, on:on, by:BY });
-  if(res&&res.status==='ok'){ toast(on?'Photo marked received':'Unticked','ok'); await load(); }
-  else toast((res&&res.message)||'Failed','err');
+  const f=findJob(phone); if(!f) return;
+  const prev=Object.assign({},f.job.phases||{});
+  f.job.phases=Object.assign({},f.job.phases||{}); f.job.phases[phase]= on?new Date().toISOString():'';
+  repaint();
+  try{
+    const res=await api('opsTickPhase',{ phone:phone, phase:phase, on:on, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Save failed');
+    if(res.phases) f.job.phases=res.phases;
+  }catch(e){ f.job.phases=prev; repaint(); toast(String(e.message||e),'err'); }
 }
+
+// ---- photo upload ----
+function pickPhoto(phone,phase){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.setAttribute('capture','environment');
+  inp.onchange=function(){ const file=inp.files&&inp.files[0]; if(file) uploadPhoto(phone,phase,file); };
+  inp.click();
+}
+function compressImage(file,maxDim,quality){
+  return new Promise(function(resolve,reject){
+    const url=URL.createObjectURL(file); const img=new Image();
+    img.onload=function(){
+      let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+      const s=Math.min(1,maxDim/Math.max(w,h||1)); w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h); URL.revokeObjectURL(url);
+      try{ resolve(cv.toDataURL('image/jpeg',quality)); }catch(err){ reject(err); }
+    };
+    img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
+    img.src=url;
+  });
+}
+async function uploadPhoto(phone,phase,file){
+  const f=findJob(phone); if(!f) return;
+  let dataUrl;
+  try{ toast('Preparing photo…'); dataUrl=await compressImage(file,1280,0.72); }
+  catch(e){ toast(String(e.message||e),'err'); return; }
+  const prevPh=Object.assign({},f.job.phases||{}); const prevPhotos=Object.assign({},f.job.photos||{});
+  f.job.phases=Object.assign({},f.job.phases||{}); f.job.phases[phase]=new Date().toISOString();
+  f.job.uploading=Object.assign({},f.job.uploading||{}); f.job.uploading[phase]=true;
+  repaint();
+  try{
+    const res=await api('opsUploadPhoto',{ phone:phone, phase:phase, dataUrl:dataUrl, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Upload failed');
+    f.job.photos=Object.assign({},f.job.photos||{});
+    if(res.photos) f.job.photos=res.photos; else f.job.photos[phase]=res.url;
+    if(res.phases) f.job.phases=res.phases;
+    f.job.uploading[phase]=false; repaint(); toast('Photo uploaded ✓','ok');
+  }catch(e){ f.job.phases=prevPh; f.job.photos=prevPhotos; if(f.job.uploading) f.job.uploading[phase]=false; repaint(); toast(String(e.message||e),'err'); }
+}
+
 async function markResponded(phone){
   if(!confirm('Mark that you have responded to this customer?')) return;
-  const res=await api('opsMarkResponded',{ phone:phone, by:BY });
-  if(res&&res.status==='ok'){ toast('Marked responded','ok'); await load(); } else toast((res&&res.message)||'Failed','err');
+  const f=findJob(phone); if(!f) return;
+  const prev=f.job.respondedAt, prevOver=f.job.respondOverdue;
+  f.job.respondedAt=DATA.today; f.job.respondOverdue=false; repaint();
+  try{
+    const res=await api('opsMarkResponded',{ phone:phone, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    if(res.respondedAt) f.job.respondedAt=res.respondedAt;
+    toast('Marked responded','ok');
+  }catch(e){ f.job.respondedAt=prev; f.job.respondOverdue=prevOver; repaint(); toast(String(e.message||e),'err'); }
 }
 async function markRepaired(phone){
   if(!confirm('Mark this defect as repaired and close it? (removes the repair flag)')) return;
-  const res=await api('opsMarkRepaired',{ phone:phone, by:BY });
-  if(res&&res.status==='ok'){ toast('Defect closed','ok'); await load(); } else toast((res&&res.message)||'Failed','err');
+  const f=findJob(phone); if(!f) return;
+  const arr=f.arr, idx=f.idx, removed=arr.splice(idx,1)[0]; repaint();
+  try{
+    const res=await api('opsMarkRepaired',{ phone:phone, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    toast('Defect closed','ok');
+  }catch(e){ arr.splice(idx,0,removed); repaint(); toast(String(e.message||e),'err'); }
 }
 async function alertStaff(phone,name){
   const msg='⚠ Defect SLA overdue — '+(name||phone)+'. Please action.';
@@ -207,8 +299,13 @@ async function alertStaff(phone,name){
 }
 async function addWa(phone){
   const link=prompt('Paste the site WhatsApp group invite link:'); if(!link) return;
-  const res=await api('setGroupLink',{ phone:phone, link:link.trim(), by:BY });
-  if(res&&res.status==='ok'){ toast('WA link saved','ok'); await load(); } else toast((res&&res.message)||'Failed','err');
+  const f=findJob(phone); const prev=f?f.job.groupLink:'';
+  if(f){ f.job.groupLink=link.trim(); repaint(); }
+  try{
+    const res=await api('setGroupLink',{ phone:phone, link:link.trim(), by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    toast('WA link saved','ok');
+  }catch(e){ if(f){ f.job.groupLink=prev; repaint(); } toast(String(e.message||e),'err'); }
 }
 function nudge(msg,groupLink){
   const text=String(msg||'').replace(/&quot;/g,'"');
