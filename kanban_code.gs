@@ -78,6 +78,13 @@ function doPost(e) {
       case 'opsMarkRepaired':    return handleOpsMarkRepaired(body);   // ops P2 — defect: mark repaired / close (ops.gs)
       case 'opsAlertStaff':      return handleOpsAlertStaff(body);     // ops P2 — defect: Telegram staff about overdue SLA (ops.gs)
       case 'setGroupLink':       return handleSetGroupLink(body);      // ops P2 — manual set site WA group link (ops.gs)
+      case 'jtpList':            return handleJtpList(body);           // Job Track Pro P1 — fulfillment job list (ops.gs)
+      case 'jtpJob':             return handleJtpJob(body);            // Job Track Pro P1 — one job detail + capture/seed tasks (ops.gs)
+      case 'jtpTaskAdd':         return handleJtpTaskAdd(body);        // Job Track Pro P1 — add a task (ops.gs)
+      case 'jtpTaskUpdate':      return handleJtpTaskUpdate(body);     // Job Track Pro P1 — patch a task (status/title/due/assignee) (ops.gs)
+      case 'jtpTaskDelete':      return handleJtpTaskDelete(body);     // Job Track Pro P1 — delete a task (ops.gs)
+      case 'jtpSetStatus':       return handleJtpSetStatus(body);      // Job Track Pro P1 — set job status (writes back to kanban) (ops.gs)
+      case 'jtpUploadPhoto':     return handleJtpUploadPhoto(body);    // Job Track Pro P1 — upload a task proof photo to Drive (ops.gs)
       case 'updateLeadDetails':  return handleUpdateLeadDetails(body);  // task 2 — kanban edit-lead modal
       case 'cancelAppointment':  return handleCancelAppointment(body);  // round 45 — SVC -> PSV via kanban appt modal
       case 'bulkLinkGroups':     return handleBulkLinkGroups(body);  // round 48 — bulk-link pre-CRM WA groups

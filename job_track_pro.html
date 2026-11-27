@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Leak Guard — Job Track Pro</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 48px}
+.hdr{background:#0F2A4A;color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5}
+.hdr .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hdr h1{font-size:18px;font-weight:800;letter-spacing:.2px}
+.hdr h1 .pro{color:#38BDF8}
+.hdr .sub{font-size:12px;opacity:.82;margin-top:3px}
+.rfs{background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;flex-shrink:0}
+.rfs:disabled{opacity:.5;cursor:default}
+.back{background:none;border:none;color:#BAE6FD;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:0;margin-bottom:4px}
+.wrap{max-width:640px;margin:0 auto;padding:14px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer}
+.card.flat{cursor:default}
+.cname{font-size:16px;font-weight:800}
+.meta{font-size:12.5px;color:#6b7280;margin-top:4px;line-height:1.5}
+.meta b{color:#374151}
+.pill{display:inline-block;font-weight:700;font-size:11.5px;padding:2px 9px;border-radius:9px;margin:5px 6px 0 0;border:1px solid}
+.pill.st{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
+.pill.qc{background:#F0FDFA;color:#0F766E;border-color:#99F6E4}
+.pill.sub{background:#FEF9C3;color:#854D0E;border-color:#FDE68A}
+.pill.cap{background:#ECFDF5;color:#065F46;border-color:#A7F3D0}
+.prog{margin-top:11px}
+.prog .bar{height:8px;background:#E5E7EB;border-radius:6px;overflow:hidden}
+.prog .fill{height:100%;background:#10B981;border-radius:6px;transition:width .25s}
+.prog .lbl{font-size:12px;font-weight:700;color:#6B7280;margin-bottom:5px;display:flex;justify-content:space-between}
+.prog .lbl b{color:#111827}
+.tabs{display:flex;gap:4px;margin:14px 0 2px}
+.tab{flex:1;background:#fff;border:1px solid #e5e7eb;color:#6B7280;font-family:inherit;font-size:13px;font-weight:700;padding:10px 4px;cursor:pointer;border-radius:10px}
+.tab.on{color:#0F2A4A;border-color:#0F2A4A;background:#EFF6FF}
+.sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#9CA3AF;margin:4px 0 8px}
+.row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #F3F4F6}
+.row:last-child{border-bottom:none}
+.ticon{width:30px;height:30px;border-radius:8px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.tbody{flex:1;min-width:0}
+.ttitle{font-size:13.5px;font-weight:700;line-height:1.35}
+.tmeta{font-size:11px;color:#9CA3AF;margin-top:2px}
+.tright{display:flex;gap:6px;align-items:center;flex-shrink:0}
+select.sstat{font-family:inherit;font-size:12px;font-weight:700;border:1px solid #D1D5DB;border-radius:8px;padding:5px 7px;background:#fff;color:#111827;cursor:pointer}
+select.sstat.verified{background:#ECFDF5;color:#065F46;border-color:#A7F3D0}
+select.sstat.pending{background:#FFFBEB;color:#B45309;border-color:#FDE68A}
+select.sstat.doing{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
+.pcam{font-size:12px;color:#2563EB;border:1px solid #BFDBFE;background:#EFF6FF;border-radius:7px;padding:5px 9px;font-family:inherit;font-weight:700;cursor:pointer}
+.pview{font-size:12px;text-decoration:none;color:#065F46;border:1px solid #A7F3D0;background:#ECFDF5;border-radius:7px;padding:5px 9px;font-weight:700}
+.tdel{font-size:14px;color:#9CA3AF;border:none;background:none;cursor:pointer;padding:3px}
+.dd dt{font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#9CA3AF;font-weight:700;margin-top:11px}
+.dd dd{font-size:14px;font-weight:600;margin-top:2px}
+.links{margin-top:11px;display:flex;gap:7px;flex-wrap:wrap}
+.lk{font-size:12.5px;text-decoration:none;border-radius:8px;padding:7px 12px;border:1px solid;cursor:pointer;font-family:inherit;background:#fff}
+.lk.wa{color:#166534;border-color:#BBF7D0;background:#F0FDF4}
+.lk.tel{color:#2563EB;border-color:#BFDBFE;background:#EFF6FF}
+.addbar{display:flex;gap:7px;margin-top:10px}
+.addbar select,.addbar input{font-family:inherit;font-size:13px;border:1px solid #D1D5DB;border-radius:9px;padding:9px}
+.addbar input{flex:1;min-width:0}
+.addbar .btn{background:#0F2A4A;color:#fff;border:none;border-radius:9px;padding:9px 13px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px}
+.statusbox{display:flex;align-items:center;gap:9px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px}
+.statusbox .t{font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#9CA3AF;font-weight:700}
+.statusbox select{font-family:inherit;font-size:14px;font-weight:700;border:1px solid #D1D5DB;border-radius:9px;padding:7px 9px;background:#fff;flex:1}
+.empty{text-align:center;color:#6b7280;padding:54px 20px;font-size:14.5px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:20;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
+.toast.on{opacity:1}.toast.err{background:#DC2626}.toast.ok{background:#059669}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="top">
+    <div>
+      <button class="back" id="backBtn" style="display:none" onclick="goList()">‹ All jobs</button>
+      <h1>Job <span class="pro">Track Pro</span></h1>
+    </div>
+    <button class="rfs" id="refreshBtn" onclick="refresh()">↻ Refresh</button>
+  </div>
+  <div class="sub" id="hSub">Loading…</div>
+</div>
+<div class="wrap" id="view"></div>
+<div class="toast" id="toast"></div>
+<script>
+const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbxjWM_kuuFvXhgPgoSEb4hycnIUHuxdOkYTfSWEhNPm7vrOYzZ6vFgQw-qA55Dv3mLB2Q/exec';
+const SECRET='ABC';
+const BY=(new URLSearchParams(location.search).get('by')||'').trim();
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const TSTATE=[['open','Open'],['doing','In progress'],['pending','Pending verify'],['verified','Verified ✓']];
+const TSTATE_LBL={open:'Open',doing:'In progress',pending:'Pending verify',verified:'Verified'};
+const TTYPE_ICON={check:'☑️',photo:'📷',signoff:'✍️'};
+const TTYPE_LBL={check:'Checklist',photo:'Photo',signoff:'Sign-off'};
+
+let LIST={jobs:[],statuses:[],today:''};
+let JOB=null;                 // {name,phone,...,tasks:[...]}
+let STATUSES=[];              // allowed job statuses
+let VIEW='list', TAB='overview', CURPHONE='';
+
+function toast(m,k){ const t=document.getElementById('toast'); t.textContent=m; t.className='toast on '+(k||''); setTimeout(function(){ t.className='toast '+(k||''); },2600); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
+function js(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/\n/g,' '); }
+function digits(p){ return String(p||'').replace(/\D/g,''); }
+function fmt(d){ const m=String(d||'').match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return d||''; return (+m[3])+' '+MONTHS[(+m[2])-1]; }
+function pct(p){ const t=(p&&p.total)||0, d=(p&&p.done)||0; return t?Math.round(d*100/t):0; }
+async function api(action,payload){
+  const r=await fetch(APPS_SCRIPT_URL,{ method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(Object.assign({action:action,secret:SECRET},payload)) });
+  return r.json();
+}
+
+// ---------------- routing ----------------
+function parseHash(){ const m=String(location.hash||'').match(/j=([^&]+)/); return m?decodeURIComponent(m[1]):''; }
+function goList(){ if(location.hash){ location.hash=''; } else route(); }
+function openJob(phone){ location.hash='j='+encodeURIComponent(digits(phone)); }
+window.addEventListener('hashchange',route);
+
+async function route(){
+  const phone=parseHash();
+  if(phone){ await showJob(phone); } else { showList(); }
+}
+
+// ---------------- list ----------------
+async function refresh(){
+  const rb=document.getElementById('refreshBtn'); if(rb) rb.disabled=true;
+  try{
+    const res=await api('jtpList',{});
+    if(!res||res.status!=='ok'){ document.getElementById('hSub').textContent=(res&&res.message)||'Load failed.'; return; }
+    LIST=res; STATUSES=res.statuses||[];
+    if(VIEW==='list') showList(); else if(CURPHONE){ /* refresh current job */ await showJob(CURPHONE,true); }
+  }catch(e){ document.getElementById('hSub').textContent='Load failed — tap ↻ Refresh.'; }
+  finally{ if(rb) rb.disabled=false; }
+}
+function showList(){
+  VIEW='list'; CURPHONE=''; JOB=null;
+  document.getElementById('backBtn').style.display='none';
+  document.getElementById('hSub').textContent=(BY?BY+' · ':'')+LIST.jobs.length+' job'+(LIST.jobs.length===1?'':'s')+' in fulfillment';
+  const v=document.getElementById('view');
+  if(!LIST.jobs.length){ v.innerHTML='<div class="empty">No jobs in installation yet.<br>Jobs appear here once a kanban card reaches <b>Pending I.Date</b>.</div>'; return; }
+  v.innerHTML=LIST.jobs.map(listCard).join('');
+}
+function listCard(j){
+  const p=pct(j.progress);
+  return '<div class="card" onclick="openJob(\''+js(j.phone)+'\')">'+
+    '<div class="cname">'+esc(j.name||'(no name)')+'</div>'+
+    (j.address?'<div class="meta">📍 '+esc(j.address)+'</div>':'')+
+    '<div>'+
+      '<span class="pill st">'+esc(j.status)+'</span>'+
+      (j.qcTeam?'<span class="pill qc">🧰 '+esc(j.qcTeam)+'</span>':'')+
+      (j.subcon?'<span class="pill sub">👷 '+esc(j.subcon)+'</span>':'')+
+      (j.captured?'<span class="pill cap">✓ in Job Track Pro</span>':'')+
+    '</div>'+
+    (j.instDate?'<div class="meta" style="margin-top:7px">🗓️ '+esc(fmt(j.instDate))+(j.expComplete?' → <b>'+esc(fmt(j.expComplete))+'</b>':'')+'</div>':'')+
+    '<div class="prog"><div class="lbl"><span>'+((j.progress&&j.progress.done)||0)+' / '+((j.progress&&j.progress.total)||0)+' verified</span><b>'+p+'%</b></div>'+
+    '<div class="bar"><div class="fill" style="width:'+p+'%"></div></div></div>'+
+  '</div>';
+}
+
+// ---------------- job ----------------
+async function showJob(phone,silent){
+  VIEW='job'; CURPHONE=digits(phone);
+  document.getElementById('backBtn').style.display='';
+  if(!silent){ document.getElementById('hSub').textContent='Opening job…'; document.getElementById('view').innerHTML='<div class="empty">Loading…</div>'; }
+  try{
+    const res=await api('jtpJob',{ phone:CURPHONE, by:BY });
+    if(!res||res.status!=='ok'){ document.getElementById('view').innerHTML='<div class="empty">'+esc((res&&res.message)||'Could not open job')+'</div>'; return; }
+    JOB=res.job; STATUSES=res.statuses||STATUSES;
+    if(JOB.captured && !silent) toast('Captured into Job Track Pro ✓','ok');
+    document.getElementById('hSub').textContent=esc(JOB.name||CURPHONE);
+    renderJob();
+  }catch(e){ document.getElementById('view').innerHTML='<div class="empty">Load failed — tap ↻ Refresh.</div>'; }
+}
+function setTab(t){ TAB=t; renderJob(); window.scrollTo(0,0); }
+function renderJob(){
+  if(!JOB) return;
+  const p=pct(JOB.progress);
+  const tabs='<div class="tabs">'+
+    '<button class="tab'+(TAB==='overview'?' on':'')+'" onclick="setTab(\'overview\')">Overview</button>'+
+    '<button class="tab'+(TAB==='tasks'?' on':'')+'" onclick="setTab(\'tasks\')">Tasks</button>'+
+  '</div>';
+  const header='<div class="card flat">'+
+    '<div class="cname">'+esc(JOB.name||'(no name)')+'</div>'+
+    (JOB.address?'<div class="meta">📍 '+esc(JOB.address)+'</div>':'')+
+    '<div class="prog"><div class="lbl"><span>'+((JOB.progress&&JOB.progress.done)||0)+' / '+((JOB.progress&&JOB.progress.total)||0)+' tasks verified</span><b>'+p+'%</b></div>'+
+    '<div class="bar"><div class="fill" style="width:'+p+'%"></div></div></div>'+
+  '</div>';
+  document.getElementById('view').innerHTML=header+tabs+(TAB==='overview'?overviewTab():tasksTab());
+}
+
+function overviewTab(){
+  const opts=STATUSES.map(function(s){ return '<option value="'+esc(s)+'"'+(s===JOB.status?' selected':'')+'>'+esc(s)+'</option>'; }).join('');
+  const tel=digits(JOB.phone);
+  let links='<div class="links">';
+  if(tel) links+='<a class="lk tel" href="tel:'+tel+'">📞 Call</a>';
+  if(JOB.groupLink) links+='<a class="lk wa" href="'+esc(JOB.groupLink)+'" target="_blank" rel="noopener">💬 WA group</a>';
+  links+='</div>';
+  return '<div class="card flat">'+
+    '<div class="statusbox"><span class="t">Status</span><select onchange="setStatus(this.value)">'+opts+'</select></div>'+
+    '<dl class="dd">'+
+      (JOB.instDate?'<dt>Installation</dt><dd>'+esc(fmt(JOB.instDate))+(JOB.expComplete?' → '+esc(fmt(JOB.expComplete)):'')+'</dd>':'')+
+      (JOB.qcTeam?'<dt>QC team</dt><dd>'+esc(JOB.qcTeam)+'</dd>':'')+
+      (JOB.subcon?'<dt>Subcon crew</dt><dd>'+esc(JOB.subcon)+'</dd>':'')+
+      (JOB.problem?'<dt>Scope</dt><dd>'+esc(JOB.problem)+'</dd>':'')+
+      (JOB.rm?'<dt>Quotation</dt><dd>RM '+esc(JOB.rm)+'</dd>':'')+
+    '</dl>'+
+    links+
+  '</div>';
+}
+
+function tasksTab(){
+  const rows=(JOB.tasks||[]).map(taskRow).join('')||'<div class="meta">No tasks yet.</div>';
+  const add='<div class="addbar">'+
+    '<select id="ntype"><option value="check">☑️ Checklist</option><option value="photo">📷 Photo</option><option value="signoff">✍️ Sign-off</option></select>'+
+    '<input id="ntitle" placeholder="New task title…">'+
+    '<button class="btn" onclick="addTask()">Add</button>'+
+  '</div>';
+  return '<div class="card flat"><div class="sec"><h4>Tasks</h4>'+rows+'</div>'+add+'</div>';
+}
+function taskRow(t){
+  const opts=TSTATE.map(function(s){ return '<option value="'+s[0]+'"'+(s[0]===t.status?' selected':'')+'>'+s[1]+'</option>'; }).join('');
+  const uploading=t._uploading;
+  let right='<div class="tright">';
+  if(t.type==='photo'){
+    if(uploading) right+='<span class="tmeta">⏳ uploading…</span>';
+    else{
+      right+='<button class="pcam" onclick="pickPhoto(\''+js(t.id)+'\')">📷</button>';
+      if(t.photoUrl) right+='<a class="pview" href="'+esc(t.photoUrl)+'" target="_blank" rel="noopener">view</a>';
+    }
+  }
+  right+='<select class="sstat '+esc(t.status)+'" onchange="setTaskStatus(\''+js(t.id)+'\',this.value)">'+opts+'</select>';
+  right+='<button class="tdel" title="Remove task" onclick="delTask(\''+js(t.id)+'\')">✕</button>';
+  right+='</div>';
+  const sub=TTYPE_LBL[t.type]||t.type;
+  return '<div class="row">'+
+    '<div class="ticon">'+(TTYPE_ICON[t.type]||'•')+'</div>'+
+    '<div class="tbody"><div class="ttitle">'+esc(t.title)+'</div>'+
+      '<div class="tmeta">'+esc(sub)+(t.verifiedBy?(' · verified by '+esc(t.verifiedBy)):'')+'</div></div>'+
+    right+
+  '</div>';
+}
+
+// ---------------- helpers to find a task ----------------
+function findTask(id){ const a=JOB&&JOB.tasks||[]; for(let i=0;i<a.length;i++){ if(String(a[i].id)===String(id)) return {t:a[i],i:i}; } return null; }
+function syncListFromJob(){ // keep the list card's status/progress in sync after edits
+  if(!JOB) return; const d=digits(JOB.phone);
+  for(let i=0;i<LIST.jobs.length;i++){ if(digits(LIST.jobs[i].phone)===d){ LIST.jobs[i].status=JOB.status; LIST.jobs[i].progress=JOB.progress; LIST.jobs[i].captured=true; break; } }
+}
+
+// ---------------- actions (optimistic) ----------------
+async function setStatus(status){
+  if(!JOB) return; const prev=JOB.status;
+  JOB.status=status; renderJob();
+  try{
+    const res=await api('jtpSetStatus',{ phone:JOB.phone, status:status, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    syncListFromJob(); toast('Status → '+status,'ok');
+  }catch(e){ JOB.status=prev; renderJob(); toast(String(e.message||e),'err'); }
+}
+async function setTaskStatus(id,status){
+  const f=findTask(id); if(!f) return; const prev=f.t.status, prevV=f.t.verifiedBy;
+  f.t.status=status; if(status==='verified') f.t.verifiedBy=BY||f.t.verifiedBy||''; else f.t.verifiedBy='';
+  recalcProgress(); renderJob();
+  try{
+    const res=await api('jtpTaskUpdate',{ phone:JOB.phone, taskId:id, patch:{status:status}, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    JOB.tasks=res.tasks; JOB.progress=res.progress; syncListFromJob(); renderJob();
+  }catch(e){ f.t.status=prev; f.t.verifiedBy=prevV; recalcProgress(); renderJob(); toast(String(e.message||e),'err'); }
+}
+async function addTask(){
+  const type=(document.getElementById('ntype')||{}).value||'check';
+  const title=((document.getElementById('ntitle')||{}).value||'').trim();
+  if(!title){ toast('Enter a task title','err'); return; }
+  try{
+    const res=await api('jtpTaskAdd',{ phone:JOB.phone, type:type, title:title, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    JOB.tasks=res.tasks; JOB.progress=res.progress; syncListFromJob(); renderJob(); toast('Task added','ok');
+  }catch(e){ toast(String(e.message||e),'err'); }
+}
+async function delTask(id){
+  if(!confirm('Remove this task?')) return;
+  const f=findTask(id); if(!f) return; const removed=JOB.tasks.splice(f.i,1)[0];
+  recalcProgress(); renderJob();
+  try{
+    const res=await api('jtpTaskDelete',{ phone:JOB.phone, taskId:id });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    JOB.tasks=res.tasks; JOB.progress=res.progress; syncListFromJob(); renderJob();
+  }catch(e){ JOB.tasks.splice(f.i,0,removed); recalcProgress(); renderJob(); toast(String(e.message||e),'err'); }
+}
+function recalcProgress(){ let d=0; (JOB.tasks||[]).forEach(function(t){ if(t.status==='verified') d++; }); JOB.progress={done:d,total:(JOB.tasks||[]).length}; }
+
+// ---------------- photo upload ----------------
+function pickPhoto(id){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.setAttribute('capture','environment');
+  inp.onchange=function(){ const file=inp.files&&inp.files[0]; if(file) uploadPhoto(id,file); };
+  inp.click();
+}
+function compressImage(file,maxDim,quality){
+  return new Promise(function(resolve,reject){
+    const url=URL.createObjectURL(file); const img=new Image();
+    img.onload=function(){
+      let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+      const s=Math.min(1,maxDim/Math.max(w,h||1)); w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h); URL.revokeObjectURL(url);
+      try{ resolve(cv.toDataURL('image/jpeg',quality)); }catch(err){ reject(err); }
+    };
+    img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
+    img.src=url;
+  });
+}
+async function uploadPhoto(id,file){
+  const f=findTask(id); if(!f) return;
+  let dataUrl;
+  try{ toast('Preparing photo…'); dataUrl=await compressImage(file,1280,0.72); }
+  catch(e){ toast(String(e.message||e),'err'); return; }
+  const prevStatus=f.t.status, prevUrl=f.t.photoUrl;
+  f.t._uploading=true; if(f.t.status==='open'||f.t.status==='doing') f.t.status='pending';
+  renderJob();
+  try{
+    const res=await api('jtpUploadPhoto',{ phone:JOB.phone, taskId:id, dataUrl:dataUrl, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Upload failed');
+    JOB.tasks=res.tasks; JOB.progress=res.progress; const nf=findTask(id); if(nf) nf.t._uploading=false;
+    syncListFromJob(); renderJob(); toast('Photo uploaded ✓','ok');
+  }catch(e){ f.t._uploading=false; f.t.status=prevStatus; f.t.photoUrl=prevUrl; renderJob(); toast(String(e.message||e),'err'); }
+}
+
+// ---------------- boot ----------------
+(async function(){ await refresh(); route(); })();
+</script>
+</body>
+</html>

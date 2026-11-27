@@ -660,3 +660,227 @@ function handleOpsAlertStaff(body) {
   } catch (_e) {}
   return jsonResponse({ status: 'ok' });
 }
+
+// ================================================================
+// Job Track Pro — Phase 1 (capture + cockpit shell: Overview + Tasks)
+// ----------------------------------------------------------------
+// A lens over the fulfillment phases (Pending I.Date → Receipt Sent). It reuses
+// the SAME job row — no second database. Capture = first time the coordinator
+// opens a job in these phases: we seed a waterproofing task list and stamp
+// 'JTP Active'. Changing status from inside JTP writes the 'Status' column, so
+// the kanban card moves on its own (single source of truth). Tasks generalise
+// the 3 WIP phases into a typed list (check / photo / signoff) with lifecycle
+// open → doing → pending → verified; photo-per-task reuses the ops Drive folder.
+//
+// Additive: new router cases (jtp*) + lazily-created columns 'JTP Active',
+// 'Tasks'. Nothing existing is touched.
+// Router cases in kanban_code.gs: jtpList · jtpJob · jtpTaskAdd · jtpTaskUpdate
+//   · jtpTaskDelete · jtpSetStatus · jtpUploadPhoto
+// ================================================================
+
+// Fulfillment phases JTP shows. Capture point = 'Pending I.Date' (earliest).
+const JTP_STATUSES = ['Pending I.Date', 'Pending Downpayment', 'I.Date Confirmed', 'Job In Progress', 'Job Complete', 'Pending Balance', 'Receipt Sent'];
+// Statuses the coordinator may set from inside JTP (writes back to the kanban).
+const JTP_SET_STATUSES = JTP_STATUSES.concat(['Completed']);
+const JTP_TASK_STATES = ['open', 'doing', 'pending', 'verified'];
+const JTP_TASK_TYPES  = ['check', 'photo', 'signoff'];
+
+// Default waterproofing task list seeded on capture.
+function _jtpTemplate() {
+  const seed = [
+    ['check',  'Confirm installation date & access with customer'],
+    ['check',  'Assign subcon crew & materials ready'],
+    ['photo',  'Surface prep — water-jet, angle fillet, crack & hollow repair'],
+    ['photo',  'Primer — 1st layer bitumen'],
+    ['photo',  'Membrane — 2nd layer torch-on, lapping & upturn'],
+    ['photo',  'Ponding / flood test'],
+    ['signoff','Handover & customer sign-off']
+  ];
+  return seed.map(function (t, i) {
+    return { id: 't' + (i + 1), type: t[0], title: t[1], status: 'open', photoUrl: '', assignee: '', due: '', verifiedBy: '', updatedAt: '' };
+  });
+}
+function _jtpReadTasks(sheet, row) {
+  const c = getHeaders(sheet).colByName['Tasks'];
+  if (!c) return [];
+  try { const v = JSON.parse(String(sheet.getRange(row, c).getValue() || '') || '[]'); return Array.isArray(v) ? v : []; }
+  catch (_e) { return []; }
+}
+function _jtpWriteTasks(sheet, row, tasks) {
+  _opsEnsureCol(sheet, 'Tasks');
+  setCellByHeader(sheet, row, 'Tasks', JSON.stringify(tasks || []));
+}
+function _jtpProgress(tasks) {
+  let done = 0;
+  (tasks || []).forEach(function (t) { if (t && t.status === 'verified') done++; });
+  return { done: done, total: (tasks || []).length };
+}
+function _jtpIdx(tasks, id) {
+  for (let i = 0; i < (tasks || []).length; i++) { if (String(tasks[i].id) === String(id)) return i; }
+  return -1;
+}
+
+// Read-only list of JTP jobs (fulfillment phases) for the cockpit.
+function handleJtpList(body) {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const h = getHeaders(sheet);
+  const C = function (n) { return h.colByName[n]; };
+  const cName = C('Name'), cPhone = C('Phone'), cAddr = C('Full Address'), cLoc = C('Location'),
+        cStatus = C('Status'), cLink = C('Group Invite Link (AJ)'),
+        cInst = C(OPS_COL.instDate), cExp = C(OPS_COL.expComplete),
+        cQc = C(OPS_COL.qcTeam), cSub = C(OPS_COL.subcon),
+        cTasks = C('Tasks'), cActive = C('JTP Active');
+  const V = function (row, c) { return c ? String(row[c - 1] == null ? '' : row[c - 1]).trim() : ''; };
+  const D = function (row, c) { return c ? _normalizeDateStr(row[c - 1]) : ''; };
+  const J = function (s) { try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch (_e) { return []; } };
+  const jobs = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const phone = V(row, cPhone); if (!phone) continue;
+    const status = V(row, cStatus);
+    if (JTP_STATUSES.indexOf(status) === -1) continue;
+    jobs.push({
+      name: V(row, cName), phone: phone,
+      address: V(row, cAddr) || V(row, cLoc),
+      status: status, groupLink: V(row, cLink),
+      instDate: D(row, cInst), expComplete: D(row, cExp),
+      qcTeam: V(row, cQc), subcon: V(row, cSub),
+      captured: !!V(row, cActive),
+      progress: _jtpProgress(J(V(row, cTasks)))
+    });
+  }
+  jobs.sort(function (a, b) { return String(a.instDate || '9999').localeCompare(String(b.instDate || '9999')); });
+  return jsonResponse({ status: 'ok', today: _mytDatePlus(0), statuses: JTP_SET_STATUSES, jobs: jobs });
+}
+
+// One job's detail incl. tasks. Seeds tasks + stamps 'JTP Active' on first open
+// (= capture). body: {phone, by}
+function handleJtpJob(body) {
+  const phone = _normMyPhone(body.phone || '');
+  if (!phone) return jsonResponse({ status: 'error', message: 'phone required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'job not found' });
+  const h = getHeaders(sheet);
+  const g  = function (n) { const c = h.colByName[n]; return c ? String(sheet.getRange(row, c).getValue() || '').trim() : ''; };
+  const gd = function (n) { const c = h.colByName[n]; return c ? _normalizeDateStr(sheet.getRange(row, c).getValue()) : ''; };
+
+  let tasks = _jtpReadTasks(sheet, row); let captured = false;
+  const cActive = h.colByName['JTP Active'];
+  const activeVal = cActive ? String(sheet.getRange(row, cActive).getValue() || '').trim() : '';
+  if (!tasks.length) { tasks = _jtpTemplate(); _jtpWriteTasks(sheet, row, tasks); captured = true; }
+  if (!activeVal) { _opsEnsureCol(sheet, 'JTP Active'); setCellByHeader(sheet, row, 'JTP Active', new Date().toISOString()); captured = true; }
+
+  const job = {
+    name: g('Name'), phone: phone, address: g('Full Address') || g('Location'),
+    status: g('Status'), groupLink: g('Group Invite Link (AJ)'),
+    instDate: gd(OPS_COL.instDate), expComplete: gd(OPS_COL.expComplete),
+    qcTeam: g(OPS_COL.qcTeam), subcon: g(OPS_COL.subcon),
+    problem: g('Problem Type'), rm: g('Quotation (RM)'),
+    tasks: tasks, progress: _jtpProgress(tasks), captured: captured
+  };
+  return jsonResponse({ status: 'ok', statuses: JTP_SET_STATUSES, job: job });
+}
+
+// Add a task. body: {phone, type, title, by}
+function handleJtpTaskAdd(body) {
+  const phone = _normMyPhone(body.phone || '');
+  const type = JTP_TASK_TYPES.indexOf(String(body.type)) !== -1 ? String(body.type) : 'check';
+  const title = String(body.title || '').slice(0, 160) || 'New task';
+  if (!phone) return jsonResponse({ status: 'error', message: 'phone required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'job not found' });
+  const tasks = _jtpReadTasks(sheet, row);
+  let maxN = 0; tasks.forEach(function (t) { const m = String(t.id).match(/(\d+)$/); if (m) maxN = Math.max(maxN, Number(m[1])); });
+  tasks.push({ id: 't' + (maxN + 1), type: type, title: title, status: 'open', photoUrl: '', assignee: '', due: '', verifiedBy: '', updatedAt: new Date().toISOString() });
+  _jtpWriteTasks(sheet, row, tasks);
+  return jsonResponse({ status: 'ok', tasks: tasks, progress: _jtpProgress(tasks) });
+}
+
+// Patch one task. body: {phone, taskId, patch:{status?,title?,assignee?,due?}, by}
+function handleJtpTaskUpdate(body) {
+  const phone = _normMyPhone(body.phone || ''); const taskId = String(body.taskId || ''); const by = String(body.by || '').slice(0, 40);
+  const patch = body.patch || {};
+  if (!phone || !taskId) return jsonResponse({ status: 'error', message: 'phone and taskId required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'job not found' });
+  const tasks = _jtpReadTasks(sheet, row);
+  const idx = _jtpIdx(tasks, taskId);
+  if (idx === -1) return jsonResponse({ status: 'error', message: 'task not found' });
+  const t = tasks[idx];
+  if (patch.status !== undefined) {
+    if (JTP_TASK_STATES.indexOf(patch.status) === -1) return jsonResponse({ status: 'error', message: 'bad task status' });
+    t.status = patch.status;
+    t.verifiedBy = (patch.status === 'verified') ? (by || t.verifiedBy || '') : '';
+  }
+  if (patch.title    !== undefined) t.title    = String(patch.title).slice(0, 160);
+  if (patch.assignee !== undefined) t.assignee = String(patch.assignee).slice(0, 40);
+  if (patch.due      !== undefined) t.due      = _normalizeDateStr(patch.due) || '';
+  t.updatedAt = new Date().toISOString();
+  tasks[idx] = t;
+  _jtpWriteTasks(sheet, row, tasks);
+  return jsonResponse({ status: 'ok', tasks: tasks, progress: _jtpProgress(tasks) });
+}
+
+// Delete a task. body: {phone, taskId}
+function handleJtpTaskDelete(body) {
+  const phone = _normMyPhone(body.phone || ''); const taskId = String(body.taskId || '');
+  if (!phone || !taskId) return jsonResponse({ status: 'error', message: 'phone and taskId required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'job not found' });
+  let tasks = _jtpReadTasks(sheet, row);
+  tasks = tasks.filter(function (t) { return String(t.id) !== taskId; });
+  _jtpWriteTasks(sheet, row, tasks);
+  return jsonResponse({ status: 'ok', tasks: tasks, progress: _jtpProgress(tasks) });
+}
+
+// Change the job status — writes the kanban 'Status' column. body: {phone, status, by}
+function handleJtpSetStatus(body) {
+  const phone = _normMyPhone(body.phone || ''); const status = String(body.status || '').trim(); const by = String(body.by || '').slice(0, 40);
+  if (!phone || !status) return jsonResponse({ status: 'error', message: 'phone and status required' });
+  if (JTP_SET_STATUSES.indexOf(status) === -1) return jsonResponse({ status: 'error', message: 'status not allowed from Job Track Pro' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'job not found' });
+  let prev = ''; try { prev = String(sheet.getRange(row, getHeaders(sheet).colByName['Status']).getValue() || '').trim(); } catch (_e) {}
+  setCellByHeader(sheet, row, 'Status', status);
+  try { setCellByHeader(sheet, row, 'Status Changed At', new Date().toISOString()); } catch (_e) {}
+  try { setCellByHeader(sheet, row, 'Changed By', 'JTP:' + by); } catch (_e) {}
+  try { _resetFuCadenceIfPhaseChanged(sheet, row, prev, status); } catch (_e) {}
+  return jsonResponse({ status: 'ok', phone: phone, newStatus: status, prevStatus: prev });
+}
+
+// Upload a proof photo for a task. Mirrors handleOpsUploadPhoto but keyed by
+// taskId into the Tasks JSON; moves the task to 'pending' (awaiting verify).
+// body: {phone, taskId, dataUrl, by}
+function handleJtpUploadPhoto(body) {
+  const phone = _normMyPhone(body.phone || ''); const taskId = String(body.taskId || '');
+  if (!phone || !taskId) return jsonResponse({ status: 'error', message: 'phone and taskId required' });
+  if (!body.dataUrl) return jsonResponse({ status: 'error', message: 'dataUrl required' });
+  const sheet = getSheet(); const row = findRowByPhone(sheet, phone);
+  if (!row) return jsonResponse({ status: 'error', message: 'job not found' });
+  const tasks = _jtpReadTasks(sheet, row);
+  const idx = _jtpIdx(tasks, taskId);
+  if (idx === -1) return jsonResponse({ status: 'error', message: 'task not found' });
+
+  let folder; try { folder = _opsPhotosFolder_(); } catch (e) { return jsonResponse({ status: 'error', message: 'drive folder: ' + String(e && e.message || e) }); }
+  try {
+    const comma = String(body.dataUrl).indexOf(','); if (comma < 0) return jsonResponse({ status: 'error', message: 'malformed dataUrl' });
+    const meta = String(body.dataUrl).slice(0, comma); const b64 = String(body.dataUrl).slice(comma + 1);
+    const mime = (meta.match(/data:([^;]+);/) || [])[1] || 'image/jpeg';
+    const ext = mime.indexOf('png') >= 0 ? 'png' : 'jpg';
+    const ts = Utilities.formatDate(new Date(Date.now() + 8 * 60 * 60 * 1000), 'UTC', 'yyyyMMdd-HHmmss');
+    const filename = phone + '_' + taskId + '_' + ts + '.' + ext;
+    const file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b64), mime, filename));
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_e) {}
+    const url = file.getUrl();
+    const t = tasks[idx];
+    t.photoUrl = url;
+    if (t.status === 'open' || t.status === 'doing') t.status = 'pending';
+    t.updatedAt = new Date().toISOString();
+    tasks[idx] = t;
+    _jtpWriteTasks(sheet, row, tasks);
+    return jsonResponse({ status: 'ok', taskId: taskId, url: url, tasks: tasks, progress: _jtpProgress(tasks) });
+  } catch (e) {
+    return jsonResponse({ status: 'error', message: String(e && e.message || e) });
+  }
+}
