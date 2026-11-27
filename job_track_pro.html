@@ -65,6 +65,13 @@ select.sstat.doing{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
 .statusbox{display:flex;align-items:center;gap:9px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px}
 .statusbox .t{font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#9CA3AF;font-weight:700}
 .statusbox select{font-family:inherit;font-size:14px;font-weight:700;border:1px solid #D1D5DB;border-radius:9px;padding:7px 9px;background:#fff;flex:1}
+.amendbox{background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-top:10px}
+.amendbox .t{font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#9CA3AF;font-weight:700}
+.amendrow{display:flex;gap:8px;margin-top:6px}
+.amendrow input{flex:1;min-width:0;font-family:inherit;font-size:14px;border:1px solid #D1D5DB;border-radius:9px;padding:8px 10px;background:#fff}
+.amendrow .btn{background:#0F2A4A;color:#fff;border:none;border-radius:9px;padding:8px 14px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px}
+.amendrow .btn:disabled{opacity:.6;cursor:default}
+.amendnote{font-size:11px;color:#9CA3AF;margin-top:6px;line-height:1.4}
 .empty{text-align:center;color:#6b7280;padding:54px 20px;font-size:14.5px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:30;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
 .toast.on{opacity:1}.toast.err{background:#DC2626}.toast.ok{background:#059669}
@@ -288,6 +295,7 @@ function overviewTab(){
   links+='</div>';
   return '<div class="card flat">'+
     '<div class="statusbox"><span class="t">Status</span><select onchange="setStatus(this.value)">'+opts+'</select></div>'+
+    amendBox()+
     '<dl class="dd">'+
       (CUR.instDate?'<dt>Installation</dt><dd>'+esc(fmt(CUR.instDate))+(CUR.expComplete?' → '+esc(fmt(CUR.expComplete)):'')+'</dd>':'')+
       (CUR.qcTeam?'<dt>QC team</dt><dd>'+esc(CUR.qcTeam)+'</dd>':'')+
@@ -296,6 +304,38 @@ function overviewTab(){
       (CUR.rm?'<dt>Quotation</dt><dd>RM '+esc(CUR.rm)+'</dd>':'')+
     '</dl>'+links+
   '</div>';
+}
+function amendBox(){
+  if(!CUR.instDate||!CUR.qcTeam) return '';   // only for scheduled jobs (have install date + QC team)
+  const val=CUR.expComplete||CUR.instDate||'';
+  return '<div class="amendbox">'+
+    '<div class="t">Completion date</div>'+
+    '<div class="amendrow">'+
+      '<input type="date" id="amendDate" value="'+esc(val)+'" min="'+esc(CUR.instDate)+'">'+
+      '<button class="btn" id="amendBtn" onclick="amendCompletion()">Update</button>'+
+    '</div>'+
+    '<div class="amendnote">Earlier date = finish sooner, later = delay. QC check-visits reflow on the calendar automatically.</div>'+
+  '</div>';
+}
+async function amendCompletion(){
+  const el=document.getElementById('amendDate'); const btn=document.getElementById('amendBtn');
+  const d=((el&&el.value)||'').trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){ toast('Pick a valid date','err'); return; }
+  if(CUR.instDate && d<CUR.instDate){ toast('Completion can’t be before installation','err'); return; }
+  if(d===CUR.expComplete){ toast('That’s already the completion date'); return; }
+  if(btn){ btn.disabled=true; btn.textContent='Updating…'; }
+  try{
+    const res=await api('opsEditCompletion',{ phone:CUR.phone, newCompletionDate:d, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    CUR.expComplete=res.expectedCompletion||d; renderJob();
+    const parts=[];
+    if(res.added&&res.added.length) parts.push('+'+res.added.length+' QC visit'+(res.added.length>1?'s':''));
+    if(res.deleted) parts.push('−'+res.deleted+' QC visit'+(res.deleted>1?'s':''));
+    let msg='Completion → '+fmt(CUR.expComplete)+(parts.length?(' · '+parts.join(', ')):'');
+    if(res.overflowDays&&res.overflowDays.length) msg+=' ⚠ '+res.overflowDays.length+' day over-booked';
+    toast(msg,'ok');
+  }catch(e){ toast(String(e.message||e),'err'); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Update'; } }
 }
 function tasksTab(){
   const rows=(CUR.tasks||[]).map(taskRow).join('')||'<div class="meta">No tasks yet.</div>';
