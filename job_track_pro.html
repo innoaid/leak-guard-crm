@@ -4,12 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Leak Guard — Job Track Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Times New Roman',Times,serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 48px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+body{font-family:'Nunito',-apple-system,'Segoe UI',Roboto,sans-serif;background:#f3f4f6;color:#111827;font-size:15px;padding:0 0 48px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+.disp{font-family:'Bebas Neue','Nunito',sans-serif;text-transform:uppercase;letter-spacing:.8px;font-weight:400}
 .hdr{background:#0F2A4A;color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5}
 .hdr .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.hdr h1{font-family:'Times New Roman',Times,serif;font-size:20px;font-weight:700;letter-spacing:.2px}
+.hdr h1{font-family:'Bebas Neue','Nunito',sans-serif;font-size:25px;font-weight:400;letter-spacing:1px;text-transform:uppercase}
 .hdr h1 .pro{color:#38BDF8}
 .hdr .sub{font-size:12px;opacity:.82;margin-top:3px}
 .hdr .who{font-size:11px;opacity:.7}
@@ -61,7 +65,7 @@ select.sstat.doing{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
 .addbar{display:flex;gap:7px;margin-top:10px}
 .addbar select,.addbar input{font-family:inherit;font-size:13px;border:1px solid #D1D5DB;border-radius:9px;padding:9px}
 .addbar input{flex:1;min-width:0}
-.addbar .btn{background:#0F2A4A;color:#fff;border:none;border-radius:9px;padding:9px 13px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px}
+.addbar .btn{background:#0F2A4A;color:#fff;border:none;border-radius:9px;padding:9px 15px;cursor:pointer;font-family:'Bebas Neue','Nunito',sans-serif;text-transform:uppercase;letter-spacing:.8px;font-size:16px;font-weight:400}
 .statusbox{display:flex;align-items:center;gap:9px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px}
 .statusbox .t{font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#9CA3AF;font-weight:700}
 .statusbox select{font-family:inherit;font-size:14px;font-weight:700;border:1px solid #D1D5DB;border-radius:9px;padding:7px 9px;background:#fff;flex:1}
@@ -69,7 +73,7 @@ select.sstat.doing{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
 .amendbox .t{font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#9CA3AF;font-weight:700}
 .amendrow{display:flex;gap:8px;margin-top:6px}
 .amendrow input{flex:1;min-width:0;font-family:inherit;font-size:14px;border:1px solid #D1D5DB;border-radius:9px;padding:8px 10px;background:#fff}
-.amendrow .btn{background:#0F2A4A;color:#fff;border:none;border-radius:9px;padding:8px 14px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px}
+.amendrow .btn{background:#0F2A4A;color:#fff;border:none;border-radius:9px;padding:8px 15px;cursor:pointer;font-family:'Bebas Neue','Nunito',sans-serif;text-transform:uppercase;letter-spacing:.8px;font-size:16px;font-weight:400}
 .amendrow .btn:disabled{opacity:.6;cursor:default}
 .amendnote{font-size:11px;color:#9CA3AF;margin-top:6px;line-height:1.4}
 .empty{text-align:center;color:#6b7280;padding:54px 20px;font-size:14.5px}
@@ -78,11 +82,11 @@ select.sstat.doing{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
 /* login */
 .loginwrap{position:fixed;inset:0;background:#0F2A4A;display:flex;align-items:center;justify-content:center;z-index:40;padding:20px}
 .loginbox{background:#fff;border-radius:16px;padding:28px 24px;width:100%;max-width:340px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
-.loginbox h2{font-family:'Times New Roman',Times,serif;font-size:24px;font-weight:700;text-align:center;letter-spacing:.2px}
+.loginbox h2{font-family:'Bebas Neue','Nunito',sans-serif;font-size:32px;font-weight:400;text-align:center;letter-spacing:1.5px;text-transform:uppercase}
 .loginbox h2 span{color:#2563EB}
 .loginbox p{text-align:center;color:#6B7280;font-size:13px;margin:4px 0 18px}
 .loginbox input{width:100%;border:1px solid #D1D5DB;border-radius:10px;padding:12px;font-family:inherit;font-size:15px;margin-bottom:10px}
-.loginbox button{width:100%;background:#0F2A4A;color:#fff;border:none;border-radius:10px;padding:13px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit}
+.loginbox button{width:100%;background:#0F2A4A;color:#fff;border:none;border-radius:10px;padding:13px;font-size:21px;cursor:pointer;font-family:'Bebas Neue','Nunito',sans-serif;text-transform:uppercase;letter-spacing:1.5px;font-weight:400}
 .loginbox button:disabled{opacity:.6}
 .lerr{color:#DC2626;font-size:13px;text-align:center;margin-top:10px;min-height:18px}
 </style>
