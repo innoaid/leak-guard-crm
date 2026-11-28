@@ -82,6 +82,13 @@ select.sstat.doing{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
 .amendrow .btn{background:#0F2A4A;color:#fff;border:none;border-radius:9px;padding:8px 15px;cursor:pointer;font-family:'Bebas Neue','Nunito',sans-serif;text-transform:uppercase;letter-spacing:.8px;font-size:16px;font-weight:400}
 .amendrow .btn:disabled{opacity:.6;cursor:default}
 .amendnote{font-size:11px;color:#9CA3AF;margin-top:6px;line-height:1.4}
+.schedbox{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:12px;margin-top:10px}
+.schedbox .t{font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:#0369A1;font-weight:800;margin-bottom:9px}
+.schrow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.schrow label{font-size:12.5px;font-weight:700;color:#475569;width:96px;flex-shrink:0}
+.schrow input,.schrow select{flex:1;min-width:0;font-family:inherit;font-size:14px;border:1px solid #CBD5E1;border-radius:9px;padding:8px 10px;background:#fff}
+.schedbox .btn{width:100%;background:#0369A1;color:#fff;border:none;border-radius:9px;padding:11px;cursor:pointer;font-family:'Bebas Neue','Nunito',sans-serif;text-transform:uppercase;letter-spacing:.8px;font-size:17px;font-weight:400;margin-top:3px}
+.schedbox .btn:disabled{opacity:.6;cursor:default}
 .empty{text-align:center;color:#6b7280;padding:54px 20px;font-size:14.5px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:30;opacity:0;transition:opacity .25s;max-width:90%;text-align:center}
 .toast.on{opacity:1}.toast.err{background:#DC2626}.toast.ok{background:#059669}
@@ -134,6 +141,9 @@ const SHEET_NAME='Leak Guard Leads';
 // Fulfillment phases JTP shows (must match JTP_STATUSES in ops.gs). Capture point = Pending I.Date.
 const JTP_STATUSES=['Pending I.Date','Pending Downpayment','I.Date Confirmed','Job In Progress','Job Complete','Pending Balance','Receipt Sent'];
 const JTP_SET_STATUSES=JTP_STATUSES.concat(['Completed']);
+// ops_confirm scheduling (must match ops.gs SUBCON_TEAMS / OPS_DEST_STATUSES)
+const SUBCON_TEAMS=['Atik (A)','Atik (B)','Atik (C)','Mohiuddin','Danny'];
+const OPS_DEST_STATUSES=['Pending Downpayment','Job In Progress'];
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const TSTATE=[['open','Open'],['doing','In progress'],['pending','Pending verify'],['verified','Verified ✓']];
 const TTYPE_ICON={check:'☑️',photo:'📷',signoff:'✍️'};
@@ -192,7 +202,7 @@ async function loadSheet(){
   const m=txt.match(/setResponse\(([\s\S]*)\)/); if(!m) throw new Error('read failed');
   const j=JSON.parse(m[1]);
   const cols=j.table.cols.map(function(c){ return (c.label||'').trim(); });
-  const want=['Phone','Name','Full Address','Location','Status','Group Invite Link (AJ)','Installation Date','Expected Completion Date','Assigned QC Team','Assigned Subcon Team','Problem Type','Quotation (RM)','Tasks','JTP Active','Tags','Repair Date','Repair QC Team','Defect Inspected At','Defect Responded At'];
+  const want=['Phone','Name','Full Address','Location','Status','Group Invite Link (AJ)','Installation Date','Expected Completion Date','Assigned QC Team','Assigned Subcon Team','Problem Type','Quotation (RM)','Tasks','JTP Active','Tags','Repair Date','Repair QC Team','Defect Inspected At','Defect Responded At','Total Sqft','Slab Size (sqft)','Quotation PDF URL'];
   const ix={}; want.forEach(function(n){ ix[n]=cols.indexOf(n); });
   const V=function(r,n){ const i=ix[n]; if(i<0) return ''; const c=r.c[i]; return c?String(c.v!=null?c.v:(c.f||'')):''; };
   const normD=function(v){ const s=String(v||''); let mm=s.match(/^Date\((\d+),(\d+),(\d+)/); if(mm){ const p=function(n){return(n<10?'0':'')+n;}; return mm[1]+'-'+p((+mm[2])+1)+'-'+p(+mm[3]); } mm=s.match(/^(\d{4})-(\d{2})-(\d{2})/); return mm?mm[0]:''; };
@@ -215,6 +225,7 @@ async function loadSheet(){
       instDate:normD(V(r,'Installation Date')), expComplete:normD(V(r,'Expected Completion Date')),
       qcTeam:V(r,'Assigned QC Team').trim(), subcon:V(r,'Assigned Subcon Team').trim(),
       problem:V(r,'Problem Type').trim(), rm:V(r,'Quotation (RM)').trim(),
+      sqft:V(r,'Total Sqft').trim(), slabSize:V(r,'Slab Size (sqft)').trim(), qtPdf:V(r,'Quotation PDF URL').trim(),
       isRepair:isRepair, archived:archived,
       repairDate:normD(V(r,'Repair Date')), repairQC:V(r,'Repair QC Team').trim(),
       tasks:tasks, captured:!!V(r,'JTP Active').trim(), progress:prog(tasks)
@@ -284,8 +295,9 @@ function listCard(j){
       '<span class="pill st">'+esc(j.status)+'</span>'+
       (j.qcTeam?'<span class="pill qc">🧰 '+esc(j.qcTeam)+'</span>':'')+
       (j.subcon?'<span class="pill sub">👷 '+esc(j.subcon)+'</span>':'')+
-      (j.captured?'<span class="pill cap">✓ in JTP</span>':'')+
+      (j.captured?'<span class="pill cap">✓ Picked up</span>':'')+
     '</div>'+
+    ((j.rm||j.sqft)?'<div class="meta" style="margin-top:7px">'+(j.rm?'💰 RM '+esc(j.rm):'')+(j.rm&&j.sqft?' · ':'')+(j.sqft?'📐 '+esc(j.sqft)+' sqft':'')+'</div>':'')+
     (j.isRepair&&j.repairDate?'<div class="meta" style="margin-top:7px">🔧 Repair '+esc(fmt(j.repairDate))+(j.repairQC?' · '+esc(j.repairQC):'')+'</div>':'')+
     (j.instDate?'<div class="meta" style="margin-top:7px">🗓️ '+esc(fmt(j.instDate))+(j.expComplete?' → <b>'+esc(fmt(j.expComplete))+'</b>':'')+'</div>':'')+
     '<div class="prog"><div class="lbl"><span>'+((j.progress&&j.progress.done)||0)+' / '+((j.progress&&j.progress.total)||0)+' verified</span><b>'+p+'%</b></div>'+
@@ -332,9 +344,11 @@ function overviewTab(){
   let links='<div class="links">';
   if(tel) links+='<a class="lk tel" href="tel:'+tel+'">📞 Call</a>';
   if(CUR.groupLink) links+='<a class="lk wa" href="'+esc(CUR.groupLink)+'" target="_blank" rel="noopener">💬 WA group</a>';
+  if(CUR.qtPdf) links+='<a class="lk" href="'+esc(CUR.qtPdf)+'" target="_blank" rel="noopener">📄 Quotation PDF</a>';
   links+='</div>';
   return '<div class="card flat">'+
     '<div class="statusbox"><span class="t">Status</span><select onchange="setStatus(this.value)">'+opts+'</select></div>'+
+    scheduleBox()+
     amendBox()+
     '<dl class="dd">'+
       (CUR.isRepair?'<dt>Repair</dt><dd>🔧 '+(CUR.repairDate?esc(fmt(CUR.repairDate)):'date not set')+(CUR.repairQC?' · '+esc(CUR.repairQC):'')+'</dd>':'')+
@@ -343,8 +357,41 @@ function overviewTab(){
       (CUR.subcon?'<dt>Subcon crew</dt><dd>'+esc(CUR.subcon)+'</dd>':'')+
       (CUR.problem?'<dt>Scope</dt><dd>'+esc(CUR.problem)+'</dd>':'')+
       (CUR.rm?'<dt>Quotation</dt><dd>RM '+esc(CUR.rm)+'</dd>':'')+
+      (CUR.sqft?'<dt>Total area</dt><dd>'+esc(CUR.sqft)+' sqft</dd>':'')+
+      (CUR.slabSize&&CUR.slabSize!==CUR.sqft?'<dt>Slab size</dt><dd>'+esc(CUR.slabSize)+' sqft</dd>':'')+
     '</dl>'+links+
   '</div>';
+}
+function scheduleBox(){
+  if(CUR.status!=='Pending I.Date') return '';   // only before an install date is set
+  const subs=SUBCON_TEAMS.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
+  const dests=OPS_DEST_STATUSES.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
+  return '<div class="schedbox">'+
+    '<div class="t">📅 Set installation date</div>'+
+    '<div class="schrow"><label>Install date</label><input type="date" id="schInst" min="'+esc(LIST.today||todayStr())+'"></div>'+
+    '<div class="schrow"><label>Expected days</label><input type="number" id="schDays" value="3" min="1" max="60" inputmode="numeric"></div>'+
+    '<div class="schrow"><label>Subcon crew</label><select id="schSub"><option value="">— pick crew —</option>'+subs+'</select></div>'+
+    '<div class="schrow"><label>Move to</label><select id="schDest">'+dests+'</select></div>'+
+    '<button class="btn" id="schBtn" onclick="confirmSchedule()">Confirm & schedule</button>'+
+    '<div class="amendnote">Auto-picks a QC check-team with free slots across the whole install window and books the daily QC visits on their calendar. Sun = non-working.</div>'+
+  '</div>';
+}
+async function confirmSchedule(){
+  const g=function(id){ const e=document.getElementById(id); return e?String(e.value||'').trim():''; };
+  const d=g('schInst'), days=Math.round(Number(g('schDays'))), sub=g('schSub'), dest=g('schDest')||OPS_DEST_STATUSES[0];
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){ toast('Pick an installation date','err'); return; }
+  if(new Date(d+'T00:00:00').getDay()===0){ toast('That date is a Sunday — pick Mon–Sat','err'); return; }
+  if(!(days>=1&&days<=60)){ toast('Expected days must be 1–60','err'); return; }
+  if(SUBCON_TEAMS.indexOf(sub)<0){ toast('Pick a subcon crew','err'); return; }
+  const btn=document.getElementById('schBtn'); if(btn){ btn.disabled=true; btn.textContent='Scheduling…'; }
+  try{
+    const res=await api('opsConfirmSave',{ phone:CUR.phone, installDate:d, expectedDays:days, subcon:sub, destStatus:dest, by:BY });
+    if(!res||res.status!=='ok') throw new Error((res&&res.message)||'Failed');
+    CUR.instDate=res.installDate||d; CUR.expComplete=res.expectedCompletion||''; CUR.qcTeam=res.qcTeam||''; CUR.subcon=res.subcon||sub; CUR.status=res.destStatus||dest;
+    const n=(res.visits&&res.visits.length)||0;
+    toast('Scheduled ✓ '+(res.qcTeam||'QC')+' · '+n+' visit'+(n===1?'':'s')+' · → '+CUR.status,'ok');
+    renderJob();
+  }catch(e){ toast(String(e.message||e),'err'); if(btn){ btn.disabled=false; btn.textContent='Confirm & schedule'; } }
 }
 function amendBox(){
   if(!CUR.instDate||!CUR.qcTeam) return '';   // only for scheduled jobs (have install date + QC team)
