@@ -32,6 +32,7 @@ body{font-family:'Nunito',-apple-system,'Segoe UI',Roboto,sans-serif;background:
 .pill.qc{background:#F0FDFA;color:#0F766E;border-color:#99F6E4}
 .pill.sub{background:#FEF9C3;color:#854D0E;border-color:#FDE68A}
 .pill.cap{background:#ECFDF5;color:#065F46;border-color:#A7F3D0}
+.pill.rp{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
 .prog{margin-top:11px}
 .prog .bar{height:8px;background:#E5E7EB;border-radius:6px;overflow:hidden}
 .prog .fill{height:100%;background:#10B981;border-radius:6px;transition:width .25s}
@@ -191,7 +192,7 @@ async function loadSheet(){
   const m=txt.match(/setResponse\(([\s\S]*)\)/); if(!m) throw new Error('read failed');
   const j=JSON.parse(m[1]);
   const cols=j.table.cols.map(function(c){ return (c.label||'').trim(); });
-  const want=['Phone','Name','Full Address','Location','Status','Group Invite Link (AJ)','Installation Date','Expected Completion Date','Assigned QC Team','Assigned Subcon Team','Problem Type','Quotation (RM)','Tasks','JTP Active'];
+  const want=['Phone','Name','Full Address','Location','Status','Group Invite Link (AJ)','Installation Date','Expected Completion Date','Assigned QC Team','Assigned Subcon Team','Problem Type','Quotation (RM)','Tasks','JTP Active','Tags','Repair Date','Repair QC Team','Defect Inspected At','Defect Responded At'];
   const ix={}; want.forEach(function(n){ ix[n]=cols.indexOf(n); });
   const V=function(r,n){ const i=ix[n]; if(i<0) return ''; const c=r.c[i]; return c?String(c.v!=null?c.v:(c.f||'')):''; };
   const normD=function(v){ const s=String(v||''); let mm=s.match(/^Date\((\d+),(\d+),(\d+)/); if(mm){ const p=function(n){return(n<10?'0':'')+n;}; return mm[1]+'-'+p((+mm[2])+1)+'-'+p(+mm[3]); } mm=s.match(/^(\d{4})-(\d{2})-(\d{2})/); return mm?mm[0]:''; };
@@ -200,7 +201,11 @@ async function loadSheet(){
   (j.table.rows||[]).forEach(function(r){
     if(!r||!r.c) return;
     const status=V(r,'Status').trim();
-    if(JTP_STATUSES.indexOf(status)===-1) return;
+    const tagList=V(r,'Tags').toLowerCase().split(',').map(function(t){ return t.trim(); });
+    const isRepair=tagList.indexOf('repair')>=0;
+    const archived=tagList.indexOf('archived')>=0;
+    // keep fulfillment-phase jobs, plus any repair-tagged job (active, not archived)
+    if(JTP_STATUSES.indexOf(status)===-1 && !(isRepair && !archived)) return;
     const phone=digits(V(r,'Phone')); if(!phone) return;
     const tasks=parseTasks(V(r,'Tasks'));
     jobs.push({
@@ -210,6 +215,8 @@ async function loadSheet(){
       instDate:normD(V(r,'Installation Date')), expComplete:normD(V(r,'Expected Completion Date')),
       qcTeam:V(r,'Assigned QC Team').trim(), subcon:V(r,'Assigned Subcon Team').trim(),
       problem:V(r,'Problem Type').trim(), rm:V(r,'Quotation (RM)').trim(),
+      isRepair:isRepair, archived:archived,
+      repairDate:normD(V(r,'Repair Date')), repairQC:V(r,'Repair QC Team').trim(),
       tasks:tasks, captured:!!V(r,'JTP Active').trim(), progress:prog(tasks)
     });
   });
@@ -231,23 +238,27 @@ function showList(){
   VIEW='list'; CUR=null;
   document.getElementById('backBtn').style.display='none';
   const total=LIST.jobs.length;
-  document.getElementById('hSub').textContent=total+' job'+(total===1?'':'s')+' in fulfillment';
   const v=document.getElementById('view');
-  if(!total){ v.innerHTML='<div class="empty">No jobs in installation yet.<br>Jobs appear here once a kanban card reaches <b>Pending I.Date</b>.</div>'; return; }
-  // counts per phase
+  if(!total){ document.getElementById('hSub').textContent='No jobs yet'; v.innerHTML='<div class="empty">No jobs in installation yet.<br>Jobs appear here once a kanban card reaches <b>Pending I.Date</b>.</div>'; return; }
+  // counts per phase (+ repair)
   const cnt={}; JTP_STATUSES.forEach(function(s){ cnt[s]=0; });
-  LIST.jobs.forEach(function(j){ if(cnt[j.status]!=null) cnt[j.status]++; });
-  // tabs: All + each phase that currently has jobs, in workflow order
+  let repairCount=0, fulfilCount=0;
+  LIST.jobs.forEach(function(j){ if(cnt[j.status]!=null){ cnt[j.status]++; fulfilCount++; } if(j.isRepair) repairCount++; });
+  document.getElementById('hSub').textContent=fulfilCount+' in fulfillment'+(repairCount?' · '+repairCount+' repair':'');
+  // tabs: All + each phase that currently has jobs (workflow order) + Repair at the end
   const tabs=[['all','All',total]];
   JTP_STATUSES.forEach(function(s){ if(cnt[s]>0) tabs.push([s,s,cnt[s]]); });
-  // if the selected phase has no jobs, fall back to All
-  if(PHASE!=='all'&&!(cnt[PHASE]>0)) PHASE='all';
+  if(repairCount>0) tabs.push(['__repair','🔧 Repair',repairCount]);
+  // if the selected tab is now empty, fall back to All
+  if(PHASE==='__repair'){ if(!repairCount) PHASE='all'; }
+  else if(PHASE!=='all'&&!(cnt[PHASE]>0)) PHASE='all';
   const bar='<div class="phasebar">'+tabs.map(function(t){
     return '<button class="chip'+(t[0]===PHASE?' on':'')+'" onclick="setPhase(\''+js(t[0])+'\')">'+esc(t[1])+'<b>'+t[2]+'</b></button>';
   }).join('')+'</div>';
   const q=QUERY.toLowerCase().trim();
   const rows=LIST.jobs.filter(function(j){
-    if(PHASE!=='all'&&j.status!==PHASE) return false;
+    if(PHASE==='__repair'){ if(!j.isRepair) return false; }
+    else if(PHASE!=='all'&&j.status!==PHASE) return false;
     if(!q) return true;
     return ((j.name||'')+' '+(j.phone||'')+' '+(j.address||'')+' '+(j.status||'')).toLowerCase().indexOf(q)>=0;
   });
@@ -269,11 +280,13 @@ function listCard(j){
     '<div class="cname">'+esc(j.name||'(no name)')+'</div>'+
     (j.address?'<div class="meta">📍 '+esc(j.address)+'</div>':'')+
     '<div>'+
+      (j.isRepair?'<span class="pill rp">🔧 Repair</span>':'')+
       '<span class="pill st">'+esc(j.status)+'</span>'+
       (j.qcTeam?'<span class="pill qc">🧰 '+esc(j.qcTeam)+'</span>':'')+
       (j.subcon?'<span class="pill sub">👷 '+esc(j.subcon)+'</span>':'')+
       (j.captured?'<span class="pill cap">✓ in JTP</span>':'')+
     '</div>'+
+    (j.isRepair&&j.repairDate?'<div class="meta" style="margin-top:7px">🔧 Repair '+esc(fmt(j.repairDate))+(j.repairQC?' · '+esc(j.repairQC):'')+'</div>':'')+
     (j.instDate?'<div class="meta" style="margin-top:7px">🗓️ '+esc(fmt(j.instDate))+(j.expComplete?' → <b>'+esc(fmt(j.expComplete))+'</b>':'')+'</div>':'')+
     '<div class="prog"><div class="lbl"><span>'+((j.progress&&j.progress.done)||0)+' / '+((j.progress&&j.progress.total)||0)+' verified</span><b>'+p+'%</b></div>'+
     '<div class="bar"><div class="fill" style="width:'+p+'%"></div></div></div>'+
@@ -288,8 +301,8 @@ async function showJob(phone){
   if(!j){ document.getElementById('view').innerHTML='<div class="empty">Job not found — tap ‹ All jobs.</div>'; document.getElementById('hSub').textContent=''; return; }
   CUR=j; document.getElementById('hSub').textContent=esc(j.name||digits(phone));
   renderJob();
-  // capture (seed tasks) only when the job hasn't been captured yet — one Apps Script call, first open only
-  if(!CUR.tasks||!CUR.tasks.length){
+  // capture (seed tasks) only for fulfillment-phase jobs that haven't been captured — not repair-only jobs
+  if((!CUR.tasks||!CUR.tasks.length) && JTP_STATUSES.indexOf(CUR.status)>=0){
     try{
       const res=await api('jtpJob',{ phone:CUR.phone, by:BY });
       if(res&&res.status==='ok'&&res.job){ CUR.tasks=res.job.tasks||[]; CUR.captured=true; CUR.progress=res.job.progress||prog(CUR.tasks); if(res.job.captured) toast('Captured into Job Track Pro ✓','ok'); renderJob(); }
@@ -313,7 +326,8 @@ function renderJob(){
   document.getElementById('view').innerHTML=header+tabs+(TAB==='overview'?overviewTab():tasksTab());
 }
 function overviewTab(){
-  const opts=JTP_SET_STATUSES.map(function(s){ return '<option value="'+esc(s)+'"'+(s===CUR.status?' selected':'')+'>'+esc(s)+'</option>'; }).join('');
+  let setList=JTP_SET_STATUSES.slice(); if(setList.indexOf(CUR.status)<0) setList=[CUR.status].concat(setList);
+  const opts=setList.map(function(s){ return '<option value="'+esc(s)+'"'+(s===CUR.status?' selected':'')+'>'+esc(s)+'</option>'; }).join('');
   const tel=digits(CUR.phone);
   let links='<div class="links">';
   if(tel) links+='<a class="lk tel" href="tel:'+tel+'">📞 Call</a>';
@@ -323,6 +337,7 @@ function overviewTab(){
     '<div class="statusbox"><span class="t">Status</span><select onchange="setStatus(this.value)">'+opts+'</select></div>'+
     amendBox()+
     '<dl class="dd">'+
+      (CUR.isRepair?'<dt>Repair</dt><dd>🔧 '+(CUR.repairDate?esc(fmt(CUR.repairDate)):'date not set')+(CUR.repairQC?' · '+esc(CUR.repairQC):'')+'</dd>':'')+
       (CUR.instDate?'<dt>Installation</dt><dd>'+esc(fmt(CUR.instDate))+(CUR.expComplete?' → '+esc(fmt(CUR.expComplete)):'')+'</dd>':'')+
       (CUR.qcTeam?'<dt>QC team</dt><dd>'+esc(CUR.qcTeam)+'</dd>':'')+
       (CUR.subcon?'<dt>Subcon crew</dt><dd>'+esc(CUR.subcon)+'</dd>':'')+
