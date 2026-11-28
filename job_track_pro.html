@@ -41,6 +41,11 @@ body{font-family:'Nunito',-apple-system,'Segoe UI',Roboto,sans-serif;background:
 .tabs{display:flex;gap:4px;margin:14px 0 2px}
 .tab{flex:1;background:#fff;border:1px solid #e5e7eb;color:#6B7280;font-family:inherit;font-size:13px;font-weight:700;padding:10px 4px;cursor:pointer;border-radius:10px}
 .tab.on{color:#0F2A4A;border-color:#0F2A4A;background:#EFF6FF}
+.phasebar{display:flex;gap:7px;overflow-x:auto;padding:2px 0 6px;margin-bottom:10px;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.chip{white-space:nowrap;flex-shrink:0;background:#fff;border:1px solid #e5e7eb;color:#6B7280;font-family:inherit;font-size:13px;font-weight:700;padding:8px 13px;cursor:pointer;border-radius:999px}
+.chip b{font-weight:800;margin-left:6px;opacity:.6}
+.chip.on{color:#fff;background:#0F2A4A;border-color:#0F2A4A}
+.chip.on b{opacity:.85}
 .sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#9CA3AF;margin:4px 0 8px}
 .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #F3F4F6}
 .row:last-child{border-bottom:none}
@@ -137,7 +142,7 @@ const SKEY='jtp_session';
 let SESSION=null, BY='';
 let LIST={jobs:[],today:''};
 let CUR=null;                 // reference to the current job inside LIST.jobs
-let VIEW='list', TAB='overview', QUERY='';
+let VIEW='list', TAB='overview', QUERY='', PHASE='Pending I.Date';
 
 function toast(m,k){ const t=document.getElementById('toast'); t.textContent=m; t.className='toast on '+(k||''); setTimeout(function(){ t.className='toast '+(k||''); },2600); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];}); }
@@ -229,12 +234,29 @@ function showList(){
   document.getElementById('hSub').textContent=total+' job'+(total===1?'':'s')+' in fulfillment';
   const v=document.getElementById('view');
   if(!total){ v.innerHTML='<div class="empty">No jobs in installation yet.<br>Jobs appear here once a kanban card reaches <b>Pending I.Date</b>.</div>'; return; }
+  // counts per phase
+  const cnt={}; JTP_STATUSES.forEach(function(s){ cnt[s]=0; });
+  LIST.jobs.forEach(function(j){ if(cnt[j.status]!=null) cnt[j.status]++; });
+  // tabs: All + each phase that currently has jobs, in workflow order
+  const tabs=[['all','All',total]];
+  JTP_STATUSES.forEach(function(s){ if(cnt[s]>0) tabs.push([s,s,cnt[s]]); });
+  // if the selected phase has no jobs, fall back to All
+  if(PHASE!=='all'&&!(cnt[PHASE]>0)) PHASE='all';
+  const bar='<div class="phasebar">'+tabs.map(function(t){
+    return '<button class="chip'+(t[0]===PHASE?' on':'')+'" onclick="setPhase(\''+js(t[0])+'\')">'+esc(t[1])+'<b>'+t[2]+'</b></button>';
+  }).join('')+'</div>';
   const q=QUERY.toLowerCase().trim();
-  const rows=LIST.jobs.filter(function(j){ if(!q) return true; return ((j.name||'')+' '+(j.phone||'')+' '+(j.address||'')+' '+(j.status||'')).toLowerCase().indexOf(q)>=0; });
-  v.innerHTML='<input class="srch" id="srch" placeholder="Search name / address / status…" value="'+esc(QUERY)+'" oninput="onSearch(this.value)">'+
-    (rows.length?rows.map(listCard).join(''):'<div class="empty">No match for “'+esc(QUERY)+'”.</div>');
-  const s=document.getElementById('srch'); if(s){ s.focus(); s.setSelectionRange(s.value.length,s.value.length); }
+  const rows=LIST.jobs.filter(function(j){
+    if(PHASE!=='all'&&j.status!==PHASE) return false;
+    if(!q) return true;
+    return ((j.name||'')+' '+(j.phone||'')+' '+(j.address||'')+' '+(j.status||'')).toLowerCase().indexOf(q)>=0;
+  });
+  v.innerHTML=bar+
+    '<input class="srch" id="srch" placeholder="Search name / address / status…" value="'+esc(QUERY)+'" oninput="onSearch(this.value)">'+
+    (rows.length?rows.map(listCard).join(''):'<div class="empty">'+(q?'No match for “'+esc(QUERY)+'”':'No jobs in this phase')+'.</div>');
+  const s=document.getElementById('srch'); if(s&&QUERY){ s.focus(); s.setSelectionRange(s.value.length,s.value.length); }
 }
+function setPhase(p){ PHASE=p; showList(); }
 function onSearch(v){ QUERY=v; const q=v.toLowerCase().trim();
   // filter in place without losing focus
   const cards=document.querySelectorAll('[data-ph]');
